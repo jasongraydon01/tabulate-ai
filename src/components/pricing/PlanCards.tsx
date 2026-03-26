@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { AnimatedNumber } from '@/components/ui/animated-number';
 import { StaggerContainer, StaggerItem } from '@/components/ui/scroll-reveal';
@@ -12,11 +13,27 @@ import {
   formatPrice,
   type PlanId,
 } from '@/lib/billing/plans';
+import { getPricingPlanUiState } from '@/lib/billing/pricingFlow';
 
-export function PlanCards() {
+interface PlanCardsProps {
+  isAuthenticated: boolean;
+  canManageBilling: boolean;
+  hasActiveSubscription: boolean;
+  currentPlanId: PlanId | null;
+  resumePlanId: PlanId | null;
+}
+
+export function PlanCards({
+  isAuthenticated,
+  canManageBilling,
+  hasActiveSubscription,
+  currentPlanId,
+  resumePlanId,
+}: PlanCardsProps) {
   const [loadingPlan, setLoadingPlan] = useState<PlanId | null>(null);
+  const hasAttemptedResume = useRef(false);
 
-  async function handleSubscribe(planId: PlanId) {
+  async function startCheckout(planId: PlanId) {
     setLoadingPlan(planId);
     try {
       const res = await fetch('/api/billing/checkout', {
@@ -33,15 +50,85 @@ export function PlanCards() {
         }
       }
 
-      // Not authenticated or other error — redirect to login
-      window.location.href = '/dashboard';
+      if (res.status === 401) {
+        window.location.href = getPricingPlanUiState({
+          planId,
+          isAuthenticated: false,
+          canManageBilling: false,
+          hasActiveSubscription: false,
+          currentPlanId: null,
+        }).ctaHref ?? '/auth/sign-in';
+        return;
+      }
+
+      if (res.status === 403) {
+        toast.error('Billing access is limited to organization admins.');
+        return;
+      }
+
+      const errorData = await res.json().catch(() => ({ error: 'Failed to create checkout session' }));
+      toast.error('Unable to start checkout', {
+        description: errorData?.error || 'Failed to create checkout session',
+      });
     } catch {
-      // Network error — redirect to login flow as fallback
-      window.location.href = '/dashboard';
+      toast.error('Unable to start checkout', {
+        description: 'Network error while contacting billing.',
+      });
     } finally {
       setLoadingPlan(null);
     }
   }
+
+  function handlePlanAction(planId: PlanId) {
+    const state = getPricingPlanUiState({
+      planId,
+      isAuthenticated,
+      canManageBilling,
+      hasActiveSubscription,
+      currentPlanId,
+    });
+
+    if (state.disabled) return;
+
+    if (state.action === 'sign_in' && state.ctaHref) {
+      window.location.href = state.ctaHref;
+      return;
+    }
+
+    if (state.action === 'manage_billing' && state.ctaHref) {
+      window.location.href = state.ctaHref;
+      return;
+    }
+
+    if (state.action === 'contact_admin') {
+      toast.info('Billing is managed by your organization admin.');
+      return;
+    }
+
+    void startCheckout(planId);
+  }
+
+  useEffect(() => {
+    if (!resumePlanId || hasAttemptedResume.current) return;
+    hasAttemptedResume.current = true;
+
+    const state = getPricingPlanUiState({
+      planId: resumePlanId,
+      isAuthenticated,
+      canManageBilling,
+      hasActiveSubscription,
+      currentPlanId,
+    });
+
+    if (state.action === 'checkout') {
+      void startCheckout(resumePlanId);
+      return;
+    }
+
+    if (state.action === 'contact_admin') {
+      toast.info('Billing is managed by your organization admin.');
+    }
+  }, [resumePlanId, isAuthenticated, canManageBilling, hasActiveSubscription, currentPlanId]);
 
   return (
     <StaggerContainer
@@ -54,6 +141,13 @@ export function PlanCards() {
         const isPayg = planId === 'payg';
         const isLoading = loadingPlan === planId;
         const dollars = plan.monthlyPrice / 100;
+        const planUi = getPricingPlanUiState({
+          planId,
+          isAuthenticated,
+          canManageBilling,
+          hasActiveSubscription,
+          currentPlanId,
+        });
 
         return (
           <StaggerItem key={planId}>
@@ -117,15 +211,15 @@ export function PlanCards() {
                 {/* CTA */}
                 <div className="mt-auto">
                   <Button
-                    onClick={() => handleSubscribe(planId)}
-                    disabled={loadingPlan !== null}
+                    onClick={() => handlePlanAction(planId)}
+                    disabled={loadingPlan !== null || planUi.disabled}
                     variant={isRecommended ? 'default' : 'outline'}
                     className="w-full"
                   >
                     {isLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      'Get Started'
+                      planUi.ctaLabel
                     )}
                   </Button>
                 </div>

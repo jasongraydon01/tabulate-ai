@@ -6,6 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import posthog from 'posthog-js';
+import Link from 'next/link';
 
 import { WizardFormSchema, Step1Schema, Step3Schema, type WizardFormValues } from '@/schemas/wizardSchema';
 import { wizardToProjectConfig } from '@/schemas/projectConfigSchema';
@@ -13,12 +14,14 @@ import { useDataValidation } from '@/hooks/useDataValidation';
 import { AppBreadcrumbs } from '@/components/app-breadcrumbs';
 import { PageHeader } from '@/components/PageHeader';
 import { Form } from '@/components/ui/form';
+import { Button } from '@/components/ui/button';
 import { WizardShell, type WizardStep } from '@/components/wizard/WizardShell';
 import { StepProjectSetup } from '@/components/wizard/StepProjectSetup';
 import { StepUploadFiles, type WizardFiles } from '@/components/wizard/StepUploadFiles';
 import { StepMaxDiffMessages, validateMessages } from '@/components/wizard/StepMaxDiffMessages';
 import { StepConfiguration } from '@/components/wizard/StepConfiguration';
 import { StepReviewLaunch } from '@/components/wizard/StepReviewLaunch';
+import { useAuthContext } from '@/providers/auth-provider';
 
 // Step definitions — message testing studies get an extra Messages step
 const STANDARD_STEPS: WizardStep[] = [
@@ -42,6 +45,7 @@ const MESSAGE_TESTING_STEP_NAMES = ['project_setup', 'upload_files', 'messages',
 
 export default function NewProjectPage() {
   const router = useRouter();
+  const { hasActiveSubscription } = useAuthContext();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -311,6 +315,11 @@ export default function NewProjectPage() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Launch failed' }));
+        if (response.status === 402 && errorData?.action === 'redirect_to_pricing') {
+          toast.info('Choose a billing plan before launching a project.');
+          router.push('/pricing');
+          return;
+        }
         throw new Error(errorData.error || 'Launch failed');
       }
 
@@ -363,6 +372,30 @@ export default function NewProjectPage() {
     }
     return false;
   };
+
+  if (!hasActiveSubscription) {
+    return (
+      <div>
+        <AppBreadcrumbs segments={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'New Project' }]} />
+
+        <div className="max-w-2xl mt-6">
+          <PageHeader
+            title="New Project"
+            description="Choose a billing plan before launching a new project."
+          />
+
+          <div className="rounded-lg border border-border/60 bg-card p-6">
+            <p className="text-sm text-muted-foreground mb-4">
+              Your organization does not have an active billing plan yet. Choose a plan to enable project creation.
+            </p>
+            <Button asChild>
+              <Link href="/pricing">Choose Plan</Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>

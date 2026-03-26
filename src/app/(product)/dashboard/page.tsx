@@ -14,6 +14,7 @@ import { PipelineListCard, type ProjectListItem } from '@/components/PipelineLis
 import { LoadingTimeoutFallback } from '@/components/ErrorFallback';
 import { AppBreadcrumbs } from '@/components/app-breadcrumbs';
 import { useAuthContext } from '@/providers/auth-provider';
+import { getProductEntryCta } from '@/lib/billing/pricingFlow';
 import { useLoadingTimeout } from '@/hooks/useLoadingTimeout';
 import { canPerform } from '@/lib/permissions';
 import { parseRunResult } from '@/schemas/runResultSchema';
@@ -41,7 +42,7 @@ function getStatusBucket(status: string): StatusFilter {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { convexOrgId, role } = useAuthContext();
+  const { convexOrgId, role, hasActiveSubscription } = useAuthContext();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
@@ -130,6 +131,10 @@ export default function DashboardPage() {
   };
 
   const canCreate = canPerform(role, 'create_project');
+  const createProjectCta = getProductEntryCta({
+    canCreateProject: canCreate,
+    hasActiveSubscription,
+  });
 
   return (
     <div>
@@ -142,10 +147,10 @@ export default function DashboardPage() {
             Your crosstab pipeline runs
           </p>
         </div>
-        {canCreate && (
-          <Button onClick={() => router.push('/projects/new')}>
+        {createProjectCta && (
+          <Button onClick={() => router.push(createProjectCta.href)}>
             <PlusCircle className="h-4 w-4 mr-2" />
-            New Project
+            {createProjectCta.label}
           </Button>
         )}
       </div>
@@ -165,12 +170,14 @@ export default function DashboardPage() {
             No projects yet
           </p>
           <p className="text-sm text-muted-foreground mb-6">
-            Upload your first dataset to get started.
+            {hasActiveSubscription
+              ? 'Upload your first dataset to get started.'
+              : 'Choose a billing plan before creating your first project.'}
           </p>
-          {canCreate && (
-            <Button onClick={() => router.push('/projects/new')}>
+          {createProjectCta && (
+            <Button onClick={() => router.push(createProjectCta.href)}>
               <PlusCircle className="h-4 w-4 mr-2" />
-              New Project
+              {createProjectCta.label}
             </Button>
           )}
         </div>

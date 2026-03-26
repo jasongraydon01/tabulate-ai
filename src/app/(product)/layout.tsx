@@ -9,6 +9,7 @@ import { syncAuthToConvex } from "@/lib/auth-sync";
 import { queryInternal } from "@/lib/convex";
 import { internal } from "../../../convex/_generated/api";
 import type { Role } from "@/lib/permissions";
+import { hasActiveSubscriptionStatus } from "@/lib/billing/subscriptionStatus";
 
 export default async function ProductLayout({
   children,
@@ -25,6 +26,8 @@ export default async function ProductLayout({
   let convexOrgId: string | null = null;
   let convexUserId: string | null = null;
   let role: Role | null = null;
+  let hasActiveSubscription = false;
+  let subscriptionPlan: string | null = null;
 
   try {
     const ids = await syncAuthToConvex(auth);
@@ -43,6 +46,12 @@ export default async function ProductLayout({
     }
 
     role = membership.role as Role;
+
+    const subscription = await queryInternal(internal.subscriptions.getByOrgInternal, {
+      orgId: ids.orgId,
+    });
+    hasActiveSubscription = hasActiveSubscriptionStatus(subscription?.status ?? null);
+    subscriptionPlan = subscription?.plan ?? null;
   } catch (err) {
     console.warn('[Layout] Could not sync auth to Convex:', err);
   }
@@ -56,6 +65,8 @@ export default async function ProductLayout({
         name={auth.name}
         role={role}
         isBypass={auth.isBypass}
+        hasActiveSubscription={hasActiveSubscription}
+        subscriptionPlan={subscriptionPlan}
       >
         <SidebarProvider defaultOpen>
           <AppSidebar />

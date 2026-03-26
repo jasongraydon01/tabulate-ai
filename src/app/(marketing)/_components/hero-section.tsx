@@ -6,6 +6,7 @@ import { TrackedLink } from "@/components/TrackedLink";
 import { TextRevealLine } from "@/components/ui/text-reveal";
 import { FloatingData } from "@/components/ui/floating-data";
 import dynamic from "next/dynamic";
+import { getMarketingPrimaryCta } from "@/lib/navigation";
 
 const CrystallizationHero = dynamic(
   () =>
@@ -21,6 +22,8 @@ interface HeroSectionProps {
 }
 
 export function HeroSection({ isAuthenticated, showPreview }: HeroSectionProps) {
+  const primaryCta = getMarketingPrimaryCta(isAuthenticated);
+
   return (
     <section className="relative min-h-screen flex items-end lg:items-center overflow-hidden">
       {/* Background layers */}
@@ -137,14 +140,14 @@ export function HeroSection({ isAuthenticated, showPreview }: HeroSectionProps) 
                     asChild
                   >
                     <TrackedLink
-                      href="/dashboard"
+                      href={primaryCta.href}
                       eventName="cta_clicked"
                       eventProperties={{
                         location: "hero",
-                        cta_text: "Get Started",
+                        cta_text: primaryCta.label,
                       }}
                     >
-                      Get Started
+                      {primaryCta.label}
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </TrackedLink>
                   </Button>

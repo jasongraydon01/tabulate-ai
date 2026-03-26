@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/sheet";
 import { isPreviewFeatureEnabled } from "@/lib/featureGates";
 import { useEffect, useState } from "react";
+import { getMarketingPrimaryCta } from "@/lib/navigation";
 
 /** @temporary — showPreview controls visibility of Pricing + Demo nav links */
 const showPreview = isPreviewFeatureEnabled();
@@ -21,6 +22,7 @@ export function MarketingHeader({
   isAuthenticated: boolean;
 }) {
   const [scrolled, setScrolled] = useState(false);
+  const primaryCta = getMarketingPrimaryCta(isAuthenticated);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -84,10 +86,10 @@ export function MarketingHeader({
               </Link>
             )}
             <Link
-              href="/dashboard"
+              href={primaryCta.href}
               className="hidden sm:inline-flex items-center text-[13px] font-medium bg-foreground text-background px-4 py-2 rounded-full hover:bg-foreground/90 transition-all duration-200"
             >
-              {isAuthenticated ? "Dashboard" : "Get Started"}
+              {primaryCta.label}
             </Link>
             <ModeToggle />
 
@@ -149,10 +151,10 @@ export function MarketingHeader({
                   )}
                   <SheetClose asChild>
                     <Link
-                      href="/dashboard"
+                      href={primaryCta.href}
                       className="text-base font-medium text-foreground"
                     >
-                      {isAuthenticated ? "Dashboard" : "Get Started"}
+                      {primaryCta.label}
                     </Link>
                   </SheetClose>
                 </nav>

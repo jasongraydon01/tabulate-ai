@@ -36,6 +36,7 @@ import {
 import { applyRateLimit } from '@/lib/withRateLimit';
 import { getApiErrorDetails } from '@/lib/api/errorDetails';
 import { getPostHogClient } from '@/lib/posthog-server';
+import { hasActiveSubscriptionStatus } from '@/lib/billing/subscriptionStatus';
 
 // Allow large .sav file uploads and long-running validation
 export const maxDuration = 300; // 5 minutes
@@ -71,9 +72,9 @@ export async function POST(request: NextRequest) {
     const subscription = await queryInternal(internal.subscriptions.getByOrgInternal, {
       orgId: auth.convexOrgId,
     });
-    if (!subscription || !['active', 'trialing'].includes(subscription.status)) {
+    if (!subscription || !hasActiveSubscriptionStatus(subscription.status)) {
       return NextResponse.json(
-        { error: 'No active subscription', action: 'redirect_to_pricing' },
+        { error: 'No active billing plan', action: 'redirect_to_pricing' },
         { status: 402 },
       );
     }

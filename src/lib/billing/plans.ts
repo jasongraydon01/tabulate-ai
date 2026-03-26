@@ -20,7 +20,7 @@ export const PLANS: Record<PlanId, PlanConfig> = {
     monthlyPrice: 0,
     projectLimit: 0,
     overageRate: 20_000,
-    description: 'No commitment. Pay per project, no subscription required.',
+    description: 'No monthly fee. Pay per successful project on a billing plan.',
   },
   starter: {
     name: 'Starter',

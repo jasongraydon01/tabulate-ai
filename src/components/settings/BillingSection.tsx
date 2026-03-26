@@ -126,7 +126,7 @@ export function BillingSection({ role }: { role: Role | null }) {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground mb-4">
-            No active subscription. Subscribe to a plan to start processing projects.
+            No active billing plan. Choose a plan to start processing projects.
           </p>
           {/* @temporary — "View Plans" hidden in production */}
           {canManage && isPreviewFeatureEnabled() && (

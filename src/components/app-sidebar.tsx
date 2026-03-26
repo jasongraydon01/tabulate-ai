@@ -31,6 +31,7 @@ import {
 import { useAuthContext } from "@/providers/auth-provider";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { getProductEntryCta } from "@/lib/billing/pricingFlow";
 
 function StatusIcon({ status }: { status: string }) {
   switch (status) {
@@ -76,7 +77,7 @@ interface SidebarProject {
 export function AppSidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const { convexOrgId } = useAuthContext();
+  const { convexOrgId, hasActiveSubscription, role } = useAuthContext();
 
   const projects = useQuery(
     api.projects.listByOrg,
@@ -114,6 +115,10 @@ export function AppSidebar() {
   }, [projects, runs]);
 
   const isLoading = projects === undefined || runs === undefined;
+  const createProjectCta = getProductEntryCta({
+    canCreateProject: role === 'admin' || role === 'member',
+    hasActiveSubscription,
+  });
 
   const handleProjectClick = (project: SidebarProject) => {
     if (project.status === "pending_review") {
@@ -163,12 +168,12 @@ export function AppSidebar() {
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  isActive={pathname === "/projects/new"}
-                  onClick={() => router.push("/projects/new")}
+                  isActive={createProjectCta?.href === "/projects/new" && pathname === "/projects/new"}
+                  onClick={() => router.push(createProjectCta?.href ?? "/pricing")}
                   className="cursor-pointer"
                 >
                   <PlusCircle className="h-4 w-4" />
-                  <span>New Project</span>
+                  <span>{createProjectCta?.label ?? 'Choose Plan'}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

@@ -12,6 +12,8 @@ interface AuthContextValue {
   name: string | null;
   role: Role | null;
   isBypass: boolean;
+  hasActiveSubscription: boolean;
+  subscriptionPlan: string | null;
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -21,6 +23,8 @@ const AuthContext = createContext<AuthContextValue>({
   name: null,
   role: null,
   isBypass: false,
+  hasActiveSubscription: false,
+  subscriptionPlan: null,
 });
 
 interface AuthProviderProps {
@@ -31,6 +35,8 @@ interface AuthProviderProps {
   name?: string | null;
   role?: Role | null;
   isBypass?: boolean;
+  hasActiveSubscription?: boolean;
+  subscriptionPlan?: string | null;
 }
 
 export function AuthProvider({
@@ -41,6 +47,8 @@ export function AuthProvider({
   name = null,
   role = null,
   isBypass = false,
+  hasActiveSubscription = false,
+  subscriptionPlan = null,
 }: AuthProviderProps) {
   // Identify user in PostHog when authenticated (opaque IDs only — no PII)
   useEffect(() => {
@@ -63,6 +71,8 @@ export function AuthProvider({
         name: name ?? null,
         role: role ?? null,
         isBypass,
+        hasActiveSubscription,
+        subscriptionPlan,
       }}
     >
       <PipelineSoundNotifier />

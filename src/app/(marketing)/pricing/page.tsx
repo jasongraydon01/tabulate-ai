@@ -12,11 +12,56 @@ import {
   formatPrice,
   getEffectiveCostPerProject,
 } from '@/lib/billing/plans';
+import { parsePlanId, PRICING_CHECKOUT_PLAN_PARAM } from '@/lib/billing/pricingFlow';
+import { hasActiveSubscriptionStatus } from '@/lib/billing/subscriptionStatus';
 import { isPreviewFeatureEnabled } from '@/lib/featureGates';
+import { getMarketingPrimaryCta } from '@/lib/navigation';
+import { getAuth } from '@/lib/auth';
+import { syncAuthToConvex } from '@/lib/auth-sync';
+import { queryInternal } from '@/lib/convex';
+import { internal } from '../../../../convex/_generated/api';
+import { canPerform } from '@/lib/permissions';
 
 /** @temporary — remove gate when pricing is production-ready */
-export default function PricingPage() {
+export default async function PricingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [PRICING_CHECKOUT_PLAN_PARAM]?: string | string[] }>;
+}) {
   if (!isPreviewFeatureEnabled()) redirect('/');
+
+  const auth = await getAuth();
+  const isAuthenticated = !!auth;
+  const primaryCta = getMarketingPrimaryCta(isAuthenticated);
+  const params = await searchParams;
+  const checkoutPlanParam = params[PRICING_CHECKOUT_PLAN_PARAM];
+  const checkoutPlan = parsePlanId(
+    Array.isArray(checkoutPlanParam) ? checkoutPlanParam[0] : checkoutPlanParam,
+  );
+
+  let canManageBilling = false;
+  let hasActiveSubscription = false;
+  let currentPlanId: keyof typeof PLANS | null = null;
+
+  if (auth) {
+    try {
+      const ids = await syncAuthToConvex(auth);
+      const membership = await queryInternal(internal.orgMemberships.getByUserAndOrg, {
+        userId: ids.userId,
+        orgId: ids.orgId,
+      });
+      canManageBilling = canPerform(membership?.role ?? null, 'manage_billing');
+
+      const subscription = await queryInternal(internal.subscriptions.getByOrgInternal, {
+        orgId: ids.orgId,
+      });
+      hasActiveSubscription = hasActiveSubscriptionStatus(subscription?.status ?? null);
+      currentPlanId = parsePlanId(subscription?.plan ?? null);
+    } catch (error) {
+      console.warn('[PricingPage] Could not load pricing context:', error);
+    }
+  }
+
   return (
     <>
       {/* ============ HERO ============ */}
@@ -53,7 +98,13 @@ export default function PricingPage() {
       {/* ============ PLAN CARDS ============ */}
       <section className="relative z-10 -mt-16 px-6 pb-28">
         <div className="max-w-6xl mx-auto">
-          <PlanCards />
+          <PlanCards
+            isAuthenticated={isAuthenticated}
+            canManageBilling={canManageBilling}
+            hasActiveSubscription={hasActiveSubscription}
+            currentPlanId={currentPlanId}
+            resumePlanId={checkoutPlan}
+          />
         </div>
       </section>
 
@@ -199,11 +250,11 @@ export default function PricingPage() {
             </p>
             <Button asChild size="lg" className="text-base px-8 rounded-full bg-foreground text-background hover:bg-foreground/90">
               <TrackedLink
-                href="/dashboard"
+                href={primaryCta.href}
                 eventName="cta_clicked"
-                eventProperties={{ location: 'pricing_bottom_cta', cta_text: 'Get Started' }}
+                eventProperties={{ location: 'pricing_bottom_cta', cta_text: primaryCta.label }}
               >
-                Get Started
+                {primaryCta.label}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </TrackedLink>
             </Button>

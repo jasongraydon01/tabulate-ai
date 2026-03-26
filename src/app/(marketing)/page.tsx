@@ -5,6 +5,7 @@ import { TrackedLink } from "@/components/TrackedLink";
 import { ScrollReveal } from "@/components/ui/scroll-reveal";
 import { getAuth } from "@/lib/auth";
 import { isPreviewFeatureEnabled } from "@/lib/featureGates";
+import { getMarketingPrimaryCta } from "@/lib/navigation";
 import { HeroSection } from "./_components/hero-section";
 import { HowItWorksSection } from "./_components/how-it-works-section";
 import { FeaturesSection } from "./_components/features-section";
@@ -12,6 +13,7 @@ import { FeaturesSection } from "./_components/features-section";
 export default async function LandingPage() {
   const auth = await getAuth();
   const isAuthenticated = !!auth;
+  const primaryCta = getMarketingPrimaryCta(isAuthenticated);
   /** @temporary — controls demo CTA + pricing link visibility */
   const showPreview = isPreviewFeatureEnabled();
   return (
@@ -98,11 +100,11 @@ export default async function LandingPage() {
                     asChild
                   >
                     <TrackedLink
-                      href="/dashboard"
+                      href={primaryCta.href}
                       eventName="cta_clicked"
-                      eventProperties={{ location: 'bottom_cta', cta_text: 'Get Started' }}
+                      eventProperties={{ location: 'bottom_cta', cta_text: primaryCta.label }}
                     >
-                      Get Started
+                      {primaryCta.label}
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </TrackedLink>
                   </Button>
