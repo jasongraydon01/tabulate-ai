@@ -59,11 +59,11 @@ interface OutputDeliveryEmailParams {
   projectName: string;
   tableCount: number;
   durationFormatted?: string;
-  pricingUrl: string;
+  requestAccessUrl: string;
 }
 
 export function buildOutputDeliveryEmail(params: OutputDeliveryEmailParams): { subject: string; html: string } {
-  const { name, projectName, tableCount, durationFormatted, pricingUrl } = params;
+  const { name, projectName, tableCount, durationFormatted, requestAccessUrl } = params;
 
   const details = [
     `<strong style="color:#18181b;">${escapeHtml(projectName)}</strong>`,
@@ -98,10 +98,13 @@ export function buildOutputDeliveryEmail(params: OutputDeliveryEmailParams): { s
           our system so we can manage verification, delivery state, and any
           follow-up support.
         </p>
+        <p style="margin:0;font-size:14px;color:#52525b;line-height:1.6;">
+          If you want a full workspace for your team, request access and we&apos;ll provision the first admin path before billing begins.
+        </p>
       </td></tr>
       <!-- CTA -->
       <tr><td style="padding:24px 32px;">
-        <a href="${pricingUrl}" style="display:inline-block;padding:10px 24px;background-color:#18181b;color:#fafafa;font-size:14px;font-weight:600;text-decoration:none;border-radius:6px;">See our plans</a>
+        <a href="${requestAccessUrl}" style="display:inline-block;padding:10px 24px;background-color:#18181b;color:#fafafa;font-size:14px;font-weight:600;text-decoration:none;border-radius:6px;">Request Access</a>
       </td></tr>
       <!-- Footer note -->
       <tr><td style="padding:0 32px 16px 32px;">

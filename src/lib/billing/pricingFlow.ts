@@ -1,4 +1,4 @@
-import { buildSignInPath } from '@/lib/navigation';
+import { buildRequestAccessPath } from '@/lib/accessRequests';
 import { PLAN_ORDER, type PlanId } from './plans';
 
 export const PRICING_CHECKOUT_PLAN_PARAM = 'checkoutPlan';
@@ -18,7 +18,13 @@ export function buildPricingCheckoutReturnPath(planId: PlanId): string {
   return `/pricing?${searchParams.toString()}`;
 }
 
-export type PricingPlanAction = 'sign_in' | 'checkout' | 'manage_billing' | 'contact_admin' | 'current_plan';
+export type PricingPlanAction =
+  | 'request_access'
+  | 'sign_in'
+  | 'checkout'
+  | 'manage_billing'
+  | 'contact_admin'
+  | 'current_plan';
 
 export interface PricingPlanUiState {
   action: PricingPlanAction;
@@ -42,9 +48,9 @@ export function getPricingPlanUiState({
 }): PricingPlanUiState {
   if (!isAuthenticated) {
     return {
-      action: 'sign_in',
-      ctaLabel: 'Get Started',
-      ctaHref: buildSignInPath(buildPricingCheckoutReturnPath(planId)),
+      action: 'request_access',
+      ctaLabel: 'Request Access',
+      ctaHref: buildRequestAccessPath('pricing'),
       disabled: false,
     };
   }
@@ -82,6 +88,30 @@ export function getPricingPlanUiState({
     ctaHref: null,
     disabled: false,
   };
+}
+
+export function getPricingPagePrimaryCta({
+  isAuthenticated,
+  canManageBilling,
+  hasActiveSubscription,
+}: {
+  isAuthenticated: boolean;
+  canManageBilling: boolean;
+  hasActiveSubscription: boolean;
+}): { href: string; label: string } {
+  if (isAuthenticated && hasActiveSubscription) {
+    return { href: '/dashboard', label: 'Dashboard' };
+  }
+
+  if (isAuthenticated && canManageBilling) {
+    return { href: '#pricing-plans', label: 'Choose a Plan' };
+  }
+
+  if (isAuthenticated) {
+    return { href: '/dashboard', label: 'View Workspace' };
+  }
+
+  return { href: buildRequestAccessPath('pricing'), label: 'Request Access' };
 }
 
 export function getProductEntryCta({

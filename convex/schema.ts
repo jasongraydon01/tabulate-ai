@@ -326,4 +326,34 @@ export default defineSchema({
     .index("by_email", ["email"])
     .index("by_token", ["verificationToken"])
     .index("by_status", ["pipelineStatus"]),
+
+  accessRequests: defineTable({
+    name: v.string(),
+    email: v.string(),
+    company: v.string(),
+    emailDomain: v.string(),
+    initialAdminEmail: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    source: v.union(
+      v.literal("demo_status"),
+      v.literal("demo_email"),
+      v.literal("pricing"),
+      v.literal("auth_no_org"),
+      v.literal("marketing"),
+    ),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("rejected"),
+    ),
+    demoRunId: v.optional(v.id("demoRuns")),
+    createdAt: v.number(),
+    reviewedAt: v.optional(v.number()),
+    reviewedByEmail: v.optional(v.string()),
+    reviewNotes: v.optional(v.string()),
+  })
+    .index("by_email", ["email"])
+    .index("by_domain", ["emailDomain"])
+    .index("by_status", ["status"])
+    .index("by_created_at", ["createdAt"]),
 });

@@ -1,13 +1,12 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useQuery } from 'convex/react';
 import { api } from '../../../../../convex/_generated/api';
 import { Loader2, CheckCircle2, AlertTriangle, Mail, Clock } from 'lucide-react';
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { isPreviewFeatureEnabled } from '@/lib/featureGates';
+import { buildRequestAccessPath } from '@/lib/accessRequests';
 
 function DemoStatusContent() {
   const searchParams = useSearchParams();
@@ -60,6 +59,7 @@ function DemoStatusContent() {
   }
 
   const { pipelineStatus, emailVerified, projectName, outputSentAt } = demoRun;
+  const requestAccessHref = buildRequestAccessPath('demo_status', { demoToken: token });
 
   // Output already sent
   if (outputSentAt) {
@@ -72,10 +72,10 @@ function DemoStatusContent() {
           The zip file contains your Excel crosstabs and any export files you selected.
         </p>
         <Link
-          href="/pricing"
+          href={requestAccessHref}
           className="inline-block px-5 py-2.5 bg-primary text-primary-foreground font-medium text-sm rounded-full hover:opacity-90 transition-opacity"
         >
-          See our plans
+          Request Access
         </Link>
       </StatusCard>
     );
@@ -172,15 +172,7 @@ function StatusCard({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** @temporary — remove gate when demo is production-ready */
 export default function DemoStatusPage() {
-  const router = useRouter();
-
-  // @temporary — redirect to home in production
-  useEffect(() => {
-    if (!isPreviewFeatureEnabled()) router.replace('/');
-  }, [router]);
-
   return (
     <Suspense fallback={
       <div className="min-h-[60vh] flex items-center justify-center">

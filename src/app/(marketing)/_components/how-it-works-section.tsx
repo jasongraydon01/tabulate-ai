@@ -5,11 +5,7 @@ import { Button } from "@/components/ui/button";
 import { TrackedLink } from "@/components/TrackedLink";
 import { ScrollReveal } from "@/components/ui/scroll-reveal";
 
-interface HowItWorksSectionProps {
-  showPreview: boolean;
-}
-
-export function HowItWorksSection({ showPreview }: HowItWorksSectionProps) {
+export function HowItWorksSection() {
   return (
     <section id="how-it-works" className="py-32 lg:py-40 px-6 lg:px-10">
       <div className="max-w-7xl mx-auto">
@@ -373,34 +369,31 @@ export function HowItWorksSection({ showPreview }: HowItWorksSectionProps) {
           </ScrollReveal>
         </div>
 
-        {/* @temporary — demo CTA hidden in production */}
-        {showPreview && (
-          <ScrollReveal delay={0.3}>
-            <div className="mt-28 text-center">
-              <p className="text-muted-foreground mb-5">
-                Want to see it on your own data?
-              </p>
-              <Button
-                asChild
-                size="lg"
-                variant="outline"
-                className="text-base rounded-full"
+        <ScrollReveal delay={0.3}>
+          <div className="mt-28 text-center">
+            <p className="text-muted-foreground mb-5">
+              Want to see it on your own data?
+            </p>
+            <Button
+              asChild
+              size="lg"
+              variant="outline"
+              className="text-base rounded-full"
+            >
+              <TrackedLink
+                href="/demo"
+                eventName="cta_clicked"
+                eventProperties={{
+                  location: "how_it_works",
+                  cta_text: "Try the Demo",
+                }}
               >
-                <TrackedLink
-                  href="/demo"
-                  eventName="cta_clicked"
-                  eventProperties={{
-                    location: "how_it_works",
-                    cta_text: "Try the Demo",
-                  }}
-                >
-                  <Play className="mr-2 h-4 w-4" />
-                  Try the Demo
-                </TrackedLink>
-              </Button>
-            </div>
-          </ScrollReveal>
-        )}
+                <Play className="mr-2 h-4 w-4" />
+                Try the Demo
+              </TrackedLink>
+            </Button>
+          </div>
+        </ScrollReveal>
       </div>
     </section>
   );

@@ -1,3 +1,5 @@
+import { buildRequestAccessPath } from '@/lib/accessRequests';
+
 export function sanitizeRelativeReturnTo(value: string | null | undefined, fallback = '/dashboard'): string {
   if (!value) return fallback;
   if (!value.startsWith('/')) return fallback;
@@ -22,5 +24,16 @@ export function getMarketingPrimaryCta(isAuthenticated: boolean): { href: string
     return { href: '/dashboard', label: 'Dashboard' };
   }
 
-  return { href: buildSignInPath('/dashboard'), label: 'Get Started' };
+  return { href: '/demo', label: 'Try Demo' };
+}
+
+export function getMarketingSecondaryCta(isAuthenticated: boolean): { href: string; label: string } | null {
+  if (isAuthenticated) {
+    return null;
+  }
+
+  return {
+    href: buildRequestAccessPath('marketing'),
+    label: 'Request Access',
+  };
 }

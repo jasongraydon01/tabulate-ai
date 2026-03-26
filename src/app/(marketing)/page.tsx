@@ -4,8 +4,7 @@ import { Button } from "@/components/ui/button";
 import { TrackedLink } from "@/components/TrackedLink";
 import { ScrollReveal } from "@/components/ui/scroll-reveal";
 import { getAuth } from "@/lib/auth";
-import { isPreviewFeatureEnabled } from "@/lib/featureGates";
-import { getMarketingPrimaryCta } from "@/lib/navigation";
+import { getMarketingPrimaryCta, getMarketingSecondaryCta } from "@/lib/navigation";
 import { HeroSection } from "./_components/hero-section";
 import { HowItWorksSection } from "./_components/how-it-works-section";
 import { FeaturesSection } from "./_components/features-section";
@@ -14,15 +13,11 @@ export default async function LandingPage() {
   const auth = await getAuth();
   const isAuthenticated = !!auth;
   const primaryCta = getMarketingPrimaryCta(isAuthenticated);
-  /** @temporary — controls demo CTA + pricing link visibility */
-  const showPreview = isPreviewFeatureEnabled();
+  const secondaryCta = getMarketingSecondaryCta(isAuthenticated);
   return (
     <>
       {/* ============ HERO ============ */}
-      <HeroSection
-        isAuthenticated={isAuthenticated}
-        showPreview={showPreview}
-      />
+      <HeroSection isAuthenticated={isAuthenticated} />
 
       {/* ============ TRUST STRIP ============ */}
       <section className="border-y border-border/40">
@@ -44,7 +39,7 @@ export default async function LandingPage() {
       </section>
 
       {/* ============ HOW IT WORKS ============ */}
-      <HowItWorksSection showPreview={showPreview} />
+      <HowItWorksSection />
 
       {/* ============ FEATURES ============ */}
       <FeaturesSection />
@@ -78,25 +73,9 @@ export default async function LandingPage() {
                 </Button>
               ) : (
                 <>
-                  {showPreview && (
-                    <Button asChild size="lg" className="text-base px-8 rounded-full bg-foreground text-background hover:bg-foreground/90">
-                      <TrackedLink
-                        href="/demo"
-                        eventName="cta_clicked"
-                        eventProperties={{ location: 'bottom_cta', cta_text: 'Try the Demo' }}
-                      >
-                        <Play className="mr-2 h-4 w-4" />
-                        Try the Demo
-                      </TrackedLink>
-                    </Button>
-                  )}
                   <Button
-                    variant={showPreview ? "outline" : "default"}
                     size="lg"
-                    className={showPreview
-                      ? "text-base px-8 rounded-full"
-                      : "text-base px-8 rounded-full bg-foreground text-background hover:bg-foreground/90"
-                    }
+                    className="text-base px-8 rounded-full bg-foreground text-background hover:bg-foreground/90"
                     asChild
                   >
                     <TrackedLink
@@ -104,10 +83,27 @@ export default async function LandingPage() {
                       eventName="cta_clicked"
                       eventProperties={{ location: 'bottom_cta', cta_text: primaryCta.label }}
                     >
+                      <Play className="mr-2 h-4 w-4" />
                       {primaryCta.label}
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </TrackedLink>
                   </Button>
+                  {secondaryCta && (
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      className="text-base px-8 rounded-full"
+                      asChild
+                    >
+                      <TrackedLink
+                        href={secondaryCta.href}
+                        eventName="cta_clicked"
+                        eventProperties={{ location: 'bottom_cta', cta_text: secondaryCta.label }}
+                      >
+                        {secondaryCta.label}
+                      </TrackedLink>
+                    </Button>
+                  )}
                 </>
               )}
             </div>
@@ -127,11 +123,9 @@ export default async function LandingPage() {
               <Link href="/data-privacy" className="text-xs text-muted-foreground/60 hover:text-foreground transition-colors duration-200">
                 Data &amp; Privacy
               </Link>
-              {showPreview && (
-                <Link href="/pricing" className="text-xs text-muted-foreground/60 hover:text-foreground transition-colors duration-200">
-                  Pricing
-                </Link>
-              )}
+              <Link href="/pricing" className="text-xs text-muted-foreground/60 hover:text-foreground transition-colors duration-200">
+                Pricing
+              </Link>
             </div>
           </div>
           <div className="mt-8 pt-6 border-t border-border/30">

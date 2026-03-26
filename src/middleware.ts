@@ -5,7 +5,7 @@ import { authkitMiddleware } from "@workos-inc/authkit-nextjs";
 const workosMiddleware = authkitMiddleware({
   middlewareAuth: {
     enabled: true,
-    unauthenticatedPaths: ["/", "/pricing", "/demo", "/demo/status", "/auth/callback", "/api/health", "/api/ready", "/auth/error", "/api/billing/webhook", "/api/demo/launch", "/api/demo/verify", "/api/demo/validate-data"],
+    unauthenticatedPaths: ["/", "/pricing", "/demo", "/demo/status", "/request-access", "/auth/callback", "/api/health", "/api/ready", "/auth/error", "/api/billing/webhook", "/api/demo/launch", "/api/demo/verify", "/api/demo/validate-data", "/api/access-requests"],
   },
 });
 
@@ -29,6 +29,7 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     "/dashboard/:path*",
+    "/ops/:path*",
     "/projects/:path*",
     "/settings/:path*",
     "/api/:path*",

@@ -6,6 +6,7 @@
  */
 
 import { Resend } from 'resend';
+import { buildRequestAccessPath } from '@/lib/accessRequests';
 import { buildVerificationEmail, buildOutputDeliveryEmail } from '@/lib/notifications/demoEmails';
 import { bundleDemoOutput } from './bundleDemoOutput';
 
@@ -78,12 +79,15 @@ export async function sendDemoOutputEmail(opts: {
   outputDir: string;
   tableCount: number;
   durationFormatted?: string;
+  demoToken?: string;
 }): Promise<boolean> {
   const resend = getResend();
   if (!resend) return false;
 
   const appUrl = getAppUrl();
-  const pricingUrl = `${appUrl}/pricing`;
+  const requestAccessUrl = `${appUrl}${buildRequestAccessPath('demo_email', {
+    demoToken: opts.demoToken ?? null,
+  })}`;
 
   // Bundle output files into separate attachments
   let bundle: Awaited<ReturnType<typeof bundleDemoOutput>>;
@@ -105,7 +109,7 @@ export async function sendDemoOutputEmail(opts: {
     projectName: opts.projectName,
     tableCount: opts.tableCount,
     durationFormatted: opts.durationFormatted,
-    pricingUrl,
+    requestAccessUrl,
   });
 
   // Build attachments: Excel files standalone, exports as zips

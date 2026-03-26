@@ -13,10 +13,6 @@ vi.mock('next/navigation', () => ({
   redirect: mocks.redirect,
 }));
 
-vi.mock('@/lib/featureGates', () => ({
-  isPreviewFeatureEnabled: () => true,
-}));
-
 vi.mock('@/lib/auth', () => ({
   getAuth: mocks.getAuth,
 }));
@@ -63,7 +59,7 @@ describe('pricing page', () => {
     vi.clearAllMocks();
   });
 
-  it('renders unauthenticated pricing CTAs with explicit sign-in routing', async () => {
+  it('renders unauthenticated pricing CTAs with request-access routing', async () => {
     mocks.getAuth.mockResolvedValue(null);
     const { default: PricingPage } = await import('@/app/(marketing)/pricing/page');
 
@@ -73,8 +69,8 @@ describe('pricing page', () => {
       }),
     );
 
-    expect(markup).toContain('/auth/sign-in?returnTo=%2Fdashboard');
-    expect(markup).toContain('>Get Started<');
+    expect(markup).toContain('/request-access?source=pricing');
+    expect(markup).toContain('>Request Access<');
     expect(markup).toContain('&quot;isAuthenticated&quot;:false');
     expect(markup).toContain('&quot;resumePlanId&quot;:null');
   });

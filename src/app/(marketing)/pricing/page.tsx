@@ -1,4 +1,3 @@
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowRight, FileSpreadsheet, FileText, LayoutGrid, MessageSquare, SlidersHorizontal, UserCheck, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,10 +11,12 @@ import {
   formatPrice,
   getEffectiveCostPerProject,
 } from '@/lib/billing/plans';
-import { parsePlanId, PRICING_CHECKOUT_PLAN_PARAM } from '@/lib/billing/pricingFlow';
+import {
+  getPricingPagePrimaryCta,
+  parsePlanId,
+  PRICING_CHECKOUT_PLAN_PARAM,
+} from '@/lib/billing/pricingFlow';
 import { hasActiveSubscriptionStatus } from '@/lib/billing/subscriptionStatus';
-import { isPreviewFeatureEnabled } from '@/lib/featureGates';
-import { getMarketingPrimaryCta } from '@/lib/navigation';
 import { getAuth } from '@/lib/auth';
 import { syncAuthToConvex } from '@/lib/auth-sync';
 import { queryInternal } from '@/lib/convex';
@@ -28,11 +29,8 @@ export default async function PricingPage({
 }: {
   searchParams: Promise<{ [PRICING_CHECKOUT_PLAN_PARAM]?: string | string[] }>;
 }) {
-  if (!isPreviewFeatureEnabled()) redirect('/');
-
   const auth = await getAuth();
   const isAuthenticated = !!auth;
-  const primaryCta = getMarketingPrimaryCta(isAuthenticated);
   const params = await searchParams;
   const checkoutPlanParam = params[PRICING_CHECKOUT_PLAN_PARAM];
   const checkoutPlan = parsePlanId(
@@ -61,6 +59,12 @@ export default async function PricingPage({
       console.warn('[PricingPage] Could not load pricing context:', error);
     }
   }
+
+  const primaryCta = getPricingPagePrimaryCta({
+    isAuthenticated,
+    canManageBilling,
+    hasActiveSubscription,
+  });
 
   return (
     <>
@@ -96,7 +100,7 @@ export default async function PricingPage({
       </section>
 
       {/* ============ PLAN CARDS ============ */}
-      <section className="relative z-10 -mt-16 px-6 pb-28">
+      <section id="pricing-plans" className="relative z-10 -mt-16 px-6 pb-28 scroll-mt-24">
         <div className="max-w-6xl mx-auto">
           <PlanCards
             isAuthenticated={isAuthenticated}
@@ -246,7 +250,8 @@ export default async function PricingPage({
               Ready to automate your <span className="editorial-emphasis">tabs?</span>
             </h2>
             <p className="text-lg text-muted-foreground mb-12 max-w-lg mx-auto">
-              Upload your data file, your survey, and your banner spec. Get publication-ready tables in minutes.
+              Start with the demo if you want to see the workflow on your own data. If your team is
+              ready for a workspace, request access and we&apos;ll provision it cleanly.
             </p>
             <Button asChild size="lg" className="text-base px-8 rounded-full bg-foreground text-background hover:bg-foreground/90">
               <TrackedLink

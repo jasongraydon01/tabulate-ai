@@ -6,7 +6,7 @@ import { TrackedLink } from "@/components/TrackedLink";
 import { TextRevealLine } from "@/components/ui/text-reveal";
 import { FloatingData } from "@/components/ui/floating-data";
 import dynamic from "next/dynamic";
-import { getMarketingPrimaryCta } from "@/lib/navigation";
+import { getMarketingPrimaryCta, getMarketingSecondaryCta } from "@/lib/navigation";
 
 const CrystallizationHero = dynamic(
   () =>
@@ -18,11 +18,11 @@ const CrystallizationHero = dynamic(
 
 interface HeroSectionProps {
   isAuthenticated: boolean;
-  showPreview: boolean;
 }
 
-export function HeroSection({ isAuthenticated, showPreview }: HeroSectionProps) {
+export function HeroSection({ isAuthenticated }: HeroSectionProps) {
   const primaryCta = getMarketingPrimaryCta(isAuthenticated);
+  const secondaryCta = getMarketingSecondaryCta(isAuthenticated);
 
   return (
     <section className="relative min-h-screen flex items-end lg:items-center overflow-hidden">
@@ -110,34 +110,10 @@ export function HeroSection({ isAuthenticated, showPreview }: HeroSectionProps) 
                 </>
               ) : (
                 <>
-                  {showPreview && (
-                    <Button
-                      asChild
-                      size="lg"
-                      className="text-base px-8 rounded-full bg-foreground text-background hover:bg-foreground/90"
-                    >
-                      <TrackedLink
-                        href="/demo"
-                        eventName="cta_clicked"
-                        eventProperties={{
-                          location: "hero",
-                          cta_text: "Try the Demo",
-                        }}
-                      >
-                        <Play className="mr-2 h-4 w-4" />
-                        Try the Demo
-                      </TrackedLink>
-                    </Button>
-                  )}
                   <Button
-                    variant={showPreview ? "ghost" : "default"}
-                    size="lg"
-                    className={
-                      showPreview
-                        ? "text-base text-muted-foreground"
-                        : "text-base px-8 rounded-full bg-foreground text-background hover:bg-foreground/90"
-                    }
                     asChild
+                    size="lg"
+                    className="text-base px-8 rounded-full bg-foreground text-background hover:bg-foreground/90"
                   >
                     <TrackedLink
                       href={primaryCta.href}
@@ -147,10 +123,30 @@ export function HeroSection({ isAuthenticated, showPreview }: HeroSectionProps) 
                         cta_text: primaryCta.label,
                       }}
                     >
+                      {!isAuthenticated && <Play className="mr-2 h-4 w-4" />}
                       {primaryCta.label}
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </TrackedLink>
                   </Button>
+                  {secondaryCta && (
+                    <Button
+                      variant="ghost"
+                      size="lg"
+                      className="text-base text-muted-foreground"
+                      asChild
+                    >
+                      <TrackedLink
+                        href={secondaryCta.href}
+                        eventName="cta_clicked"
+                        eventProperties={{
+                          location: "hero",
+                          cta_text: secondaryCta.label,
+                        }}
+                      >
+                        {secondaryCta.label}
+                      </TrackedLink>
+                    </Button>
+                  )}
                 </>
               )}
             </div>

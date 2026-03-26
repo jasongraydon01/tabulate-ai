@@ -14,6 +14,8 @@ import {
   type PlanId,
 } from '@/lib/billing/plans';
 import { getPricingPlanUiState } from '@/lib/billing/pricingFlow';
+import { buildSignInPath } from '@/lib/navigation';
+import { buildPricingCheckoutReturnPath } from '@/lib/billing/pricingFlow';
 
 interface PlanCardsProps {
   isAuthenticated: boolean;
@@ -51,13 +53,7 @@ export function PlanCards({
       }
 
       if (res.status === 401) {
-        window.location.href = getPricingPlanUiState({
-          planId,
-          isAuthenticated: false,
-          canManageBilling: false,
-          hasActiveSubscription: false,
-          currentPlanId: null,
-        }).ctaHref ?? '/auth/sign-in';
+        window.location.href = buildSignInPath(buildPricingCheckoutReturnPath(planId));
         return;
       }
 
@@ -90,7 +86,7 @@ export function PlanCards({
 
     if (state.disabled) return;
 
-    if (state.action === 'sign_in' && state.ctaHref) {
+    if ((state.action === 'sign_in' || state.action === 'request_access') && state.ctaHref) {
       window.location.href = state.ctaHref;
       return;
     }

@@ -13,7 +13,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { canPerform, type Role } from '@/lib/permissions';
 import { type PlanId } from '@/lib/billing/plans';
-import { isPreviewFeatureEnabled } from '@/lib/featureGates';
 
 interface SubscriptionData {
   plan: PlanId;
@@ -128,8 +127,7 @@ export function BillingSection({ role }: { role: Role | null }) {
           <p className="text-sm text-muted-foreground mb-4">
             No active billing plan. Choose a plan to start processing projects.
           </p>
-          {/* @temporary — "View Plans" hidden in production */}
-          {canManage && isPreviewFeatureEnabled() && (
+          {canManage && (
             <Button variant="outline" size="sm" asChild>
               <a href="/pricing">View Plans</a>
             </Button>

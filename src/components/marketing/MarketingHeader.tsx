@@ -9,12 +9,8 @@ import {
   SheetContent,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { isPreviewFeatureEnabled } from "@/lib/featureGates";
 import { useEffect, useState } from "react";
-import { getMarketingPrimaryCta } from "@/lib/navigation";
-
-/** @temporary — showPreview controls visibility of Pricing + Demo nav links */
-const showPreview = isPreviewFeatureEnabled();
+import { getMarketingPrimaryCta, getMarketingSecondaryCta } from "@/lib/navigation";
 
 export function MarketingHeader({
   isAuthenticated,
@@ -23,6 +19,7 @@ export function MarketingHeader({
 }) {
   const [scrolled, setScrolled] = useState(false);
   const primaryCta = getMarketingPrimaryCta(isAuthenticated);
+  const secondaryCta = getMarketingSecondaryCta(isAuthenticated);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -59,9 +56,7 @@ export function MarketingHeader({
             {[
               { href: "/#how-it-works", label: "How It Works" },
               { href: "/#features", label: "Features" },
-              ...(showPreview
-                ? [{ href: "/pricing", label: "Pricing" }]
-                : []),
+              { href: "/pricing", label: "Pricing" },
               { href: "/data-privacy", label: "Security" },
             ].map((link) => (
               <Link
@@ -77,12 +72,12 @@ export function MarketingHeader({
 
           {/* Right actions */}
           <div className="flex items-center gap-3">
-            {showPreview && (
+            {secondaryCta && (
               <Link
-                href="/demo"
+                href={secondaryCta.href}
                 className="hidden md:inline text-[13px] font-medium text-primary hover:text-primary/80 transition-colors duration-200"
               >
-                Try Demo
+                {secondaryCta.label}
               </Link>
             )}
             <Link
@@ -121,16 +116,14 @@ export function MarketingHeader({
                       Features
                     </Link>
                   </SheetClose>
-                  {showPreview && (
-                    <SheetClose asChild>
-                      <Link
-                        href="/pricing"
-                        className="text-base text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        Pricing
-                      </Link>
-                    </SheetClose>
-                  )}
+                  <SheetClose asChild>
+                    <Link
+                      href="/pricing"
+                      className="text-base text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Pricing
+                    </Link>
+                  </SheetClose>
                   <SheetClose asChild>
                     <Link
                       href="/data-privacy"
@@ -139,13 +132,13 @@ export function MarketingHeader({
                       Security
                     </Link>
                   </SheetClose>
-                  {showPreview && (
+                  {secondaryCta && (
                     <SheetClose asChild>
                       <Link
-                        href="/demo"
+                        href={secondaryCta.href}
                         className="text-base font-medium text-primary"
                       >
-                        Try Demo
+                        {secondaryCta.label}
                       </Link>
                     </SheetClose>
                   )}

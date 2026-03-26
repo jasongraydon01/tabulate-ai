@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { isPreviewFeatureEnabled } from '@/lib/featureGates';
 import { useForm, useFormContext } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
@@ -43,15 +42,8 @@ const MESSAGE_TESTING_STEPS: WizardStep[] = [
   { number: 5, label: 'Review & Submit' },
 ];
 
-/** @temporary — remove gate when demo is production-ready */
 export default function DemoPage() {
   const router = useRouter();
-
-  // @temporary — redirect to home in production
-  useEffect(() => {
-    if (!isPreviewFeatureEnabled()) router.replace('/');
-  }, [router]);
-
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 

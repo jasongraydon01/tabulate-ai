@@ -30,6 +30,7 @@ export async function deliverDemoOutputIfReady(
       outputDir: demoRun.outputTempDir,
       tableCount: opts?.tableCount ?? 25,
       durationFormatted: opts?.durationFormatted,
+      demoToken: demoRun.verificationToken,
     });
 
     if (!sent) {

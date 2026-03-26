@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { SignOutButton } from "./sign-out-button";
+import { buildRequestAccessPath } from "@/lib/accessRequests";
 
 const ERROR_MESSAGES: Record<string, { title: string; description: string }> = {
   "no-org": {
-    title: "No organization found",
+    title: "Workspace setup required",
     description:
-      "Your account is not assigned to an organization. Contact your administrator to be added to one.",
+      "Your account is not assigned to a TabulateAI workspace yet. Request access and we’ll provision the initial workspace, domain, and admin path before you sign in again.",
   },
   "callback-failed": {
     title: "Sign-in failed",
@@ -32,6 +33,7 @@ export default async function AuthErrorPage({
 }) {
   const { reason } = await searchParams;
   const error = (reason && ERROR_MESSAGES[reason]) || DEFAULT_ERROR;
+  const showRequestAccess = reason === "no-org";
 
   return (
     <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6">
@@ -52,6 +54,14 @@ export default async function AuthErrorPage({
         </div>
 
         <div className="flex gap-3 justify-center">
+          {showRequestAccess && (
+            <Link
+              href={buildRequestAccessPath("auth_no_org")}
+              className="text-sm font-medium px-4 py-2 rounded-md bg-foreground text-background hover:bg-foreground/90 transition-colors"
+            >
+              Request Access
+            </Link>
+          )}
           <Link
             href="/"
             className="text-sm font-medium px-4 py-2 rounded-md border border-border hover:bg-secondary transition-colors"

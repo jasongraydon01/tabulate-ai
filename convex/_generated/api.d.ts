@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as accessRequests from "../accessRequests.js";
 import type * as crons from "../crons.js";
 import type * as demoRuns from "../demoRuns.js";
 import type * as goldenBaselines from "../goldenBaselines.js";
@@ -29,6 +30,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  accessRequests: typeof accessRequests;
   crons: typeof crons;
   demoRuns: typeof demoRuns;
   goldenBaselines: typeof goldenBaselines;

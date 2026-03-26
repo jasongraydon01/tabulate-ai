@@ -3,6 +3,7 @@ import {
   buildSignInPath,
   encodeAuthReturnState,
   getMarketingPrimaryCta,
+  getMarketingSecondaryCta,
   sanitizeRelativeReturnTo,
 } from '@/lib/navigation';
 
@@ -28,12 +29,17 @@ describe('navigation helpers', () => {
 
   it('returns the correct marketing CTA for auth state', () => {
     expect(getMarketingPrimaryCta(false)).toEqual({
-      href: '/auth/sign-in?returnTo=%2Fdashboard',
-      label: 'Get Started',
+      href: '/demo',
+      label: 'Try Demo',
     });
     expect(getMarketingPrimaryCta(true)).toEqual({
       href: '/dashboard',
       label: 'Dashboard',
     });
+    expect(getMarketingSecondaryCta(false)).toEqual({
+      href: '/request-access?source=marketing',
+      label: 'Request Access',
+    });
+    expect(getMarketingSecondaryCta(true)).toBeNull();
   });
 });

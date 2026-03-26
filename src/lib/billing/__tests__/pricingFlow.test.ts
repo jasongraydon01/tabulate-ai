@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildPricingCheckoutReturnPath,
+  getPricingPagePrimaryCta,
   getPricingPlanUiState,
   getProductEntryCta,
   parsePlanId,
@@ -19,7 +20,7 @@ describe('pricing flow helpers', () => {
     );
   });
 
-  it('routes unauthenticated users to sign-in with preserved pricing intent', () => {
+  it('routes unauthenticated users to request access from pricing', () => {
     expect(
       getPricingPlanUiState({
         planId: 'starter',
@@ -29,9 +30,9 @@ describe('pricing flow helpers', () => {
         currentPlanId: null,
       }),
     ).toEqual({
-      action: 'sign_in',
-      ctaLabel: 'Get Started',
-      ctaHref: '/auth/sign-in?returnTo=%2Fpricing%3FcheckoutPlan%3Dstarter%26resumeCheckout%3D1',
+      action: 'request_access',
+      ctaLabel: 'Request Access',
+      ctaHref: '/request-access?source=pricing',
       disabled: false,
     });
   });
@@ -114,5 +115,25 @@ describe('pricing flow helpers', () => {
       label: 'Choose Plan',
     });
     expect(getProductEntryCta({ canCreateProject: false, hasActiveSubscription: false })).toBeNull();
+  });
+
+  it('returns pricing page CTA based on auth and billing state', () => {
+    expect(getPricingPagePrimaryCta({
+      isAuthenticated: false,
+      canManageBilling: false,
+      hasActiveSubscription: false,
+    })).toEqual({
+      href: '/request-access?source=pricing',
+      label: 'Request Access',
+    });
+
+    expect(getPricingPagePrimaryCta({
+      isAuthenticated: true,
+      canManageBilling: true,
+      hasActiveSubscription: false,
+    })).toEqual({
+      href: '#pricing-plans',
+      label: 'Choose a Plan',
+    });
   });
 });
