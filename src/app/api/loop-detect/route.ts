@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'hawktab-loop-detect-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tabulate-loop-detect-'));
     const spssPath = path.join(tmpDir, 'dataFile.sav');
     const buffer = Buffer.from(await dataFile.arrayBuffer());
     await fs.writeFile(spssPath, buffer);

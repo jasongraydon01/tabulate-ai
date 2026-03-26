@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Missing token' }, { status: 400 });
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.crosstab-ai.com';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://tabulate-ai.com';
   const statusUrl = `${appUrl}/demo/status?token=${encodeURIComponent(token)}`;
 
   try {

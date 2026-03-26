@@ -6,11 +6,11 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
-const TEMP_BASE = join(tmpdir(), 'hawktab-ai', 'runs');
+const TEMP_BASE = join(tmpdir(), 'tabulate-ai', 'runs');
 
 /**
  * Create a temp directory for a pipeline run.
- * Pattern: /tmp/hawktab-ai/runs/{runId}/
+ * Pattern: /tmp/tabulate-ai/runs/{runId}/
  */
 export async function createRunTempDir(runId: string): Promise<string> {
   const dir = join(TEMP_BASE, runId);

@@ -1,5 +1,7 @@
 <naming>
-This product is **CrosstabAI** (lowercase 't'). Use "CrosstabAI" in all new UI text, user-facing copy, and documentation. Internal code identifiers (agent names, R scripts, prompts) still use "CrossTab" — that's expected and not something to "fix" unless explicitly asked. The GitHub repo and npm package name still use "hawktab" — also expected. The `.hawktab_` prefix in generated R variables is an internal naming convention, not branding — leave it as-is.
+This product is **TabulateAI**. Use "TabulateAI" in all new UI text, user-facing copy, and documentation. The domain is `tabulate-ai.com`. The GitHub repo is `jasongraydon01/tabulate-ai` and the npm package name is `tabulate-ai`.
+
+Internal code identifiers (agent names, R scripts, prompts) still use "CrossTab" — that's expected legacy naming and not something to "fix" unless explicitly asked. The `.hawktab_` prefix in generated R variables and `hawktab_cv_` in Q export helpers are internal naming conventions, not branding — leave them as-is.
 
 The product is NOT branded with any parent company name in the UI. Keep company references out of user-facing surfaces.
 </naming>
@@ -14,7 +16,7 @@ You have full read/write/execute access without confirmation prompts. This means
 </permissions_warning>
 
 <mission>
-You are a pair programmer on CrosstabAI, a crosstab automation tool for market research / consulting firms and data processors.
+You are a pair programmer on TabulateAI, a crosstab automation tool for market research / consulting firms and data processors.
 
 WHO YOU'RE WORKING WITH:
 Jason is a market research consultant, not a developer. He understands the domain deeply (surveys, crosstabs, skip logic) but relies on you for implementation. You lead on code; he leads on requirements and validation.
@@ -405,10 +407,7 @@ THINGS THAT WILL BREAK IF YOU FORGET:
 6. PROVENANCE CHAIN
    When debugging wrong output, check `lastModifiedBy` to know which agent to fix.
 
-7. CONSOLE SUPPRESSION IN CLI (deprecated)
-   The Ink-based CLI (`hawktab run`) suppresses console.log. Use plain scripts instead.
-
-8. THREE PIPELINE CODE PATHS — KEEP IN SYNC
+7. THREE PIPELINE CODE PATHS — KEEP IN SYNC
    All three run V3 exclusively now, but they MUST stay aligned:
    - `src/lib/pipeline/PipelineRunner.ts` — used by `scripts/test-pipeline.ts` (CLI testing)
    - `src/lib/api/pipelineOrchestrator.ts` — used by the web UI (API routes, Railway deploy)
@@ -423,14 +422,14 @@ THINGS THAT WILL BREAK IF YOU FORGET:
    the review checkpoint: applies decisions, then runs compute + post-processing.
    Any pipeline logic change MUST be applied to ALL THREE files.
 
-9. `pipelineOrchestrator.ts.bak` IS NOT A LIVE CODE PATH
+8. `pipelineOrchestrator.ts.bak` IS NOT A LIVE CODE PATH
    Do not patch `src/lib/api/pipelineOrchestrator.ts.bak` unless explicitly asked.
    Production code uses `src/lib/api/pipelineOrchestrator.ts`.
 </gotchas>
 
 <directory_structure>
 ```
-crosstab-ai/
+tabulate-ai/
 ├── src/
 │   ├── agents/                    # AI agents
 │   │   ├── AIGateAgent.ts         #   V3 enrichment validation gate
@@ -504,8 +503,7 @@ crosstab-ai/
 │   ├── components/                # React components (shadcn/ui, table review, wizard, upload)
 │   ├── hooks/                     # React hooks
 │   ├── providers/                 # Context providers
-│   ├── guardrails/                # Agent safety guardrails
-│   └── cli/                       # HawkTab CLI (deprecated)
+│   └── guardrails/                # Agent safety guardrails
 ├── scripts/
 │   ├── test-pipeline.ts           # Full pipeline runner (user runs this)
 │   ├── batch-pipeline.ts          # Multi-dataset pipeline runner

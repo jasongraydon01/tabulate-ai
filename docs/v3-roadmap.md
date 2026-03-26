@@ -249,8 +249,8 @@ Lightweight trial for prospects who haven't signed up yet. Same pipeline, restri
 
 ### 9c — Domain + Branded Email ✓
 
-- Domain `crosstab-ai.com` purchased via Porkbun, DNS verified
-- Resend configured with verified domain — sends from `notifications@crosstab-ai.com`
+- Domain `tabulate-ai.com` purchased via Porkbun, DNS verified
+- Resend configured with verified domain — sends from `notifications@tabulate-ai.com`
 - Pipeline completion notifications (success, partial, error, review_required)
 - Demo verification and output delivery emails
 - Billing threshold notifications
@@ -265,7 +265,7 @@ Lightweight trial for prospects who haven't signed up yet. Same pipeline, restri
 - Marketing copy broadened to address both internal teams and client-facing work
 - Nav links work from any marketing page (absolute paths to anchors)
 - Marketing layout is server-rendered with auth detection (shows "Dashboard" vs "Log In")
-- User dropdown includes "Crosstab AI Home" link back to marketing pages
+- User dropdown includes "TabulateAI Home" link back to marketing pages
 
 ### 9e — Launch Outreach
 
@@ -274,7 +274,7 @@ Lightweight trial for prospects who haven't signed up yet. Same pipeline, restri
 - LinkedIn presence: product updates, positioning content
 - Leverage trial mode as a low-friction entry point for outreach targets
 
-**Exit:** Product is publicly available at `crosstab-ai.com` with pricing, trial access, branded email notifications, and outreach in progress. Multiple firms can evaluate and subscribe independently.
+**Exit:** Product is publicly available at `tabulate-ai.com` with pricing, trial access, branded email notifications, and outreach in progress. Multiple firms can evaluate and subscribe independently.
 
 ---
 

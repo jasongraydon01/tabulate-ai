@@ -43,7 +43,7 @@ export async function syncAuthToConvex(auth: AuthContext): Promise<ConvexIds> {
     workosOrgId: auth.orgId,
     name: auth.orgName || (auth.isBypass ? "TabulateAI Dev" : "Unknown Org"),
     slug: auth.isBypass
-      ? "crosstab-ai-dev"
+      ? "tabulate-ai-dev"
       : (auth.orgName
           ? auth.orgName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
           : "")

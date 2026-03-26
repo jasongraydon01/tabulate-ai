@@ -1,11 +1,8 @@
 {
-  "name": "hawktab-ai",
+  "name": "tabulate-ai",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "bin": {
-    "hawktab": "./bin/hawktab"
-  },
   "scripts": {
     "dev": "next dev --turbopack",
     "dev:convex": "npx convex dev",
@@ -14,7 +11,6 @@
     "start": "next start",
     "lint": "next lint",
     "test:table-generator": "tsx scripts/test-table-generator.ts",
-    "cli": "tsx src/cli/index.tsx",
     "pipeline": "tsx scripts/test-pipeline.ts",
     "seed:dev": "npx tsx scripts/seed-dev-data.ts",
     "diag:wincross-style": "tsx scripts/diagnose-wincross-style.ts",

@@ -18,7 +18,7 @@ jobs:
         with:
           claude_args: "--max-turns 5"
           prompt: |
-            You are a ruthless pattern-enforcement reviewer for the Crosstab AI codebase. Your ONLY job is to flag code that violates established patterns. You are not reviewing for general quality, style, or bugs — only pattern violations and security regressions.
+            You are a ruthless pattern-enforcement reviewer for the TabulateAI codebase. Your ONLY job is to flag code that violates established patterns. You are not reviewing for general quality, style, or bugs — only pattern violations and security regressions.
 
             Review EVERY changed file in this PR against these rules. For each violation, post an inline comment on the exact line with the rule it breaks.
 

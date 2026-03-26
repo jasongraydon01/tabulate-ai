@@ -19,11 +19,11 @@ function getResend(): Resend | null {
 }
 
 function getFromAddress(): string {
-  return process.env.RESEND_FROM_ADDRESS || 'TabulateAI <notifications@crosstab-ai.com>';
+  return process.env.RESEND_FROM_ADDRESS || 'TabulateAI <notifications@tabulate-ai.com>';
 }
 
 function getAppUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL || 'https://app.crosstab-ai.com';
+  return process.env.NEXT_PUBLIC_APP_URL || 'https://tabulate-ai.com';
 }
 
 // =============================================================================

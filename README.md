@@ -80,7 +80,7 @@ AI handles genuine ambiguity through constrained agents. Each agent has a specif
 | Layer | Technology |
 |-------|------------|
 | **Framework** | Next.js 15 + TypeScript |
-| **AI** | Vercel AI SDK + Azure OpenAI |
+| **AI** | Vercel AI SDK + OpenAI |
 | **Database** | Convex |
 | **Auth** | WorkOS AuthKit |
 | **File Storage** | Cloudflare R2 |
@@ -104,7 +104,7 @@ AI handles genuine ambiguity through constrained agents. Each agent has a specif
 
 ```bash
 npm install
-cp .env.example .env.local  # Fill in Azure credentials
+cp .env.example .env.local  # Fill in credentials
 ```
 
 ### Development
@@ -148,7 +148,7 @@ Each run produces artifacts in `outputs/<dataset>/pipeline-<timestamp>/`:
 ## Project Structure
 
 ```
-hawktab-ai/
+tabulate-ai/
 ├── src/
 │   ├── agents/              # AI agents (11 V3 agents)
 │   ├── prompts/             # Agent prompt templates (14 dirs, production + alternative)
@@ -167,7 +167,7 @@ hawktab-ai/
 │   │   └── ...              # auth, filters, review, R2, events, etc.
 │   ├── app/                 # Next.js app router (API routes, auth, product UI)
 │   └── components/          # React components (shadcn/ui)
-├── scripts/                 # CLI pipeline scripts + V3 enrichment scripts
+├── scripts/                 # Pipeline scripts + V3 enrichment scripts
 ├── convex/                  # Backend schema + mutations
 ├── data/                    # Test datasets (.sav + survey docs + reference tabs)
 ├── docs/                    # Roadmap, implementation plans, reference specs
@@ -191,7 +191,7 @@ hawktab-ai/
 
 ## Security
 
-- **Azure OpenAI** — client data stays in Azure tenant
+- **OpenAI** — API-based model access with structured output enforcement
 - **Authentication** — WorkOS AuthKit with org-scoped access
 - **Mutations** — all Convex mutations are `internalMutation` (server-only)
 - **Rate limiting** — tiered by operation criticality

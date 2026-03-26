@@ -13,8 +13,8 @@ import { internal } from '../../../convex/_generated/api';
 import type { Id } from '../../../convex/_generated/dataModel';
 
 /** Well-known WorkOS org ID for the demo org (not a real WorkOS org). */
-const DEMO_WORKOS_ORG_ID = 'demo_crosstabai_system_org';
-const DEMO_WORKOS_USER_ID = 'demo_crosstabai_system_user';
+const DEMO_WORKOS_ORG_ID = 'demo_tabulateai_system_org';
+const DEMO_WORKOS_USER_ID = 'demo_tabulateai_system_user';
 
 let cachedDemoOrgId: Id<"organizations"> | null = null;
 let cachedDemoUserId: Id<"users"> | null = null;
@@ -36,7 +36,7 @@ export async function getDemoOrgId(): Promise<Id<"organizations">> {
   const orgId = await mutateInternal(internal.organizations.upsert, {
     workosOrgId: DEMO_WORKOS_ORG_ID,
     name: 'TabulateAI Demo',
-    slug: 'crosstab-ai-demo',
+    slug: 'tabulate-ai-demo',
   });
 
   cachedDemoOrgId = orgId;
@@ -51,7 +51,7 @@ export async function getDemoUserId(): Promise<Id<"users">> {
 
   const userId = await mutateInternal(internal.users.upsert, {
     workosUserId: DEMO_WORKOS_USER_ID,
-    email: 'demo@crosstabai.system',
+    email: 'demo@tabulateai.system',
     name: 'TabulateAI Demo',
   });
 

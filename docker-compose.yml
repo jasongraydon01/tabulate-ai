@@ -1,5 +1,5 @@
 services:
-  hawktab:
+  tabulate:
     build: .
     ports:
       - "3000:3000"

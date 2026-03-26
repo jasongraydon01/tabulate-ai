@@ -144,7 +144,7 @@ function wrapEmail(bodyRows: string): string {
         </td></tr>
         <!-- Footer -->
         <tr><td style="padding:16px 32px 24px 32px;">
-          <p style="margin:0;font-size:12px;color:#a1a1aa;">See our plain-English privacy details here: <a href="https://app.crosstab-ai.com/data-privacy" style="color:#71717a;text-decoration:underline;">Data &amp; Privacy</a></p>
+          <p style="margin:0;font-size:12px;color:#a1a1aa;">See our plain-English privacy details here: <a href="https://tabulate-ai.com/data-privacy" style="color:#71717a;text-decoration:underline;">Data &amp; Privacy</a></p>
         </td></tr>
       </table>
     </td></tr>

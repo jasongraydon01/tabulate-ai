@@ -44,7 +44,7 @@ export interface DualOutputPaths {
 export const createSessionDir = async (sessionId: string): Promise<StorageResult> => {
   try {
     validateSessionId(sessionId);
-    const sessionDir = join(tmpdir(), 'hawktab-ai', sessionId);
+    const sessionDir = join(tmpdir(), 'tabulate-ai', sessionId);
     await fs.mkdir(sessionDir, { recursive: true });
     
     return {
@@ -79,7 +79,7 @@ export const saveUploadedFile = async (
     if (safeName !== fileName || safeName.includes('\0')) {
       return { success: false, error: 'Invalid file name' };
     }
-    const sessionDir = join(tmpdir(), 'hawktab-ai', sessionId);
+    const sessionDir = join(tmpdir(), 'tabulate-ai', sessionId);
     await fs.mkdir(sessionDir, { recursive: true });
 
     const filePath = join(sessionDir, safeName);
@@ -101,7 +101,7 @@ export const saveUploadedFile = async (
 // Create dual output file paths
 export const createDualOutputPaths = (sessionId: string): DualOutputPaths => {
   validateSessionId(sessionId);
-  const sessionDir = join(tmpdir(), 'hawktab-ai', sessionId);
+  const sessionDir = join(tmpdir(), 'tabulate-ai', sessionId);
   
   return {
     verboseBanner: join(sessionDir, 'banner-plan-verbose.json'),
@@ -126,7 +126,7 @@ export const saveDualOutputs = async (
     const paths = createDualOutputPaths(sessionId);
 
     // Ensure directory exists
-    await fs.mkdir(join(tmpdir(), 'hawktab-ai', sessionId), { recursive: true });
+    await fs.mkdir(join(tmpdir(), 'tabulate-ai', sessionId), { recursive: true });
     
     // Save all four files
     await Promise.all([
@@ -182,7 +182,7 @@ export const loadAgentFiles = async (sessionId: string): Promise<{
 export const cleanupSession = async (sessionId: string): Promise<StorageResult> => {
   try {
     validateSessionId(sessionId);
-    const sessionDir = join(tmpdir(), 'hawktab-ai', sessionId);
+    const sessionDir = join(tmpdir(), 'tabulate-ai', sessionId);
     await fs.rm(sessionDir, { recursive: true, force: true });
     
     return { success: true };
@@ -202,7 +202,7 @@ export const listSessionFiles = async (sessionId: string): Promise<{
 }> => {
   try {
     validateSessionId(sessionId);
-    const sessionDir = join(tmpdir(), 'hawktab-ai', sessionId);
+    const sessionDir = join(tmpdir(), 'tabulate-ai', sessionId);
     const files = await fs.readdir(sessionDir);
     
     return {

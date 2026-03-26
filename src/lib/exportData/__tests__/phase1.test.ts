@@ -19,7 +19,7 @@ function withLoopFrame(tableId: string, loopDataFrame: string): TableWithLoopFra
 }
 
 async function makeTempOutputDir(): Promise<string> {
-  return fs.mkdtemp(path.join(os.tmpdir(), 'hawktab-export-phase1-'));
+  return fs.mkdtemp(path.join(os.tmpdir(), 'tabulate-export-phase1-'));
 }
 
 async function writeJson(outputDir: string, relativePath: string, value: unknown): Promise<void> {

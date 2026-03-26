@@ -14,7 +14,7 @@ describe('local WinCross exports', () => {
   });
 
   it('writes the WinCross job using the exact serialized bytes', async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), 'hawktab-local-export-'));
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'tabulate-local-export-'));
     tempDirs.push(dir);
 
     const jobPath = path.join(dir, 'results', 'crosstabs.job');

@@ -78,7 +78,7 @@ export async function sendPipelineNotification(params: PipelineNotificationParam
     }
 
     // Build project URL
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.crosstab-ai.com';
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://tabulate-ai.com';
     const projectUrl = params.convexProjectId
       ? `${appUrl}/projects/${encodeURIComponent(params.convexProjectId)}`
       : appUrl;
@@ -101,7 +101,7 @@ export async function sendPipelineNotification(params: PipelineNotificationParam
     });
 
     // Send via Resend
-    const fromAddress = process.env.RESEND_FROM_ADDRESS || 'TabulateAI <notifications@crosstab-ai.com>';
+    const fromAddress = process.env.RESEND_FROM_ADDRESS || 'TabulateAI <notifications@tabulate-ai.com>';
     const resend = new Resend(apiKey);
 
     const { error } = await resend.emails.send({

@@ -2,8 +2,8 @@
 
 **Created:** 2026-03-26
 **Last updated:** 2026-03-26
-**Status:** In progress — Phase 1 underway, Phase 2 ready to start
-**Repo:** `jasongraydon01/tabulate-ai` on `main`
+**Status:** Phase 1 complete, Phase 2 complete, Phase 3 in progress, Phase 4 started
+**Repo:** `jasongraydon01/tabulate-ai` — active branch: `dev`
 **Local path:** `/Users/jasongraydon01/tabulate-ai/`
 **Goal:** Rebrand from the hawktab-ai / crosstab-ai naming mix to a clean `tabulate-ai` identity across repo, services, and infrastructure. Move fast — outreach and demos are the priority.
 
@@ -16,16 +16,17 @@
 - [x] New GitHub repo created: `jasongraydon01/tabulate-ai`
 - [x] Clean initial commit pushed to `main` (fresh history, no old commits)
 - [x] Gitignored files copied over: `.env.dev`, `.env.local`, `.env.production`, `export.job`, `HCP_Vaccines.job`
+- [x] **Phase 1: All external services configured** (Domain, GitHub, Railway, Convex, R2, Sentry, WorkOS, Stripe, Resend, PostHog)
+- [x] **Phase 2: All code changes applied** (~30 files — CLI removed, URLs updated, identifiers updated, docs updated)
+- [x] **Phase 3: Env files + Convex deployed** — lint, typecheck, 1912 tests all passing
+- [x] `npm run dev` works locally, landing page loads
 
-### In Progress (Jason)
-- [ ] WorkOS — new application setup
-- [ ] Resend — domain verification for `tabulate-ai.com`
-- [ ] Stripe — new organization "TabulateAI"
-- [ ] Remaining Phase 1 service setup (see checklist below)
+### In Progress
+- [ ] Phase 4: Validation (auth flow, demo flow, billing, staging/production deploys)
 
 ### Up Next
-- Phase 2: Code changes (Claude — can start anytime, no dependency on Phase 1 credentials)
-- Phase 3: Wire up new credentials + deploy
+- Staging + production deploy and smoke testing
+- Archive old `crosstab-ai` repo
 
 ---
 
@@ -138,11 +139,9 @@
 
 ---
 
-## Phase 2: Code Changes
+## Phase 2: Code Changes — complete
 
-**Prerequisites:** None — these can happen in parallel with Phase 1
-**Who:** Claude + Jason review
-**Estimated effort:** ~30 files total. Mostly find-replace.
+All changes applied on `dev` branch. Lint, typecheck, and 1912 tests passing.
 
 ### 2.1 Package Identity
 
@@ -289,41 +288,34 @@ Full rewrite of key sections:
 
 ---
 
-## Phase 3: Environment & Deploy
+## Phase 3: Environment & Deploy — mostly complete
 
-**Note:** Env file updates are happening alongside Phase 1 as each service is set up. The remaining items here are post-code-change verification and deploy steps.
+### 3.1 Env Files — done
+- [x] `.env.local` — all services configured
+- [x] `.env.dev` — all services configured
+- [x] `.env.production` — all services configured
 
-### 3.1 Env Files — in progress with Phase 1
-- [x] `.env.local` — updated as each service is configured
-- [x] `.env.dev` — updated as each service is configured
-- [x] `.env.production` — updated as each service is configured
-- [ ] Stripe env vars (pending Phase 1 Stripe setup)
+### 3.2 Post-Code-Change Verification — done
+- [x] `npm install` — package-lock.json regenerated
+- [x] `npm run lint` — clean
+- [x] `npx tsc --noEmit` — clean
+- [x] `npx vitest run` — 152 files, 1912 tests passing
 
-### 3.2 Post-Code-Change Verification
-```bash
-npm install          # regenerates package-lock.json
-npm run lint         # catch any broken imports from CLI removal
-npx tsc --noEmit     # type check
-npx vitest run       # full test suite
-```
+### 3.3 Convex Deploy — done
+- [x] Schema + functions pushed to new deployment
 
-### 3.3 Convex Deploy
-```bash
-npx convex deploy    # pushes schema + functions to new deployment
-```
-
-### 3.4 Stripe Webhook (after Stripe setup)
-- Create webhook endpoint: `https://tabulate-ai.com/api/billing/webhook`
-- Subscribe to events: `customer.subscription.*`, `invoice.*`, `checkout.session.completed`
-- Add webhook signing secret to Railway env vars
+### 3.4 Stripe Webhook
+- [ ] Create webhook endpoint: `https://tabulate-ai.com/api/billing/webhook`
+- [ ] Subscribe to events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`
+- [ ] Add webhook signing secret to Railway env vars
 
 ---
 
 ## Phase 4: Validation
 
 ### 4.1 Dev Branch
-- [ ] `npm run dev` works locally
-- [ ] Landing page loads
+- [x] `npm run dev` works locally
+- [x] Landing page loads
 - [ ] Auth flow (sign up, sign in, sign out)
 - [ ] Basic pipeline run
 

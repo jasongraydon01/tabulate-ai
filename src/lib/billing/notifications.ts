@@ -88,10 +88,10 @@ export async function sendBillingNotifications(
     return;
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.crosstab-ai.com';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://tabulate-ai.com';
   const settingsUrl = `${appUrl}/settings`;
   const fromAddress =
-    process.env.RESEND_FROM_ADDRESS || 'TabulateAI <notifications@crosstab-ai.com>';
+    process.env.RESEND_FROM_ADDRESS || 'TabulateAI <notifications@tabulate-ai.com>';
 
   for (const kind of pendingKinds) {
     const reserved = await mutateInternal(internal.subscriptions.reserveBillingNotification, {
