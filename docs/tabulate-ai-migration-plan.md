@@ -1,15 +1,37 @@
 # TabulateAI Migration Plan
 
 **Created:** 2026-03-26
-**Status:** In progress — decisions resolved, ready for execution
-**Branch:** `dev-tabulate-ai`
+**Last updated:** 2026-03-26
+**Status:** In progress — Phase 1 underway, Phase 2 ready to start
+**Repo:** `jasongraydon01/tabulate-ai` on `main`
+**Local path:** `/Users/jasongraydon01/tabulate-ai/`
 **Goal:** Rebrand from the hawktab-ai / crosstab-ai naming mix to a clean `tabulate-ai` identity across repo, services, and infrastructure. Move fast — outreach and demos are the priority.
+
+---
+
+## Progress (2026-03-26)
+
+### Completed
+- [x] All decisions resolved (see below)
+- [x] New GitHub repo created: `jasongraydon01/tabulate-ai`
+- [x] Clean initial commit pushed to `main` (fresh history, no old commits)
+- [x] Gitignored files copied over: `.env.dev`, `.env.local`, `.env.production`, `export.job`, `HCP_Vaccines.job`
+
+### In Progress (Jason)
+- [ ] WorkOS — new application setup
+- [ ] Resend — domain verification for `tabulate-ai.com`
+- [ ] Stripe — new organization "TabulateAI"
+- [ ] Remaining Phase 1 service setup (see checklist below)
+
+### Up Next
+- Phase 2: Code changes (Claude — can start anytime, no dependency on Phase 1 credentials)
+- Phase 3: Wire up new credentials + deploy
 
 ---
 
 ## Strategy
 
-**Orphan-and-fork:** Create a fresh `tabulate-ai` repo from this branch. The existing `crosstab-ai` repo stays archived as-is. New external services are stood up under the `tabulate-ai` name. Code changes are minimal because the user-facing UI already says "TabulateAI" everywhere.
+**Orphan-and-fork:** This repo (`tabulate-ai`) was created from the `crosstab-ai` `dev-tabulate-ai` branch with clean git history. The old `crosstab-ai` repo will be archived. New external services are being stood up under the `tabulate-ai` name. Code changes are minimal because the user-facing UI already says "TabulateAI" everywhere.
 
 **What stays:** Internal code identifiers (`CrossTab` agent names, `.hawktab_` R variable prefix, `hawktab_cv_` Q export prefix) are internal conventions with zero user exposure. Changing them would touch hundreds of lines for no functional benefit. They stay.
 
@@ -65,13 +87,14 @@
 **Who:** Jason (account creation requires auth/billing access)
 **Estimated effort:** 1-2 hours of dashboard work
 
-### 1.1 Domain (`tabulate-ai.com`)
+### 1.1 Domain (`tabulate-ai.com`) — purchased
+- [x] Domain purchased on Porkbun
 - [ ] Configure DNS (will point to Railway in Phase 3)
 - [ ] No SSL setup needed yet — Railway provisions automatically when domain is connected
 
-### 1.2 GitHub
-- [ ] Create new repo `tabulate-ai` (empty, no template)
-- [ ] Push orphaned branch as `main`
+### 1.2 GitHub — done
+- [x] Created new repo `tabulate-ai`
+- [x] Pushed clean initial commit to `main`
 - [ ] Set branch protection rules if desired
 - [ ] Transfer or re-create GitHub Actions secrets (Sentry auth token, etc.)
 
@@ -96,7 +119,7 @@
 - [ ] Create project `javascript-nextjs` under new org
 - [ ] Note DSN and auth token (for source map uploads)
 
-### 1.7 WorkOS
+### 1.7 WorkOS — in progress
 - [ ] Create new application `TabulateAI`
 - [ ] Configure redirect URIs:
   - Production: `https://tabulate-ai.com/auth/callback`
@@ -104,7 +127,7 @@
 - [ ] Note client ID and API key
 - [ ] Configure social providers (Google, etc.) as needed
 
-### 1.8 Stripe
+### 1.8 Stripe — in progress
 - [ ] Create new Stripe organization "TabulateAI"
 - [ ] Create products and prices matching current plan structure:
   - PAYG: recurring + metered price
@@ -115,7 +138,7 @@
 - [ ] Set up webhook endpoint URL (configure after deploy): `https://tabulate-ai.com/api/billing/webhook`
 - [ ] Note all price IDs, meter ID, publishable key, secret key, webhook secret
 
-### 1.9 Resend
+### 1.9 Resend — in progress
 - [ ] Add and verify domain `tabulate-ai.com`
 - [ ] Set up SPF, DKIM, DMARC DNS records
 - [ ] Note API key (can reuse existing Resend account, just verify new domain)
