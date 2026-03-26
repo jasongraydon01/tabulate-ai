@@ -1,0 +1,383 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-outfit);
+  --font-serif: var(--font-fraunces);
+  --font-mono: var(--font-jetbrains-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* TabulateAI accent colors */
+  --color-tab-teal: var(--tab-teal);
+  --color-tab-teal-dim: var(--tab-teal-dim);
+  --color-tab-amber: var(--tab-amber);
+  --color-tab-amber-dim: var(--tab-amber-dim);
+  --color-tab-blue: var(--tab-blue);
+  --color-tab-blue-dim: var(--tab-blue-dim);
+  --color-tab-rose: var(--tab-rose);
+  --color-tab-rose-dim: var(--tab-rose-dim);
+  --color-tab-indigo: var(--tab-indigo);
+  --color-tab-indigo-dim: var(--tab-indigo-dim);
+}
+
+/* ============================================
+   LIGHT THEME
+   ============================================ */
+:root {
+  --radius: 0.5rem;
+
+  /* Core surfaces — warm editorial palette */
+  --background: #FAFAF8;
+  --foreground: #0F172A;
+  --card: #FFFFFF;
+  --card-foreground: #0F172A;
+  --popover: #FFFFFF;
+  --popover-foreground: #0F172A;
+
+  /* Interactive — deep teal */
+  --primary: #0F766E;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F3F3F1;
+  --secondary-foreground: #0F172A;
+
+  /* Subdued */
+  --muted: #F3F3F1;
+  --muted-foreground: #71717A;
+  --accent: #F3F3F1;
+  --accent-foreground: #0F172A;
+
+  /* Status */
+  --destructive: #E11D48;
+
+  /* Structural */
+  --border: #E8E8E6;
+  --input: #E8E8E6;
+  --ring: #D4D4D0;
+
+  /* Charts */
+  --chart-1: #0F766E;
+  --chart-2: #0284C7;
+  --chart-3: #D97706;
+  --chart-4: #7C3AED;
+  --chart-5: #E11D48;
+
+  /* Sidebar */
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #0F172A;
+  --sidebar-primary: #0F766E;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #F3F3F1;
+  --sidebar-accent-foreground: #0F172A;
+  --sidebar-border: #E8E8E6;
+  --sidebar-ring: #D4D4D0;
+
+  /* TabulateAI semantic accent colors */
+  --tab-teal: #059669;
+  --tab-teal-dim: rgba(5, 150, 105, 0.08);
+  --tab-amber: #D97706;
+  --tab-amber-dim: rgba(217, 119, 6, 0.08);
+  --tab-blue: #0284C7;
+  --tab-blue-dim: rgba(2, 132, 199, 0.08);
+  --tab-rose: #E11D48;
+  --tab-rose-dim: rgba(225, 29, 72, 0.08);
+  --tab-indigo: #0F766E;
+  --tab-indigo-dim: rgba(15, 118, 110, 0.08);
+}
+
+/* ============================================
+   DARK THEME
+   ============================================ */
+.dark {
+  /* Core surfaces — rich neutral dark */
+  --background: #09090B;
+  --foreground: #FAFAFA;
+  --card: #111113;
+  --card-foreground: #FAFAFA;
+  --popover: #111113;
+  --popover-foreground: #FAFAFA;
+
+  /* Interactive — luminous teal */
+  --primary: #2DD4BF;
+  --primary-foreground: #09090B;
+  --secondary: #1C1C1E;
+  --secondary-foreground: #FAFAFA;
+
+  /* Subdued */
+  --muted: #1C1C1E;
+  --muted-foreground: #A1A1AA;
+  --accent: #1C1C1E;
+  --accent-foreground: #FAFAFA;
+
+  /* Status */
+  --destructive: #FB7185;
+
+  /* Structural */
+  --border: #1C1C1E;
+  --input: #1C1C1E;
+  --ring: #2C2C2E;
+
+  /* Charts */
+  --chart-1: #2DD4BF;
+  --chart-2: #38BDF8;
+  --chart-3: #FBBF24;
+  --chart-4: #A78BFA;
+  --chart-5: #FB7185;
+
+  /* Sidebar */
+  --sidebar: #111113;
+  --sidebar-foreground: #FAFAFA;
+  --sidebar-primary: #2DD4BF;
+  --sidebar-primary-foreground: #09090B;
+  --sidebar-accent: #1C1C1E;
+  --sidebar-accent-foreground: #FAFAFA;
+  --sidebar-border: #1C1C1E;
+  --sidebar-ring: #2C2C2E;
+
+  /* TabulateAI semantic accent colors */
+  --tab-teal: #34D399;
+  --tab-teal-dim: rgba(52, 211, 153, 0.12);
+  --tab-amber: #FBBF24;
+  --tab-amber-dim: rgba(251, 191, 36, 0.12);
+  --tab-blue: #38BDF8;
+  --tab-blue-dim: rgba(56, 189, 248, 0.12);
+  --tab-rose: #FB7185;
+  --tab-rose-dim: rgba(251, 113, 133, 0.12);
+  --tab-indigo: #2DD4BF;
+  --tab-indigo-dim: rgba(45, 212, 191, 0.12);
+}
+
+/* ============================================
+   ANIMATIONS & EFFECTS
+   ============================================ */
+
+@keyframes grid-cell-pulse {
+  0%, 100% { opacity: 0; }
+  50% { opacity: var(--cell-opacity, 0.04); }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes shimmer-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+/* Staggered entrance animation */
+.animate-fade-up {
+  animation: fade-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out both;
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* Gradient text — teal spectrum */
+.text-gradient {
+  background: linear-gradient(135deg, #0F766E 0%, #0891B2 50%, #0284C7 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.dark .text-gradient {
+  background: linear-gradient(135deg, #2DD4BF 0%, #22D3EE 50%, #38BDF8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Dot grid pattern — @deprecated: prefer FloatingData component for new work */
+.bg-dot-grid {
+  background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Subtle grain texture overlay */
+.bg-grain {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+}
+
+/* Table glow (dark mode only) */
+.table-glow {
+  box-shadow: none;
+}
+.dark .table-glow {
+  box-shadow:
+    0 0 60px -15px rgba(45, 212, 191, 0.10),
+    0 4px 25px -5px rgba(0, 0, 0, 0.25);
+}
+
+/* Hero table card glow */
+.hero-card-glow {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 4px 16px -2px rgba(0, 0, 0, 0.06);
+}
+.dark .hero-card-glow {
+  box-shadow:
+    0 0 0 1px rgba(45, 212, 191, 0.08),
+    0 8px 40px -12px rgba(45, 212, 191, 0.12),
+    0 0 80px -20px rgba(45, 212, 191, 0.08);
+}
+
+/* Sig-test letter glow */
+.sig-glow {
+  text-shadow: 0 0 8px var(--tab-teal);
+}
+
+/* Semantic glow rings */
+.glow-teal   { box-shadow: 0 0 24px -6px var(--tab-teal-dim); }
+.glow-blue   { box-shadow: 0 0 24px -6px var(--tab-blue-dim); }
+.glow-indigo { box-shadow: 0 0 24px -6px var(--tab-indigo-dim); }
+.glow-amber  { box-shadow: 0 0 24px -6px var(--tab-amber-dim); }
+
+/* Card hover lift — subtle elevation on hover */
+.card-hover-lift {
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+}
+.card-hover-lift:hover {
+  transform: translateY(-3px);
+}
+.dark .card-hover-lift:hover {
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.4);
+}
+:root .card-hover-lift:hover {
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.08);
+}
+
+/* Gradient accent line */
+.gradient-accent {
+  background: linear-gradient(90deg, var(--tab-indigo), var(--tab-blue));
+}
+
+/* ============================================
+   EDITORIAL TYPOGRAPHY UTILITIES
+   ============================================ */
+
+/* Display headline — serif, light weight, tight leading */
+.editorial-display {
+  font-family: var(--font-fraunces);
+  font-weight: 300;
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+}
+
+/* Emphasis word — serif, semibold, italic (used within display headings) */
+.editorial-emphasis {
+  font-family: var(--font-fraunces);
+  font-weight: 600;
+  font-style: italic;
+}
+
+/* Data label — monospace eyebrow/label pattern */
+.data-label {
+  font-family: var(--font-jetbrains-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/* ============================================
+   EDITORIAL EFFECTS
+   ============================================ */
+
+/* Subtle warm radial gradient for hero backgrounds */
+.bg-editorial-radial {
+  background: radial-gradient(
+    ellipse 80% 60% at 30% 40%,
+    var(--tab-indigo-dim) 0%,
+    transparent 70%
+  );
+}
+.dark .bg-editorial-radial {
+  background: radial-gradient(
+    ellipse 80% 60% at 30% 40%,
+    rgba(45, 212, 191, 0.03) 0%,
+    transparent 70%
+  );
+}
+
+/* Chromatic accent glow — for hero elements */
+.glow-chromatic {
+  box-shadow:
+    0 0 80px -20px var(--tab-teal-dim),
+    0 0 40px -10px var(--tab-blue-dim);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}

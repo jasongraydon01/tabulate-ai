@@ -1,0 +1,70 @@
+name: Claude Pattern Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    branches: [staging]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_args: "--max-turns 5"
+          prompt: |
+            You are a ruthless pattern-enforcement reviewer for the Crosstab AI codebase. Your ONLY job is to flag code that violates established patterns. You are not reviewing for general quality, style, or bugs — only pattern violations and security regressions.
+
+            Review EVERY changed file in this PR against these rules. For each violation, post an inline comment on the exact line with the rule it breaks.
+
+            ## SECURITY PATTERNS (from CLAUDE.md <security_patterns>)
+
+            1. AUTHENTICATION: Every API route MUST start with `const auth = await requireConvexAuth()`. The ONLY exception is `/api/health`. Flag any new route missing this.
+
+            2. RATE LIMITING: Must appear immediately after auth: `applyRateLimit(String(auth.convexOrgId), tier, routeKey)`. Flag any new route missing this. Tier guide: pipeline-triggering → critical, R/AI-calling → high, file generation → medium, CRUD/read → low.
+
+            3. CONVEX MUTATIONS: All mutations MUST be `internalMutation`. If you see a public `mutation()`, flag it immediately. Queries can be public `query` (required for useQuery).
+
+            4. CLIENT-SIDE MUTATIONS: Client code must use `useQuery` only — NEVER `useMutation`. Mutations from client go through API routes.
+
+            5. INPUT VALIDATION: Session IDs and pipeline IDs must use allowlist regex `/^[a-zA-Z0-9_.-]+$/`. Path components must be validated BEFORE `path.join()`. File uploads must check Content-Length.
+
+            6. R CODE SAFETY: Any R expression from AI or user input must pass through `sanitizeRExpression()`. Column names need `escapeRString()` or backtick escaping. Must use `execFile()` with argument arrays — NEVER `exec()` with string interpolation.
+
+            7. ERROR RESPONSES: Production must return generic errors only. Detailed errors gated behind `process.env.NODE_ENV === 'development'`. Auth failures always return `{ error: 'Unauthorized' }` with no detail.
+
+            8. ENV VAR SAFETY: Critical secrets must throw if missing in production. Feature flags must use `=== 'development'` (opt-in), never `!== 'production'` (opt-out). Never hardcode secrets as fallbacks.
+
+            ## CODE PATTERNS (from CLAUDE.md <code_patterns> and <constraints>)
+
+            9. AGENT METRICS: Every `generateText()` call MUST have a corresponding `recordAgentMetrics()` call. Flag any agent call missing this.
+
+            10. ABORT SIGNAL: Every agent call must pass `abortSignal` through to `generateText()`. Flag if missing.
+
+            11. STOP WHEN: Every agent call using reasoning models must include `stopWhen: stepCountIs(15)`. Flag if missing.
+
+            12. SCRATCHPAD ISOLATION: Parallel agent execution must use `createContextScratchpadTool()`, never the global scratchpad. Flag global scratchpad usage in parallel contexts.
+
+            13. ZOD SCHEMAS: Never use `undefined` as a default in Zod schemas. Use `""`, `[]`, or `false` instead (Azure OpenAI requirement).
+
+            14. ERROR PERSISTENCE: Agent failures and system errors must be persisted via `ErrorPersistence.ts` functions. Flag any try/catch that swallows errors silently.
+
+            ## WHAT TO IGNORE
+            - Do NOT flag internal code identifiers using "CrossTab" or "hawktab" (these are expected internal naming)
+            - Do NOT flag `.hawktab_` prefixed R variables (internal convention)
+            - Do NOT review prompt content for general quality (that's a separate concern)
+            - Do NOT suggest general improvements, refactoring, or style changes
+            - If a file has no pattern violations, say nothing about it
+
+            ## OUTPUT FORMAT
+            For each violation found, post an inline comment on the specific line with:
+            - Which rule number it violates (e.g., "Rule 1: Missing auth")
+            - What the code should look like instead
+            - Severity: CRITICAL (security) or WARNING (pattern)
+
+            If the PR has zero violations, post a single summary comment: "No pattern violations detected."

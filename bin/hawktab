@@ -1,0 +1,16 @@
+#!/bin/bash
+# HawkTab AI CLI wrapper
+# Runs the TypeScript CLI using tsx
+
+# Resolve the real path (following symlinks)
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [ -L "$SCRIPT_PATH" ]; do
+  SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_PATH")" && pwd)"
+  SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
+  [[ $SCRIPT_PATH != /* ]] && SCRIPT_PATH="$SCRIPT_DIR/$SCRIPT_PATH"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_PATH")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Run the CLI with tsx from the project directory
+cd "$PROJECT_DIR" && exec npx tsx "$PROJECT_DIR/src/cli/index.tsx" "$@"

@@ -1,0 +1,967 @@
+{
+  "totalLoopGroups": 1,
+  "totalIterationVars": 282,
+  "totalBaseVars": 94,
+  "fillRateResults": [
+    {
+      "skeleton": "B-N-_-N-r-N",
+      "pattern": "valid_wide",
+      "explanation": "All iterations have similar fill rates (31%-38%) — valid wide format",
+      "fillRates": {
+        "1": 0.3846076923076923,
+        "2": 0.31249374999999996,
+        "3": 0.3846076923076924
+      }
+    },
+    {
+      "skeleton": "hB-N-_-N-r-N",
+      "pattern": "valid_wide",
+      "explanation": "All iterations have similar fill rates (100%-100%) — valid wide format",
+      "fillRates": {
+        "1": 1,
+        "2": 1,
+        "3": 1
+      }
+    },
+    {
+      "skeleton": "hB-N-_-grid-_-N-r-N",
+      "pattern": "valid_wide",
+      "explanation": "All iterations have similar fill rates (12%-12%) — valid wide format",
+      "fillRates": {
+        "1": 0.1190452380952381,
+        "2": 0.11904523809523808,
+        "3": 0.11904523809523812
+      }
+    },
+    {
+      "skeleton": "C-N-_-N-r-N-c-N",
+      "pattern": "valid_wide",
+      "explanation": "All iterations have similar fill rates (16%-19%) — valid wide format",
+      "fillRates": {
+        "1": 0.19229999999999997,
+        "2": 0.156246875,
+        "3": 0.19230769230769232
+      }
+    },
+    {
+      "skeleton": "hC-N-_-N-r-N",
+      "pattern": "valid_wide",
+      "explanation": "All iterations have similar fill rates (100%-100%) — valid wide format",
+      "fillRates": {
+        "1": 1,
+        "2": 1,
+        "3": 1
+      }
+    },
+    {
+      "skeleton": "hC-N-_-grid-_-N-r-N",
+      "pattern": "valid_wide",
+      "explanation": "All iterations have similar fill rates (12%-12%) — valid wide format",
+      "fillRates": {
+        "1": 0.11904285714285713,
+        "2": 0.1190452380952381,
+        "3": 0.11904761904761904
+      }
+    },
+    {
+      "skeleton": "B-N-b-_-N",
+      "pattern": "fixed_grid",
+      "explanation": "Fixed grid detected (diversity/iteration ratio 0.33 < 0.5 with all >=95% fill): 3 iterations of 1 questions — not stacking",
+      "fillRates": {
+        "1": 1,
+        "2": 1,
+        "3": 1
+      }
+    },
+    {
+      "skeleton": "B-N-c-_-N",
+      "pattern": "fixed_grid",
+      "explanation": "Fixed grid detected (diversity/iteration ratio 0.33 < 0.5 with all >=95% fill): 3 iterations of 1 questions — not stacking",
+      "fillRates": {
+        "1": 1,
+        "2": 1,
+        "3": 1
+      }
+    },
+    {
+      "skeleton": "C-N-b-_-N",
+      "pattern": "fixed_grid",
+      "explanation": "Fixed grid detected (diversity/iteration ratio 0.33 < 0.5 with all >=95% fill): 3 iterations of 1 questions — not stacking",
+      "fillRates": {
+        "1": 1,
+        "2": 1,
+        "3": 1
+      }
+    },
+    {
+      "skeleton": "C-N-c-_-N",
+      "pattern": "fixed_grid",
+      "explanation": "Fixed grid detected (diversity/iteration ratio 0.33 < 0.5 with all >=95% fill): 3 iterations of 1 questions — not stacking",
+      "fillRates": {
+        "1": 1,
+        "2": 1,
+        "3": 1
+      }
+    }
+  ],
+  "groups": [
+    {
+      "stackedFrameName": "stacked_loop_1",
+      "skeleton": "B-N-_-N-r-N + hB-N-_-N-r-N + hB-N-_-grid-_-N-r-N + C-N-_-N-r-N-c-N + hC-N-_-N-r-N + hC-N-_-grid-_-N-r-N",
+      "iterations": [
+        "1",
+        "2",
+        "3"
+      ],
+      "variableCount": 94,
+      "variables": [
+        {
+          "baseName": "hB500r1",
+          "label": "Top 1 - Hidden Top 5 - B500_1",
+          "iterationColumns": {
+            "1": "hB500_1r1",
+            "2": "hB500_2r1",
+            "3": "hB500_3r1"
+          }
+        },
+        {
+          "baseName": "hB500r2",
+          "label": "Top 2 - Hidden Top 5 - B500_1",
+          "iterationColumns": {
+            "1": "hB500_1r2",
+            "2": "hB500_2r2",
+            "3": "hB500_3r2"
+          }
+        },
+        {
+          "baseName": "hB500r3",
+          "label": "Top 3 - Hidden Top 5 - B500_1",
+          "iterationColumns": {
+            "1": "hB500_1r3",
+            "2": "hB500_2r3",
+            "3": "hB500_3r3"
+          }
+        },
+        {
+          "baseName": "hB500r4",
+          "label": "Top 4 - Hidden Top 5 - B500_1",
+          "iterationColumns": {
+            "1": "hB500_1r4",
+            "2": "hB500_2r4",
+            "3": "hB500_3r4"
+          }
+        },
+        {
+          "baseName": "hB500r5",
+          "label": "Top 5 - Hidden Top 5 - B500_1",
+          "iterationColumns": {
+            "1": "hB500_1r5",
+            "2": "hB500_2r5",
+            "3": "hB500_3r5"
+          }
+        },
+        {
+          "baseName": "hB500_gridr101",
+          "label": "Product X is the only pediatric PCV for children 6 weeks to 17 years covering 20 serotypes responsible for the majority of IPD (63% of IPD)* - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r101",
+            "2": "hB500_grid_2r101",
+            "3": "hB500_grid_3r101"
+          }
+        },
+        {
+          "baseName": "hB500_gridr102",
+          "label": "Product X is the only pediatric PCV for babies and eligible children covering 20 serotypes responsible for the majority of IPD (63% of IPD)* - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r102",
+            "2": "hB500_grid_2r102",
+            "3": "hB500_grid_3r102"
+          }
+        },
+        {
+          "baseName": "hB500_gridr103",
+          "label": "Product X provides the broadest serotype coverage in all children 6 weeks to 17 years - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r103",
+            "2": "hB500_grid_2r103",
+            "3": "hB500_grid_3r103"
+          }
+        },
+        {
+          "baseName": "hB500_gridr104",
+          "label": "Start and finish the pneumococcal vaccine series with Product X to help protect all children 6 weeks to 17 years with the broadest serotype coverage available to them in a PCV - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r104",
+            "2": "hB500_grid_2r104",
+            "3": "hB500_grid_3r104"
+          }
+        },
+        {
+          "baseName": "hB500_gridr105",
+          "label": "Product X delivers the broadest serotype coverage for all children ages 6 weeks to 17 years, helping to protect against the threat of IPD - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r105",
+            "2": "hB500_grid_2r105",
+            "3": "hB500_grid_3r105"
+          }
+        },
+        {
+          "baseName": "hB500_gridr106",
+          "label": "According to the 2023 CDC surveillance data, the serotypes in Product X provide the broadest IPD case coverage for children ages 6 weeks to 17 years using only the primary pnuemococcal vaccine series - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r106",
+            "2": "hB500_grid_2r106",
+            "3": "hB500_grid_3r106"
+          }
+        },
+        {
+          "baseName": "hB500_gridr107",
+          "label": "According to the 2023 CDC surveillance data, the serotypes in Product X provide the broadest IPD case coverage for children ages 6 weeks to 17 years in a single vaccine product - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r107",
+            "2": "hB500_grid_2r107",
+            "3": "hB500_grid_3r107"
+          }
+        },
+        {
+          "baseName": "hB500_gridr108",
+          "label": "Product X is the only pediatric PCV that is CDC recommended to help protect both babies, and eligible children with risk conditions, against IPD, using only a 4-dose primary series (using only the primary series/ with a single vaccine p",
+          "iterationColumns": {
+            "1": "hB500_grid_1r108",
+            "2": "hB500_grid_2r108",
+            "3": "hB500_grid_3r108"
+          }
+        },
+        {
+          "baseName": "hB500_gridr109",
+          "label": "IPD risk is greatest in the first two years of life: For the most vulnerable children - those with UMCs - help protect them with on-time vaccination with Product X, the broadest serotype protection available in the primary series - HIDD",
+          "iterationColumns": {
+            "1": "hB500_grid_1r109",
+            "2": "hB500_grid_2r109",
+            "3": "hB500_grid_3r109"
+          }
+        },
+        {
+          "baseName": "hB500_gridr110",
+          "label": "Product X helps protect all babies, healthy and those with UMCs, from IPD before they turn 2 years of age with the broadest serotype coverage available in a primary series. With Product X there is no need to re-vaccinate for children w",
+          "iterationColumns": {
+            "1": "hB500_grid_1r110",
+            "2": "hB500_grid_2r110",
+            "3": "hB500_grid_3r110"
+          }
+        },
+        {
+          "baseName": "hB500_gridr111",
+          "label": "Product X provides the broadest serotype coverage in all children ages 6 weeks to 17 years. With Product X there is no need for additional doses for children with UMCs between ages 2 to 18 years - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r111",
+            "2": "hB500_grid_2r111",
+            "3": "hB500_grid_3r111"
+          }
+        },
+        {
+          "baseName": "hB500_gridr112",
+          "label": "IPD risk is greatest in the first two years of life: For the most vulnerable children - those with UMCs - help protect them with Product X, the broadest serotype protection available in the primary series - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r112",
+            "2": "hB500_grid_2r112",
+            "3": "hB500_grid_3r112"
+          }
+        },
+        {
+          "baseName": "hB500_gridr113",
+          "label": "Vaccinate at 2,4,6,12-15 months when children are most vulnerable with Product X - the broadest serotype coverage available. - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r113",
+            "2": "hB500_grid_2r113",
+            "3": "hB500_grid_3r113"
+          }
+        },
+        {
+          "baseName": "hB500_gridr201",
+          "label": "Product X is the only option you need for babies and children ages 2-18 years, including those with certain UMCs - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r201",
+            "2": "hB500_grid_2r201",
+            "3": "hB500_grid_3r201"
+          }
+        },
+        {
+          "baseName": "hB500_gridr202",
+          "label": "Product X is the only PCV option you need to help protect babies and eligible children from the threat of IPD. No need to revaccinate children with UMCs if their primary series included Product X - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r202",
+            "2": "hB500_grid_2r202",
+            "3": "hB500_grid_3r202"
+          }
+        },
+        {
+          "baseName": "hB500_gridr203",
+          "label": "Product X eliminates the need for PPSV23 or PCV21 in children with certain underlying medical conditions - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r203",
+            "2": "hB500_grid_2r203",
+            "3": "hB500_grid_3r203"
+          }
+        },
+        {
+          "baseName": "hB500_gridr204",
+          "label": "Protect your at-risk patients using only the primary PCV series - Product X eliminates the need for PPSV23 or PCV21 in children with certain underlying medical conditions - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r204",
+            "2": "hB500_grid_2r204",
+            "3": "hB500_grid_3r204"
+          }
+        },
+        {
+          "baseName": "hB500_gridr205",
+          "label": "Early protection matters - Product X eliminates the need for PPSV23 or PCV21 in children with certain underlying medical conditions - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r205",
+            "2": "hB500_grid_2r205",
+            "3": "hB500_grid_3r205"
+          }
+        },
+        {
+          "baseName": "hB500_gridr206",
+          "label": "On-time protection matters - Product X eliminates the need for PPSV23 or PCV21 in children with certain underlying medical conditions - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r206",
+            "2": "hB500_grid_2r206",
+            "3": "hB500_grid_3r206"
+          }
+        },
+        {
+          "baseName": "hB500_gridr207",
+          "label": "Product X pediatric <U+2013> the only option you need <U+2013> eliminates the need for PCV21 or PPSV23 in children with certain underlying medical conditions. - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r207",
+            "2": "hB500_grid_2r207",
+            "3": "hB500_grid_3r207"
+          }
+        },
+        {
+          "baseName": "hB500_gridr208",
+          "label": "Product X <U+2013>helping to protect babies and children with certain UMCs using only the recommended 4-dose primary series - in only 4 doses - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r208",
+            "2": "hB500_grid_2r208",
+            "3": "hB500_grid_3r208"
+          }
+        },
+        {
+          "baseName": "hB500_gridr209",
+          "label": "Product X is the only pediatric PCV option you need to help protect babies and eligible children from IPD - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r209",
+            "2": "hB500_grid_2r209",
+            "3": "hB500_grid_3r209"
+          }
+        },
+        {
+          "baseName": "hB500_gridr210",
+          "label": "Product X peds meets all of the ped ACIP pneumococcal recommendations for both babies under 2 years of age and children with risk conditions - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r210",
+            "2": "hB500_grid_2r210",
+            "3": "hB500_grid_3r210"
+          }
+        },
+        {
+          "baseName": "hB500_gridr211",
+          "label": "For babies who complete the pneumococcal primary series with Product X there is no need for a 5th dose for children who may develop UMCs between ages 2-17 years - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r211",
+            "2": "hB500_grid_2r211",
+            "3": "hB500_grid_3r211"
+          }
+        },
+        {
+          "baseName": "hB500_gridr212",
+          "label": "Product X meets all of the pediatric ACIP pneumococcal recommendations for both babies under 2 years of age and children with risk conditions. Product X does NOT require the use of PPSV23 or Capvaxive<U+2013> helping to simplify ordering, s",
+          "iterationColumns": {
+            "1": "hB500_grid_1r212",
+            "2": "hB500_grid_2r212",
+            "3": "hB500_grid_3r212"
+          }
+        },
+        {
+          "baseName": "hB500_gridr213",
+          "label": "ONLY Product X meets all pediatric ACIP/CDC pneumococcal recommendations without the need for additional vaccines, including PPSV23 and Capvaxive - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r213",
+            "2": "hB500_grid_2r213",
+            "3": "hB500_grid_3r213"
+          }
+        },
+        {
+          "baseName": "hB500_gridr215",
+          "label": "Product X - The only CDC recommeded pediatric pnuemococcal vaccine option you need to help protect babies and eligible children from IPD - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r215",
+            "2": "hB500_grid_2r215",
+            "3": "hB500_grid_3r215"
+          }
+        },
+        {
+          "baseName": "hB500_gridr216",
+          "label": "Product X <U+2013> helping to protect babies and children with certain UMCs using only 4 doses - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r216",
+            "2": "hB500_grid_2r216",
+            "3": "hB500_grid_3r216"
+          }
+        },
+        {
+          "baseName": "hB500_gridr217",
+          "label": "Stay proactive in your pneumococcal vaccination recommendation: Among children 2-18 with UMC who previously received Product X, no additional pneumococcal doses are recommended. - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r217",
+            "2": "hB500_grid_2r217",
+            "3": "hB500_grid_3r217"
+          }
+        },
+        {
+          "baseName": "hB500_gridr301",
+          "label": "Only Product X includes 5 unique serotypes not available in any other PCV for babies <2 years of age - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r301",
+            "2": "hB500_grid_2r301",
+            "3": "hB500_grid_3r301"
+          }
+        },
+        {
+          "baseName": "hB500_gridr302",
+          "label": "Product X includes 5 unique serotypes not available in any other PCV, helping to expand IPD case coverage to 63% (based on the 20 serotypes in the vaccine) in babies < 2 years - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r302",
+            "2": "hB500_grid_2r302",
+            "3": "hB500_grid_3r302"
+          }
+        },
+        {
+          "baseName": "hB500_gridr303",
+          "label": "Product X includes 5 unique serotype not available in any other PCV for babies - don't leave 5 behind during the first and second year when babies are most vulnerable to IPD - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r303",
+            "2": "hB500_grid_2r303",
+            "3": "hB500_grid_3r303"
+          }
+        },
+        {
+          "baseName": "hB500_gridr304",
+          "label": "IPD risk is greatest in the first two years of life - help protect babies with the broadest serotype coverage available to those <2 years of age - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r304",
+            "2": "hB500_grid_2r304",
+            "3": "hB500_grid_3r304"
+          }
+        },
+        {
+          "baseName": "hB500_gridr305",
+          "label": "The 5 unique serotypes in Product X help protect against serotypes that cause ~15% of IPD in children <2 years of age - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r305",
+            "2": "hB500_grid_2r305",
+            "3": "hB500_grid_3r305"
+          }
+        },
+        {
+          "baseName": "hB500_gridr306",
+          "label": "Help protect babies now with the broadest serotype coverage including 5 unique serotypes not available in any PCV - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r306",
+            "2": "hB500_grid_2r306",
+            "3": "hB500_grid_3r306"
+          }
+        },
+        {
+          "baseName": "hB500_gridr307",
+          "label": "Protect early with 5 unique serotypes not available in any other PCV for babies <2 years of age - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r307",
+            "2": "hB500_grid_2r307",
+            "3": "hB500_grid_3r307"
+          }
+        },
+        {
+          "baseName": "hB500_gridr308",
+          "label": "Product X is/provides the earliest way to help protect your UMC patients (against 5 unique serotypes not in PCV15) - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r308",
+            "2": "hB500_grid_2r308",
+            "3": "hB500_grid_3r308"
+          }
+        },
+        {
+          "baseName": "hB500_gridr309",
+          "label": "IPD risk is greatest in the first two years of life - For your babies <2 years, don't leave 5 serotypes behind - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r309",
+            "2": "hB500_grid_2r309",
+            "3": "hB500_grid_3r309"
+          }
+        },
+        {
+          "baseName": "hB500_gridr310",
+          "label": "IPD risk is greatest in the first two years of life - For your babies <2 years, you could be leaving 5 serotypes behind - choose Product X for the broadest serotype protection available - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r310",
+            "2": "hB500_grid_2r310",
+            "3": "hB500_grid_3r310"
+          }
+        },
+        {
+          "baseName": "hB500_gridr311",
+          "label": "Healthy babies are not vaccinated against 5 serotypes only included in Product X if you choose PCV15 - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r311",
+            "2": "hB500_grid_2r311",
+            "3": "hB500_grid_3r311"
+          }
+        },
+        {
+          "baseName": "hB500_gridr312",
+          "label": "Capvaxive does not have serotype 19F, which is responsible for 20% of IPD in children ages 2-17 years old, according to the 2023 CDC surveillance data - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r312",
+            "2": "hB500_grid_2r312",
+            "3": "hB500_grid_3r312"
+          }
+        },
+        {
+          "baseName": "hB500_gridr313",
+          "label": "You don't have to wait to start protecting babies from IPD with Product X - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hB500_grid_1r313",
+            "2": "hB500_grid_2r313",
+            "3": "hB500_grid_3r313"
+          }
+        },
+        {
+          "baseName": "hC500r1",
+          "label": "Top 1 - Hidden Top 5 - C500_1",
+          "iterationColumns": {
+            "1": "hC500_1r1",
+            "2": "hC500_2r1",
+            "3": "hC500_3r1"
+          }
+        },
+        {
+          "baseName": "hC500r2",
+          "label": "Top 2 - Hidden Top 5 - C500_1",
+          "iterationColumns": {
+            "1": "hC500_1r2",
+            "2": "hC500_2r2",
+            "3": "hC500_3r2"
+          }
+        },
+        {
+          "baseName": "hC500r3",
+          "label": "Top 3 - Hidden Top 5 - C500_1",
+          "iterationColumns": {
+            "1": "hC500_1r3",
+            "2": "hC500_2r3",
+            "3": "hC500_3r3"
+          }
+        },
+        {
+          "baseName": "hC500r4",
+          "label": "Top 4 - Hidden Top 5 - C500_1",
+          "iterationColumns": {
+            "1": "hC500_1r4",
+            "2": "hC500_2r4",
+            "3": "hC500_3r4"
+          }
+        },
+        {
+          "baseName": "hC500r5",
+          "label": "Top 5 - Hidden Top 5 - C500_1",
+          "iterationColumns": {
+            "1": "hC500_1r5",
+            "2": "hC500_2r5",
+            "3": "hC500_3r5"
+          }
+        },
+        {
+          "baseName": "hC500_gridr101",
+          "label": "Product X is the only pediatric PCV for children 6 weeks to 17 years covering 20 serotypes responsible for the majority of IPD (63% of IPD)* - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r101",
+            "2": "hC500_grid_2r101",
+            "3": "hC500_grid_3r101"
+          }
+        },
+        {
+          "baseName": "hC500_gridr102",
+          "label": "Product X is the only pediatric PCV for babies and eligible children covering 20 serotypes responsible for the majority of IPD (63% of IPD)* - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r102",
+            "2": "hC500_grid_2r102",
+            "3": "hC500_grid_3r102"
+          }
+        },
+        {
+          "baseName": "hC500_gridr103",
+          "label": "Product X provides the broadest serotype coverage in all children 6 weeks to 17 years - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r103",
+            "2": "hC500_grid_2r103",
+            "3": "hC500_grid_3r103"
+          }
+        },
+        {
+          "baseName": "hC500_gridr104",
+          "label": "Start and finish the pneumococcal vaccine series with Product X to help protect all children 6 weeks to 17 years with the broadest serotype coverage available to them in a PCV - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r104",
+            "2": "hC500_grid_2r104",
+            "3": "hC500_grid_3r104"
+          }
+        },
+        {
+          "baseName": "hC500_gridr105",
+          "label": "Product X delivers the broadest serotype coverage for all children ages 6 weeks to 17 years, helping to protect against the threat of IPD - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r105",
+            "2": "hC500_grid_2r105",
+            "3": "hC500_grid_3r105"
+          }
+        },
+        {
+          "baseName": "hC500_gridr106",
+          "label": "According to the 2023 CDC surveillance data, the serotypes in Product X provide the broadest IPD case coverage for children ages 6 weeks to 17 years using only the primary pnuemococcal vaccine series - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r106",
+            "2": "hC500_grid_2r106",
+            "3": "hC500_grid_3r106"
+          }
+        },
+        {
+          "baseName": "hC500_gridr107",
+          "label": "According to the 2023 CDC surveillance data, the serotypes in Product X provide the broadest IPD case coverage for children ages 6 weeks to 17 years in a single vaccine product - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r107",
+            "2": "hC500_grid_2r107",
+            "3": "hC500_grid_3r107"
+          }
+        },
+        {
+          "baseName": "hC500_gridr108",
+          "label": "Product X is the only pediatric PCV that is CDC recommended to help protect both babies, and eligible children with risk conditions, against IPD, using only a 4-dose primary series (using only the primary series/ with a single vaccine p",
+          "iterationColumns": {
+            "1": "hC500_grid_1r108",
+            "2": "hC500_grid_2r108",
+            "3": "hC500_grid_3r108"
+          }
+        },
+        {
+          "baseName": "hC500_gridr109",
+          "label": "IPD risk is greatest in the first two years of life: For the most vulnerable children - those with UMCs - help protect them with on-time vaccination with Product X, the broadest serotype protection available in the primary series - HIDD",
+          "iterationColumns": {
+            "1": "hC500_grid_1r109",
+            "2": "hC500_grid_2r109",
+            "3": "hC500_grid_3r109"
+          }
+        },
+        {
+          "baseName": "hC500_gridr110",
+          "label": "Product X helps protect all babies, healthy and those with UMCs, from IPD before they turn 2 years of age with the broadest serotype coverage available in a primary series. With Product X there is no need to re-vaccinate for children w",
+          "iterationColumns": {
+            "1": "hC500_grid_1r110",
+            "2": "hC500_grid_2r110",
+            "3": "hC500_grid_3r110"
+          }
+        },
+        {
+          "baseName": "hC500_gridr111",
+          "label": "Product X provides the broadest serotype coverage in all children ages 6 weeks to 17 years. With Product X there is no need for additional doses for children with UMCs between ages 2 to 18 years - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r111",
+            "2": "hC500_grid_2r111",
+            "3": "hC500_grid_3r111"
+          }
+        },
+        {
+          "baseName": "hC500_gridr112",
+          "label": "IPD risk is greatest in the first two years of life: For the most vulnerable children - those with UMCs - help protect them with Product X, the broadest serotype protection available in the primary series - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r112",
+            "2": "hC500_grid_2r112",
+            "3": "hC500_grid_3r112"
+          }
+        },
+        {
+          "baseName": "hC500_gridr113",
+          "label": "Vaccinate at 2,4,6,12-15 months when children are most vulnerable with Product X - the broadest serotype coverage available. - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r113",
+            "2": "hC500_grid_2r113",
+            "3": "hC500_grid_3r113"
+          }
+        },
+        {
+          "baseName": "hC500_gridr201",
+          "label": "Product X is the only option you need for babies and children ages 2-18 years, including those with certain UMCs - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r201",
+            "2": "hC500_grid_2r201",
+            "3": "hC500_grid_3r201"
+          }
+        },
+        {
+          "baseName": "hC500_gridr202",
+          "label": "Product X is the only PCV option you need to help protect babies and eligible children from the threat of IPD. No need to revaccinate children with UMCs if their primary series included Product X - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r202",
+            "2": "hC500_grid_2r202",
+            "3": "hC500_grid_3r202"
+          }
+        },
+        {
+          "baseName": "hC500_gridr203",
+          "label": "Product X eliminates the need for PPSV23 or PCV21 in children with certain underlying medical conditions - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r203",
+            "2": "hC500_grid_2r203",
+            "3": "hC500_grid_3r203"
+          }
+        },
+        {
+          "baseName": "hC500_gridr204",
+          "label": "Protect your at-risk patients using only the primary PCV series - Product X eliminates the need for PPSV23 or PCV21 in children with certain underlying medical conditions - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r204",
+            "2": "hC500_grid_2r204",
+            "3": "hC500_grid_3r204"
+          }
+        },
+        {
+          "baseName": "hC500_gridr205",
+          "label": "Early protection matters - Product X eliminates the need for PPSV23 or PCV21 in children with certain underlying medical conditions - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r205",
+            "2": "hC500_grid_2r205",
+            "3": "hC500_grid_3r205"
+          }
+        },
+        {
+          "baseName": "hC500_gridr206",
+          "label": "On-time protection matters - Product X eliminates the need for PPSV23 or PCV21 in children with certain underlying medical conditions - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r206",
+            "2": "hC500_grid_2r206",
+            "3": "hC500_grid_3r206"
+          }
+        },
+        {
+          "baseName": "hC500_gridr207",
+          "label": "Product X pediatric <U+2013> the only option you need <U+2013> eliminates the need for PCV21 or PPSV23 in children with certain underlying medical conditions. - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r207",
+            "2": "hC500_grid_2r207",
+            "3": "hC500_grid_3r207"
+          }
+        },
+        {
+          "baseName": "hC500_gridr208",
+          "label": "Product X <U+2013>helping to protect babies and children with certain UMCs using only the recommended 4-dose primary series - in only 4 doses - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r208",
+            "2": "hC500_grid_2r208",
+            "3": "hC500_grid_3r208"
+          }
+        },
+        {
+          "baseName": "hC500_gridr209",
+          "label": "Product X is the only pediatric PCV option you need to help protect babies and eligible children from IPD - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r209",
+            "2": "hC500_grid_2r209",
+            "3": "hC500_grid_3r209"
+          }
+        },
+        {
+          "baseName": "hC500_gridr210",
+          "label": "Product X peds meets all of the ped ACIP pneumococcal recommendations for both babies under 2 years of age and children with risk conditions - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r210",
+            "2": "hC500_grid_2r210",
+            "3": "hC500_grid_3r210"
+          }
+        },
+        {
+          "baseName": "hC500_gridr211",
+          "label": "For babies who complete the pneumococcal primary series with Product X there is no need for a 5th dose for children who may develop UMCs between ages 2-17 years - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r211",
+            "2": "hC500_grid_2r211",
+            "3": "hC500_grid_3r211"
+          }
+        },
+        {
+          "baseName": "hC500_gridr212",
+          "label": "Product X meets all of the pediatric ACIP pneumococcal recommendations for both babies under 2 years of age and children with risk conditions. Product X does NOT require the use of PPSV23 or Capvaxive<U+2013> helping to simplify ordering, s",
+          "iterationColumns": {
+            "1": "hC500_grid_1r212",
+            "2": "hC500_grid_2r212",
+            "3": "hC500_grid_3r212"
+          }
+        },
+        {
+          "baseName": "hC500_gridr213",
+          "label": "ONLY Product X meets all pediatric ACIP/CDC pneumococcal recommendations without the need for additional vaccines, including PPSV23 and Capvaxive - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r213",
+            "2": "hC500_grid_2r213",
+            "3": "hC500_grid_3r213"
+          }
+        },
+        {
+          "baseName": "hC500_gridr215",
+          "label": "Product X - The only CDC recommeded pediatric pnuemococcal vaccine option you need to help protect babies and eligible children from IPD - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r215",
+            "2": "hC500_grid_2r215",
+            "3": "hC500_grid_3r215"
+          }
+        },
+        {
+          "baseName": "hC500_gridr216",
+          "label": "Product X <U+2013> helping to protect babies and children with certain UMCs using only 4 doses - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r216",
+            "2": "hC500_grid_2r216",
+            "3": "hC500_grid_3r216"
+          }
+        },
+        {
+          "baseName": "hC500_gridr217",
+          "label": "Stay proactive in your pneumococcal vaccination recommendation: Among children 2-18 with UMC who previously received Product X, no additional pneumococcal doses are recommended. - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r217",
+            "2": "hC500_grid_2r217",
+            "3": "hC500_grid_3r217"
+          }
+        },
+        {
+          "baseName": "hC500_gridr301",
+          "label": "Only Product X includes 5 unique serotypes not available in any other PCV for babies <2 years of age - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r301",
+            "2": "hC500_grid_2r301",
+            "3": "hC500_grid_3r301"
+          }
+        },
+        {
+          "baseName": "hC500_gridr302",
+          "label": "Product X includes 5 unique serotypes not available in any other PCV, helping to expand IPD case coverage to 63% (based on the 20 serotypes in the vaccine) in babies < 2 years - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r302",
+            "2": "hC500_grid_2r302",
+            "3": "hC500_grid_3r302"
+          }
+        },
+        {
+          "baseName": "hC500_gridr303",
+          "label": "Product X includes 5 unique serotype not available in any other PCV for babies - don't leave 5 behind during the first and second year when babies are most vulnerable to IPD - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r303",
+            "2": "hC500_grid_2r303",
+            "3": "hC500_grid_3r303"
+          }
+        },
+        {
+          "baseName": "hC500_gridr304",
+          "label": "IPD risk is greatest in the first two years of life - help protect babies with the broadest serotype coverage available to those <2 years of age - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r304",
+            "2": "hC500_grid_2r304",
+            "3": "hC500_grid_3r304"
+          }
+        },
+        {
+          "baseName": "hC500_gridr305",
+          "label": "The 5 unique serotypes in Product X help protect against serotypes that cause ~15% of IPD in children <2 years of age - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r305",
+            "2": "hC500_grid_2r305",
+            "3": "hC500_grid_3r305"
+          }
+        },
+        {
+          "baseName": "hC500_gridr306",
+          "label": "Help protect babies now with the broadest serotype coverage including 5 unique serotypes not available in any PCV - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r306",
+            "2": "hC500_grid_2r306",
+            "3": "hC500_grid_3r306"
+          }
+        },
+        {
+          "baseName": "hC500_gridr307",
+          "label": "Protect early with 5 unique serotypes not available in any other PCV for babies <2 years of age - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r307",
+            "2": "hC500_grid_2r307",
+            "3": "hC500_grid_3r307"
+          }
+        },
+        {
+          "baseName": "hC500_gridr308",
+          "label": "Product X is/provides the earliest way to help protect your UMC patients (against 5 unique serotypes not in PCV15) - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r308",
+            "2": "hC500_grid_2r308",
+            "3": "hC500_grid_3r308"
+          }
+        },
+        {
+          "baseName": "hC500_gridr309",
+          "label": "IPD risk is greatest in the first two years of life - For your babies <2 years, don't leave 5 serotypes behind - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r309",
+            "2": "hC500_grid_2r309",
+            "3": "hC500_grid_3r309"
+          }
+        },
+        {
+          "baseName": "hC500_gridr310",
+          "label": "IPD risk is greatest in the first two years of life - For your babies <2 years, you could be leaving 5 serotypes behind - choose Product X for the broadest serotype protection available - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r310",
+            "2": "hC500_grid_2r310",
+            "3": "hC500_grid_3r310"
+          }
+        },
+        {
+          "baseName": "hC500_gridr311",
+          "label": "Healthy babies are not vaccinated against 5 serotypes only included in Product X if you choose PCV15 - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r311",
+            "2": "hC500_grid_2r311",
+            "3": "hC500_grid_3r311"
+          }
+        },
+        {
+          "baseName": "hC500_gridr312",
+          "label": "Capvaxive does not have serotype 19F, which is responsible for 20% of IPD in children ages 2-17 years old, according to the 2023 CDC surveillance data - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r312",
+            "2": "hC500_grid_2r312",
+            "3": "hC500_grid_3r312"
+          }
+        },
+        {
+          "baseName": "hC500_gridr313",
+          "label": "You don't have to wait to start protecting babies from IPD with Product X - HIDDEN IN LIVE",
+          "iterationColumns": {
+            "1": "hC500_grid_1r313",
+            "2": "hC500_grid_2r313",
+            "3": "hC500_grid_3r313"
+          }
+        }
+      ]
+    }
+  ]
+}

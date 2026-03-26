@@ -1,0 +1,84 @@
+{
+  "_metadata": {
+    "stage": "sorted-final",
+    "stageNumber": 7,
+    "tableCount": 85,
+    "timestamp": "2026-02-20T22:16:45.780Z",
+    "previousStage": "post-processed",
+    "previousTableCount": 85
+  },
+  "tables": [
+    {
+      "tableId": "s2",
+      "questionId": "S2",
+      "questionText": "ADVERSE EVENTS We are obligated to disclose to the company sponsoring this study any adverse events that are reported about a product they make (e.g., undesirable change of health, side effects during treatment, lack of effectiveness, etc.) so that they can report this to the regulatory authorities. We ask for only the minimum amount of information needed to satisfy the adverse event reporting requirements. If you do mention a drug-related adverse event, we will ask if you are willing to waive the confidentiality given to you under the Market Research Codes of conduct specifically in relation to that adverse event. We will request to disclose your name and contact information to the research sponsor, who would use it only for the purpose of complying with their obligations to the regulatory authorities. Everything else you say during the course of the interview will continue to remain confidential, and you will still have the option to remain anonymous if you so wish. Are you willing to proceed with the screening on this basis?",
+      "tableType": "frequency",
+      "rows": [
+        {
+          "variable": "S2",
+          "label": "Yes",
+          "filterValue": "1",
+          "isNet": false,
+          "netComponents": [],
+          "indent": 0
+        },
+        {
+          "variable": "S2",
+          "label": "No",
+          "filterValue": "2",
+          "isNet": false,
+          "netComponents": [],
+          "indent": 0
+        }
+      ],
+      "sourceTableId": "s2",
+      "isDerived": false,
+      "exclude": false,
+      "excludeReason": "",
+      "surveySection": "SCREENER",
+      "baseText": "",
+      "userNote": "(Selecting \"No\" terminates the survey.)",
+      "tableSubtitle": "",
+      "additionalFilter": "",
+      "filterReviewRequired": false,
+      "splitFromTableId": "",
+      "lastModifiedBy": "VerificationAgent"
+    },
+    {
+      "tableId": "s3a",
+      "questionId": "S3a",
+      "questionText": "If you mention any adverse events or other reportable safety information, you have the choice whether to waive the anonymity given to you under the Market Research Codes of Conduct specifically in relation to the adverse event or reportable safety information you mention. Please indicate your preference.",
+      "tableType": "frequency",
+      "rows": [
+        {
+          "variable": "S3a",
+          "label": "I wish to preserve the confidentiality of my information and any safety information I mention should be reported anonymously",
+          "filterValue": "1",
+          "isNet": false,
+          "netComponents": [],
+          "indent": 0
+        },
+        {
+          "variable": "S3a",
+          "label": "I consent to having my contact information shared with the project sponsor and as such waive my confidentiality specific to the safety information I mention",
+          "filterValue": "2",
+          "isNet": false,
+          "netComponents": [],
+          "indent": 0
+        }
+      ],
+      "sourceTableId": "s3a",
+      "isDerived": false,
+      "exclude": false,
+      "excludeReason": "",
+      "surveySection": "SCREENER",
+      "baseText": "",
+      "userNote": "(Select one)",
+      "tableSubtitle": "",
+      "additionalFilter": "",
+      "filterReviewRequired": false,
+      "splitFromTableId": "",
+      "lastModifiedBy": "VerificationAgent"
+    }
+  ]
+}

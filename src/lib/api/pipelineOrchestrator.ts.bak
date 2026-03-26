@@ -1,0 +1,2047 @@
+/**
+ * Core pipeline orchestration: Path A/B coordination, R validation, Excel generation.
+ * Extracted from process-crosstab/route.ts to keep the HTTP handler slim.
+ */
+import { getConvexClient, mutateInternal } from '@/lib/convex';
+import { api } from '../../../convex/_generated/api';
+import { internal } from '../../../convex/_generated/api';
+import { cleanupAbort } from '@/lib/abortStore';
+import { cleanupSession } from '@/lib/storage';
+import { uploadPipelineOutputs, uploadReviewFile, type R2FileManifest, type ReviewR2Keys } from '@/lib/r2/R2FileManager';
+import type { Id } from '../../../convex/_generated/dataModel';
+import { BannerAgent } from '@/agents/BannerAgent';
+import { processAllGroups as processCrosstabGroups, processGroup as processCrosstabGroup } from '@/agents/CrosstabAgent';
+import type { CutValidationErrorContext } from '@/agents/CrosstabAgent';
+import { verifyAllTablesParallel } from '@/agents/VerificationAgent';
+import { extractSkipLogic } from '@/agents/SkipLogicAgent';
+import { translateSkipRules } from '@/agents/FilterTranslatorAgent';
+import { runLoopSemanticsPolicyAgent, buildDatamapExcerpt } from '@/agents/LoopSemanticsPolicyAgent';
+import { groupDataMap } from '@/lib/tables/DataMapGrouper';
+import { generateTables, convertToLegacyFormat } from '@/lib/tables/TableGenerator';
+import { processSurvey } from '@/lib/processors/SurveyProcessor';
+import { buildCutsSpec } from '@/lib/tables/CutsSpec';
+import { sortTables, getSortingMetadata } from '@/lib/tables/sortTables';
+import { normalizePostPass } from '@/lib/tables/TablePostProcessor';
+import { applyFilters } from '@/lib/filters/FilterApplicator';
+import { generateRScriptV2WithValidation } from '@/lib/r/RScriptGeneratorV2';
+import { validateAndFixTables } from '@/lib/r/ValidationOrchestrator';
+import { validateCutExpressions } from '@/lib/r/CutExpressionValidator';
+import { extractStreamlinedData } from '@/lib/data/extractStreamlinedData';
+import { AgentMetricsCollector, runWithMetricsCollector, getPipelineCostSummary, WideEvent } from '@/lib/observability';
+import { ExcelFormatter } from '@/lib/excel/ExcelFormatter';
+import { toExtendedTable, type ExtendedTableDefinition, type TableWithLoopFrame } from '@/schemas/verificationAgentSchema';
+import { createRespondentAnchoredFallbackPolicy, type LoopSemanticsPolicy } from '@/schemas/loopSemanticsPolicySchema';
+import type { TableAgentOutput } from '@/schemas/tableAgentSchema';
+import type { VerboseDataMapType } from '@/schemas/processingSchemas';
+import { collapseLoopVariables } from '@/lib/validation/LoopCollapser';
+import type { LoopGroupMapping } from '@/lib/validation/LoopCollapser';
+import { resolveIterationLinkedVariables } from '@/lib/validation/LoopContextResolver';
+import type { DeterministicResolverResult } from '@/lib/validation/LoopContextResolver';
+import {
+  persistSystemError,
+  getGlobalSystemOutputDir,
+  readPipelineErrors,
+  summarizePipelineErrors,
+} from '@/lib/errors/ErrorPersistence';
+import { getFlaggedCrosstabColumns } from './hitlManager';
+import { sanitizeDatasetName } from './fileHandler';
+import type {
+  PipelineSummary,
+  AgentDataMapItem,
+  PathAResult,
+  PathBResult,
+  PathBStatus,
+  PathCStatus,
+  PathCResult,
+  CrosstabReviewState,
+  SavedFilePaths,
+} from './types';
+import { startHeartbeatInterval } from './heartbeat';
+import { getPostHogClient } from '@/lib/posthog-server';
+import { sendPipelineNotification } from '@/lib/notifications/email';
+import { createContextLogger, createFallbackLogger, type ContextLogger } from '@/lib/logging/contextLogger';
+import { promises as fs } from 'fs';
+import * as path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
+
+// -------------------------------------------------------------------------
+// Pipeline Summary Helpers
+// -------------------------------------------------------------------------
+
+export async function writePipelineSummary(outputDir: string, summary: PipelineSummary): Promise<void> {
+  await fs.writeFile(
+    path.join(outputDir, 'pipeline-summary.json'),
+    JSON.stringify(summary, null, 2)
+  );
+}
+
+export async function updatePipelineSummary(
+  outputDir: string,
+  updates: Partial<PipelineSummary>
+): Promise<void> {
+  const summaryPath = path.join(outputDir, 'pipeline-summary.json');
+  try {
+    const existing = JSON.parse(await fs.readFile(summaryPath, 'utf-8')) as PipelineSummary;
+
+    // Don't overwrite cancelled status (unless we're explicitly setting cancelled)
+    if (existing.status === 'cancelled' && updates.status !== 'cancelled') {
+      console.log('[API] Pipeline was cancelled - not overwriting summary');
+      return;
+    }
+
+    const updated = { ...existing, ...updates };
+    await fs.writeFile(summaryPath, JSON.stringify(updated, null, 2));
+  } catch {
+    // If file doesn't exist, ignore - should have been created already
+    console.warn('[API] Could not update pipeline summary - file may not exist');
+  }
+}
+
+// -------------------------------------------------------------------------
+// Convex Status Helper
+// -------------------------------------------------------------------------
+
+type RunStatus = "in_progress" | "pending_review" | "resuming" | "success" | "partial" | "error" | "cancelled";
+
+async function updateRunStatus(runId: string, updates: {
+  status: RunStatus;
+  stage?: string;
+  progress?: number;
+  message?: string;
+  result?: Record<string, unknown>;
+  error?: string;
+}): Promise<void> {
+  try {
+    await mutateInternal(internal.runs.updateStatus, {
+      runId: runId as Id<"runs">,
+      status: updates.status,
+      ...(updates.stage !== undefined && { stage: updates.stage }),
+      ...(updates.progress !== undefined && { progress: updates.progress }),
+      ...(updates.message !== undefined && { message: updates.message }),
+      ...(updates.result !== undefined && { result: updates.result }),
+      ...(updates.error !== undefined && { error: updates.error }),
+    });
+  } catch (err) {
+    // Log but don't fail pipeline on status update errors
+    console.warn('[API] Failed to update Convex run status:', err);
+  }
+}
+
+/**
+ * Helper to check if an error is an AbortError
+ */
+export function isAbortError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return true;
+  }
+  if (error instanceof Error) {
+    return error.message.includes('aborted') || error.message.includes('AbortError');
+  }
+  return false;
+}
+
+/**
+ * Handle pipeline cancellation - update status and clean up
+ */
+export async function handleCancellation(
+  outputDir: string,
+  runId: string,
+  reason: string
+): Promise<void> {
+  console.log(`[API] Pipeline cancelled: ${reason}`);
+
+  await updateRunStatus(runId, {
+    status: 'cancelled',
+    stage: 'cancelled',
+    progress: 100,
+    message: 'Pipeline cancelled by user',
+  });
+  cleanupAbort(runId);
+
+  try {
+    await updatePipelineSummary(outputDir, {
+      status: 'cancelled',
+      currentStage: 'cancelled'
+    });
+  } catch {
+    // Summary might not exist yet
+  }
+}
+
+// -------------------------------------------------------------------------
+// Parallel Path Execution
+// -------------------------------------------------------------------------
+
+/**
+ * Path A: BannerAgent → CrosstabAgent
+ * Extracts banner structure, then validates R expressions.
+ * Review check happens AFTER CrosstabAgent completes (based on mapping uncertainty).
+ */
+async function executePathA(
+  bannerAgent: BannerAgent,
+  bannerPlanPath: string,
+  agentDataMap: AgentDataMapItem[],
+  outputDir: string,
+  onProgress: (percent: number) => void,
+  abortSignal?: AbortSignal
+): Promise<PathAResult> {
+  if (abortSignal?.aborted) {
+    console.log('[PathA] Aborted before starting');
+    throw new DOMException('Path A aborted', 'AbortError');
+  }
+
+  // 1. BannerAgent (0-40% of path progress)
+  onProgress(5);
+  console.log('[PathA] Starting BannerAgent...');
+  const bannerResult = await bannerAgent.processDocument(bannerPlanPath, outputDir, abortSignal);
+
+  const extractedStructure = bannerResult.verbose?.data?.extractedStructure;
+  const groupCount = extractedStructure?.bannerCuts?.length || 0;
+
+  if (!bannerResult.success || groupCount === 0) {
+    const errorMsg = bannerResult.errors?.join('; ') || 'Banner extraction failed - 0 groups extracted';
+    throw new Error(errorMsg);
+  }
+
+  onProgress(40);
+  console.log(`[PathA] BannerAgent complete: ${groupCount} groups extracted`);
+
+  const agentBanner = bannerResult.agent || [];
+
+  if (abortSignal?.aborted) {
+    console.log('[PathA] Aborted before CrosstabAgent');
+    throw new DOMException('Path A aborted', 'AbortError');
+  }
+
+  // 2. CrosstabAgent (40-100% of path progress)
+  console.log('[PathA] Starting CrosstabAgent...');
+
+  const crosstabResult = await processCrosstabGroups(
+    agentDataMap,
+    { bannerCuts: agentBanner.map(g => ({ groupName: g.groupName, columns: g.columns })) },
+    outputDir,
+    (completed, total) => {
+      const percent = 40 + Math.floor((completed / total) * 60);
+      onProgress(percent);
+    },
+    abortSignal
+  );
+
+  onProgress(100);
+  console.log(`[PathA] CrosstabAgent complete: ${crosstabResult.result.bannerCuts.length} groups validated`);
+
+  return { bannerResult, crosstabResult, agentBanner, reviewRequired: false };
+}
+
+/**
+ * Path B: TableGenerator + DistributionStats
+ *
+ * Uses deterministic TableGenerator followed by distribution stats enrichment.
+ * VerificationAgent now runs AFTER filtering/splitting in the post-join block.
+ */
+async function executePathB(
+  verboseDataMap: VerboseDataMapType[],
+  spssPath: string,
+  outputDir: string,
+  onProgress: (percent: number) => void,
+  abortSignal?: AbortSignal
+): Promise<PathBResult> {
+  if (abortSignal?.aborted) {
+    console.log('[PathB] Aborted before starting');
+    throw new DOMException('Path B aborted', 'AbortError');
+  }
+
+  // 1. Generate tables deterministically (instant, no LLM)
+  console.log('[PathB] Running TableGenerator...');
+  const groups = groupDataMap(verboseDataMap);
+  const generatorOutputs = generateTables(groups);
+  let tableAgentResults: TableAgentOutput[] = convertToLegacyFormat(generatorOutputs);
+  const tableCount = tableAgentResults.flatMap(r => r.tables).length;
+  console.log(`[PathB] TableGenerator: ${tableCount} tables generated`);
+  onProgress(50);
+
+  if (abortSignal?.aborted) {
+    console.log('[PathB] Aborted after table generation');
+    throw new DOMException('Path B aborted', 'AbortError');
+  }
+
+  // 2. Enrich with distribution stats (mean/median for numeric variables)
+  try {
+    const { enrichTableResultsWithStats } = await import('@/lib/stats/DistributionCalculator');
+    tableAgentResults = await enrichTableResultsWithStats(tableAgentResults, spssPath, outputDir);
+    console.log('[PathB] Distribution stats enriched');
+  } catch (statsError) {
+    console.warn('[PathB] Distribution stats enrichment failed (non-fatal):', statsError);
+  }
+
+  onProgress(100);
+  console.log(`[PathB] Complete: ${tableCount} tables (verification deferred to post-join)`);
+
+  return { tableAgentResults, surveyMarkdown: null };
+}
+
+/**
+ * Path C: SkipLogicAgent → FilterTranslatorAgent
+ *
+ * Extracts skip logic rules from the survey, then translates them to R filter expressions.
+ * Failure is graceful — the pipeline continues without filters.
+ */
+async function executePathC(
+  surveyMarkdown: string,
+  verboseDataMap: VerboseDataMapType[],
+  outputDir: string,
+  abortSignal?: AbortSignal
+): Promise<PathCResult> {
+  if (abortSignal?.aborted) {
+    throw new DOMException('Path C aborted', 'AbortError');
+  }
+
+  console.log('[PathC] Starting SkipLogicAgent...');
+  const skipLogicResult = await extractSkipLogic(surveyMarkdown, { outputDir, abortSignal });
+  const ruleCount = skipLogicResult.extraction.rules.length;
+  console.log(`[PathC] SkipLogicAgent: ${ruleCount} rules extracted`);
+
+  if (ruleCount === 0) {
+    console.log('[PathC] No skip logic rules — skipping FilterTranslator');
+    return { filterResult: null, skipLogicRuleCount: 0, filterCount: 0 };
+  }
+
+  if (abortSignal?.aborted) {
+    throw new DOMException('Path C aborted', 'AbortError');
+  }
+
+  console.log('[PathC] Starting FilterTranslatorAgent...');
+  const filterResult = await translateSkipRules(
+    skipLogicResult.extraction.rules,
+    verboseDataMap,
+    { outputDir, abortSignal }
+  );
+  const filterCount = filterResult.translation.filters.length;
+  console.log(`[PathC] FilterTranslator: ${filterCount} filters translated`);
+
+  return { filterResult, skipLogicRuleCount: ruleCount, filterCount };
+}
+
+// -------------------------------------------------------------------------
+// Main Pipeline Orchestrator
+// -------------------------------------------------------------------------
+
+export interface PipelineRunParams {
+  runId: string;
+  sessionId: string;
+  convexOrgId?: string;
+  convexProjectId?: string;
+  launchedBy?: string;
+  fileNames: {
+    dataMap: string;
+    bannerPlan: string;
+    dataFile: string;
+    survey: string | null;
+  };
+  savedPaths: SavedFilePaths;
+  abortSignal?: AbortSignal;
+  loopStatTestingMode?: 'suppress' | 'complement';
+  /** Full project config from wizard (Phase 3.3). When present, overrides individual fields. */
+  config?: import('@/schemas/projectConfigSchema').ProjectConfig;
+}
+
+/**
+ * Run the full pipeline from uploaded files.
+ * This is the background processing function — it updates run status via Convex
+ * and writes results to disk (dual-write). All errors are handled internally.
+ */
+export async function runPipelineFromUpload(params: PipelineRunParams): Promise<void> {
+  const {
+    runId,
+    sessionId,
+    convexOrgId,
+    convexProjectId,
+    launchedBy,
+    fileNames,
+    savedPaths,
+    abortSignal,
+    loopStatTestingMode,
+    config: wizardConfig,
+  } = params;
+
+  console.log(`[API] wizardConfig: displayMode=${wizardConfig?.displayMode ?? 'undefined'}, separateWorkbooks=${wizardConfig?.separateWorkbooks ?? 'undefined'}, format=${wizardConfig?.format ?? 'undefined'}`);
+
+  const processingStartTime = Date.now();
+
+  // Create output folder path — same pattern as test-pipeline.ts
+  const datasetName = sanitizeDatasetName(fileNames.dataFile);
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const pipelineId = `pipeline-${timestamp}`;
+  const outputDir = path.join(process.cwd(), 'outputs', datasetName, pipelineId);
+
+  // Observability: pipeline-scoped metrics collector (isolated from concurrent runs via AsyncLocalStorage)
+  const metricsCollector = new AgentMetricsCollector();
+  const wideEvent = new WideEvent({
+    pipelineId,
+    dataset: datasetName,
+    orgId: convexOrgId,
+    userId: runId,
+  });
+  metricsCollector.bindWideEvent(wideEvent);
+
+  // All recordAgentMetrics() calls within this scope use this collector, not the global
+  return runWithMetricsCollector(metricsCollector, async () => {
+  const stopHeartbeat = startHeartbeatInterval(runId);
+  try {
+
+    // Create output directory first
+    await fs.mkdir(outputDir, { recursive: true });
+
+    // Fetch project name for contextual logging
+    let projectName = 'Pipeline';
+    if (convexProjectId && convexOrgId) {
+      try {
+        const project = await getConvexClient().query(api.projects.get, {
+          projectId: convexProjectId as Id<"projects">,
+          orgId: convexOrgId as Id<"organizations">
+        });
+        projectName = project?.name || convexProjectId;
+      } catch (err) {
+        console.warn('[API] Failed to fetch project name for logging:', err);
+        // Fall back to project ID if fetch fails
+        projectName = convexProjectId || 'Pipeline';
+      }
+    }
+
+    // Create context-aware logger for searchable Railway logs
+    const logger = createContextLogger({
+      projectName,
+      runId: pipelineId,
+      stage: 'Setup'
+    });
+
+    logger.log(`Starting full pipeline processing for session: ${sessionId}`);
+    logger.log(`Output directory: ${outputDir}`);
+
+    const { dataMapPath, bannerPlanPath, spssPath, surveyPath } = savedPaths;
+
+    // Copy input files to inputs/ folder with original names
+    const inputsDir = path.join(outputDir, 'inputs');
+    await fs.mkdir(inputsDir, { recursive: true });
+    // dataMapPath may equal spssPath in wizard flow (.sav IS the datamap)
+    if (dataMapPath && dataMapPath !== spssPath && fileNames.dataMap) {
+      await fs.copyFile(dataMapPath, path.join(inputsDir, fileNames.dataMap));
+    }
+    if (bannerPlanPath && fileNames.bannerPlan) {
+      await fs.copyFile(bannerPlanPath, path.join(inputsDir, fileNames.bannerPlan));
+    }
+    await fs.copyFile(spssPath, path.join(inputsDir, fileNames.dataFile));
+    if (surveyPath && fileNames.survey) {
+      await fs.copyFile(surveyPath, path.join(inputsDir, fileNames.survey));
+    }
+    logger.log('Copied input files to inputs/ folder');
+
+    // Copy SPSS to output dir root (needed for R script execution)
+    const spssDestPath = path.join(outputDir, 'dataFile.sav');
+    await fs.copyFile(spssPath, spssDestPath);
+
+    // -------------------------------------------------------------------------
+    // Step 1: DataMapProcessor
+    // -------------------------------------------------------------------------
+    const dataMapLogger = logger.withStage('Data Processing');
+    await updateRunStatus(runId, {
+      status: 'in_progress',
+      stage: 'parsing',
+      progress: 10,
+      message: 'Processing data map...',
+    });
+    dataMapLogger.log('Step 1: Processing data map...');
+
+    // Use validation runner (.sav as source of truth)
+    const { validate: runValidation } = await import('@/lib/validation/ValidationRunner');
+    const validationResult = await runValidation({ spssPath, outputDir });
+    const dataMapResult = validationResult.processingResult || {
+      success: false, verbose: [], agent: [],
+      validationPassed: false, confidence: 0,
+      errors: ['Validation failed'], warnings: [],
+    };
+    let verboseDataMap = dataMapResult.verbose as VerboseDataMapType[];
+    dataMapLogger.log(`Processed ${verboseDataMap.length} variables`);
+
+    // Mark weight variable so TableGenerator excludes it
+    if (wizardConfig?.weightVariable) {
+      const weightVar = wizardConfig.weightVariable;
+      verboseDataMap = verboseDataMap.map(v =>
+        v.column === weightVar ? { ...v, normalizedType: 'weight' as const } : v
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Step 1b: Loop Detection + Collapse
+    // -------------------------------------------------------------------------
+    let loopMappings: LoopGroupMapping[] = [];
+    let baseNameToLoopIndex: Map<string, number> = new Map();
+    let collapsedVariableNames: Set<string> = new Set();
+    let deterministicFindings: DeterministicResolverResult | undefined;
+
+    if (validationResult.loopDetection?.hasLoops) {
+      const loopLogger = logger.withStage('Loop Handling');
+      await updateRunStatus(runId, {
+        status: 'in_progress',
+        stage: 'loop_handling',
+        progress: 11,
+        message: 'Detecting loop variables...',
+      });
+      loopLogger.log('Step 1b: Loop detection found loops — collapsing...');
+
+      try {
+        const collapseResult = collapseLoopVariables(
+          verboseDataMap,
+          validationResult.loopDetection,
+        );
+        verboseDataMap = collapseResult.collapsedDataMap as VerboseDataMapType[];
+        loopMappings = collapseResult.loopMappings;
+        baseNameToLoopIndex = collapseResult.baseNameToLoopIndex;
+        collapsedVariableNames = collapseResult.collapsedVariableNames;
+        loopLogger.log(`Loop collapse: ${loopMappings.length} loop groups, ${collapsedVariableNames.size} collapsed variables`);
+
+        // Save loop summary
+        await fs.writeFile(
+          path.join(outputDir, 'loop-summary.json'),
+          JSON.stringify({
+            loopCount: loopMappings.length,
+            collapsedVariableCount: collapsedVariableNames.size,
+            mappings: loopMappings.map(m => ({
+              stackedFrameName: m.stackedFrameName,
+              iterations: m.iterations,
+              variableCount: m.variables.length,
+            })),
+          }, null, 2)
+        );
+
+        // Deterministic resolver
+        deterministicFindings = resolveIterationLinkedVariables(
+          verboseDataMap,
+          loopMappings,
+          collapsedVariableNames,
+        );
+        loopLogger.log(`Deterministic resolver: ${deterministicFindings.iterationLinkedVariables.length} linked variables`);
+
+        const loopPolicyDir = path.join(outputDir, 'loop-policy');
+        await fs.mkdir(loopPolicyDir, { recursive: true });
+        await fs.writeFile(
+          path.join(loopPolicyDir, 'deterministic-resolver.json'),
+          JSON.stringify(deterministicFindings, null, 2)
+        );
+      } catch (loopError) {
+        console.error('[API] Loop handling failed (non-fatal):', loopError);
+        // Continue without loop handling — tables will be treated as non-loop
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Step 1c: Survey Processing (shared by Path B verification + Path C skip logic)
+    // -------------------------------------------------------------------------
+    let surveyMarkdown: string | null = null;
+    if (surveyPath) {
+      await updateRunStatus(runId, {
+        status: 'in_progress',
+        stage: 'survey_processing',
+        progress: 12,
+        message: 'Processing survey document...',
+      });
+      console.log('[API] Step 1c: Processing survey document...');
+      const surveyResult = await processSurvey(surveyPath, outputDir);
+      surveyMarkdown = surveyResult.markdown;
+      if (surveyMarkdown) {
+        console.log(`[API] Survey processed: ${surveyMarkdown.length} characters`);
+      } else {
+        console.warn(`[API] Survey processing failed: ${surveyResult.warnings.join(', ')}`);
+      }
+    }
+
+    // Write initial pipeline summary immediately (for sidebar visibility)
+    const initialSummary: PipelineSummary = {
+      pipelineId,
+      dataset: datasetName,
+      timestamp: new Date().toISOString(),
+      source: 'ui',
+      status: 'in_progress',
+      currentStage: 'parallel_processing',
+      options: {
+        loopStatTestingMode,
+      },
+      inputs: {
+        datamap: fileNames.dataMap,
+        banner: fileNames.bannerPlan,
+        spss: fileNames.dataFile,
+        survey: fileNames.survey,
+      }
+    };
+    await writePipelineSummary(outputDir, initialSummary);
+    console.log('[API] Initial pipeline summary written');
+
+    // -------------------------------------------------------------------------
+    // Steps 2-5: Parallel Path Execution
+    // Path A: BannerAgent → CrosstabAgent
+    // Path B: TableAgent → Survey → VerificationAgent
+    // -------------------------------------------------------------------------
+
+    // Prepare data for both paths
+    const agentDataMap: AgentDataMapItem[] = dataMapResult.agent.map(v => ({
+      Column: v.Column,
+      Description: v.Description,
+      Answer_Options: v.Answer_Options,
+    }));
+
+    // Progress tracking for parallel execution (15-60% range)
+    let currentParallelPercent = 15;
+    const updateParallelProgress = (pathPercent: number) => {
+      const overallPercent = 15 + Math.floor(pathPercent * 0.45);
+      if (overallPercent > currentParallelPercent) {
+        currentParallelPercent = overallPercent;
+        updateRunStatus(runId, {
+          status: 'in_progress',
+          stage: 'parallel_processing',
+          progress: currentParallelPercent,
+          message: 'Processing banner, tables, and skip logic...',
+        });
+      }
+    };
+
+    await updateRunStatus(runId, {
+      status: 'in_progress',
+      stage: 'parallel_processing',
+      progress: 15,
+      message: 'Processing banner, tables, and skip logic...',
+    });
+
+    console.log('[API] Starting parallel paths...');
+    const parallelStartTime = Date.now();
+
+    // Check for cancellation before starting parallel paths
+    if (abortSignal?.aborted) {
+      console.log('[API] Pipeline cancelled before parallel paths');
+      metricsCollector.unbindWideEvent();
+      wideEvent.finish('cancelled', 'Cancelled before processing');
+      await handleCancellation(outputDir, runId, 'Cancelled before processing');
+      return;
+    }
+
+    const bannerAgent = new BannerAgent();
+
+    // Write initial Path B + C status (will be running)
+    const pathBStatusPath = path.join(outputDir, 'path-b-status.json');
+    const pathBResultPath = path.join(outputDir, 'path-b-result.json');
+    const pathCStatusPath = path.join(outputDir, 'path-c-status.json');
+    const pathCResultPath = path.join(outputDir, 'path-c-result.json');
+    const pathBStartedAt = new Date().toISOString();
+    const initialPathBStatus: PathBStatus = {
+      status: 'running',
+      startedAt: pathBStartedAt,
+      completedAt: null,
+      error: null
+    };
+    await fs.writeFile(pathBStatusPath, JSON.stringify(initialPathBStatus, null, 2));
+    console.log('[API] Path B status initialized: running');
+
+    // Initialize Path C status
+    const pathCStartedAt = new Date().toISOString();
+    if (surveyMarkdown) {
+      const initialPathCStatus: PathCStatus = {
+        status: 'running',
+        startedAt: pathCStartedAt,
+        completedAt: null,
+        error: null
+      };
+      await fs.writeFile(pathCStatusPath, JSON.stringify(initialPathCStatus, null, 2));
+      console.log('[API] Path C status initialized: running');
+    } else {
+      const skippedPathCStatus: PathCStatus = {
+        status: 'skipped',
+        startedAt: pathCStartedAt,
+        completedAt: pathCStartedAt,
+        error: null
+      };
+      await fs.writeFile(pathCStatusPath, JSON.stringify(skippedPathCStatus, null, 2));
+      console.log('[API] Path C skipped (no survey document)');
+    }
+
+    // Start Path B as fire-and-forget (writes result to disk when complete)
+    const pathBPromise = executePathB(verboseDataMap, spssPath, outputDir, updateParallelProgress, abortSignal)
+      .then(async (result) => {
+        await fs.writeFile(pathBResultPath, JSON.stringify(result, null, 2));
+        const completedStatus: PathBStatus = {
+          status: 'completed',
+          startedAt: pathBStartedAt,
+          completedAt: new Date().toISOString(),
+          error: null
+        };
+        await fs.writeFile(pathBStatusPath, JSON.stringify(completedStatus, null, 2));
+        console.log('[API] Path B completed and result saved to disk');
+
+        // Upload Path B result to R2 for container restart resilience
+        if (convexOrgId && convexProjectId) {
+          try {
+            const pathBR2Key = await uploadReviewFile(
+              convexOrgId, convexProjectId, runId, pathBResultPath, 'path-b-result.json'
+            );
+            // Atomically merge pathBResult key into reviewR2Keys in Convex
+            await mutateInternal(internal.runs.mergeReviewR2Key, {
+              runId: runId as Id<"runs">,
+              key: 'pathBResult',
+              value: pathBR2Key,
+            });
+            console.log('[API] Path B result uploaded to R2');
+          } catch (r2Err) {
+            console.warn('[API] Failed to upload Path B result to R2 (non-fatal):', r2Err);
+          }
+        }
+
+        // Update Convex reviewState.pathBStatus for real-time UI
+        try {
+          const convex = getConvexClient();
+          const run = await convex.query(api.runs.get, { runId: runId as Id<"runs"> });
+          const existingReviewState = (run?.result as Record<string, unknown>)?.reviewState as Record<string, unknown> | undefined;
+          if (existingReviewState) {
+            await mutateInternal(internal.runs.updateReviewState, {
+              runId: runId as Id<"runs">,
+              reviewState: { ...existingReviewState, pathBStatus: 'completed' },
+            });
+          }
+        } catch (err) {
+          console.warn('[API] Failed to update pathBStatus in Convex:', err);
+        }
+
+        return result;
+      })
+      .catch(async (error) => {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        const isAborted = isAbortError(error);
+        const errorStatus: PathBStatus = {
+          status: 'error',
+          startedAt: pathBStartedAt,
+          completedAt: new Date().toISOString(),
+          error: isAborted ? 'Cancelled' : errorMsg
+        };
+        await fs.writeFile(pathBStatusPath, JSON.stringify(errorStatus, null, 2));
+        console.error(`[API] Path B failed: ${errorMsg}`);
+
+        // Update Convex reviewState.pathBStatus for real-time UI
+        try {
+          const convex = getConvexClient();
+          const run = await convex.query(api.runs.get, { runId: runId as Id<"runs"> });
+          const existingReviewState = (run?.result as Record<string, unknown>)?.reviewState as Record<string, unknown> | undefined;
+          if (existingReviewState) {
+            await mutateInternal(internal.runs.updateReviewState, {
+              runId: runId as Id<"runs">,
+              reviewState: { ...existingReviewState, pathBStatus: 'error' },
+            });
+          }
+        } catch (err) {
+          console.warn('[API] Failed to update pathBStatus error in Convex:', err);
+        }
+
+        throw error;
+      });
+
+    // Start Path C as fire-and-forget (skip logic + filter translation)
+    let pathCResult: PathCResult | null = null;
+    const pathCPromise: Promise<PathCResult | null> = surveyMarkdown
+      ? executePathC(surveyMarkdown, verboseDataMap, outputDir, abortSignal)
+          .then(async (result) => {
+            pathCResult = result;
+            await fs.writeFile(pathCResultPath, JSON.stringify(result, null, 2));
+            const completedStatus: PathCStatus = {
+              status: 'completed',
+              startedAt: pathCStartedAt,
+              completedAt: new Date().toISOString(),
+              error: null
+            };
+            await fs.writeFile(pathCStatusPath, JSON.stringify(completedStatus, null, 2));
+            console.log('[API] Path C completed and result saved to disk');
+
+            // Upload Path C result to R2 for container restart resilience
+            if (convexOrgId && convexProjectId) {
+              try {
+                const pathCR2Key = await uploadReviewFile(
+                  convexOrgId, convexProjectId, runId, pathCResultPath, 'path-c-result.json'
+                );
+                // Atomically merge pathCResult key into reviewR2Keys in Convex
+                await mutateInternal(internal.runs.mergeReviewR2Key, {
+                  runId: runId as Id<"runs">,
+                  key: 'pathCResult',
+                  value: pathCR2Key,
+                });
+                console.log('[API] Path C result uploaded to R2');
+              } catch (r2Err) {
+                console.warn('[API] Failed to upload Path C result to R2 (non-fatal):', r2Err);
+              }
+            }
+
+            // Update Convex reviewState.pathCStatus for real-time UI
+            try {
+              const convex = getConvexClient();
+              const run = await convex.query(api.runs.get, { runId: runId as Id<"runs"> });
+              const existingReviewState = (run?.result as Record<string, unknown>)?.reviewState as Record<string, unknown> | undefined;
+              if (existingReviewState) {
+                await mutateInternal(internal.runs.updateReviewState, {
+                  runId: runId as Id<"runs">,
+                  reviewState: { ...existingReviewState, pathCStatus: 'completed' },
+                });
+              }
+            } catch (err) {
+              console.warn('[API] Failed to update pathCStatus in Convex:', err);
+            }
+
+            return result;
+          })
+          .catch(async (error) => {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            const isAborted = isAbortError(error);
+            if (isAborted) {
+              throw error; // Re-throw abort errors
+            }
+            // Path C failure is graceful — log and continue without filters
+            console.warn(`[API] Path C failed (non-fatal): ${errorMsg}`);
+            const errorStatus: PathCStatus = {
+              status: 'error',
+              startedAt: pathCStartedAt,
+              completedAt: new Date().toISOString(),
+              error: errorMsg
+            };
+            await fs.writeFile(pathCStatusPath, JSON.stringify(errorStatus, null, 2));
+            return null;
+          })
+      : Promise.resolve(null);
+
+    // Await ONLY Path A — this is what we need for review check
+    // When wizardConfig.bannerMode === 'auto_generate', skip BannerAgent and use BannerGenerateAgent
+    let pathAResult: PathAResult;
+
+    if (wizardConfig?.bannerMode === 'auto_generate') {
+      console.log('[API] Auto-generate mode: using BannerGenerateAgent instead of Path A...');
+      try {
+        const { generateBannerCuts } = await import('@/agents/BannerGenerateAgent');
+        const genResult = await generateBannerCuts({
+          verboseDataMap: verboseDataMap as import('@/agents/BannerGenerateAgent').BannerGenerateInput['verboseDataMap'],
+          researchObjectives: wizardConfig.researchObjectives,
+          cutSuggestions: wizardConfig.bannerHints,
+          projectType: wizardConfig.projectSubType,
+          outputDir,
+          abortSignal,
+        });
+        updateParallelProgress(40);
+        console.log(`[API] BannerGenerateAgent: ${genResult.agent.length} groups generated (confidence: ${genResult.confidence})`);
+
+        // Run CrosstabAgent on generated banner
+        const crosstabResult = await processCrosstabGroups(
+          agentDataMap,
+          { bannerCuts: genResult.agent.map(g => ({ groupName: g.groupName, columns: g.columns })) },
+          outputDir,
+          (completed, total) => {
+            const percent = 40 + Math.floor((completed / total) * 60);
+            updateParallelProgress(percent);
+          },
+          abortSignal
+        );
+        updateParallelProgress(100);
+
+        const now = new Date().toISOString();
+        pathAResult = {
+          bannerResult: {
+            success: true,
+            confidence: genResult.confidence,
+            verbose: {
+              success: true,
+              timestamp: now,
+              data: {
+                success: true,
+                extractionType: 'auto_generate',
+                timestamp: now,
+                extractedStructure: {
+                  bannerCuts: genResult.agent,
+                  notes: [],
+                  processingMetadata: {
+                    totalColumns: genResult.agent.reduce((s, g) => s + g.columns.length, 0),
+                  },
+                },
+                errors: [],
+                warnings: [],
+              },
+            },
+            agent: genResult.agent,
+            errors: [],
+            warnings: [],
+          } as unknown as PathAResult['bannerResult'],
+          crosstabResult,
+          agentBanner: genResult.agent,
+          reviewRequired: false,
+        };
+      } catch (genError) {
+        if (isAbortError(genError)) {
+          console.log('[API] Pipeline was cancelled during auto-generate');
+          metricsCollector.unbindWideEvent();
+          wideEvent.finish('cancelled', 'Cancelled during auto-generate');
+          await handleCancellation(outputDir, runId, 'Cancelled during agent processing');
+          return;
+        }
+        const errorMsg = genError instanceof Error ? genError.message : String(genError);
+        console.error(`[API] Auto-generate failed: ${errorMsg}`);
+        metricsCollector.unbindWideEvent();
+        wideEvent.finish('error', errorMsg);
+        await updateRunStatus(runId, {
+          status: 'error', stage: 'error', progress: 100,
+          message: 'Auto-generate banner failed', error: errorMsg,
+        });
+        cleanupAbort(runId);
+        return;
+      }
+    } else {
+      // Guard: banner plan path must be a real file when using upload mode
+      if (!bannerPlanPath) {
+        const errorMsg = 'Banner plan file is required when banner mode is "upload". No file was provided.';
+        console.error(`[API] ${errorMsg}`);
+        metricsCollector.unbindWideEvent();
+        wideEvent.finish('error', errorMsg);
+        await updateRunStatus(runId, {
+          status: 'error', stage: 'error', progress: 100,
+          message: errorMsg, error: errorMsg,
+        });
+        cleanupAbort(runId);
+        return;
+      }
+      console.log('[API] Awaiting Path A (Banner → Crosstab)...');
+      try {
+        pathAResult = await executePathA(bannerAgent, bannerPlanPath, agentDataMap, outputDir, updateParallelProgress, abortSignal);
+      } catch (pathAError) {
+        if (isAbortError(pathAError)) {
+          console.log('[API] Pipeline was cancelled during Path A');
+          metricsCollector.unbindWideEvent();
+          wideEvent.finish('cancelled', 'Cancelled during Path A');
+          await handleCancellation(outputDir, runId, 'Cancelled during agent processing');
+          return;
+        }
+
+        const errorMsg = pathAError instanceof Error ? pathAError.message : String(pathAError);
+        console.error(`[API] Path A failed: ${errorMsg}`);
+        metricsCollector.unbindWideEvent();
+        wideEvent.finish('error', `Path A failed: ${errorMsg}`);
+
+        const failureSummary = {
+          pipelineId,
+          dataset: datasetName,
+          timestamp: new Date().toISOString(),
+          source: 'ui',
+          status: 'error',
+          error: `Banner/Crosstab processing failed: ${errorMsg}`,
+          inputs: {
+            datamap: fileNames.dataMap,
+            banner: fileNames.bannerPlan,
+            spss: fileNames.dataFile,
+            survey: fileNames.survey,
+          }
+        };
+        await fs.writeFile(
+          path.join(outputDir, 'pipeline-summary.json'),
+          JSON.stringify(failureSummary, null, 2)
+        );
+
+        await updateRunStatus(runId, {
+          status: 'error',
+          stage: 'error',
+          progress: 100,
+          message: 'Banner extraction failed',
+          error: errorMsg,
+        });
+        cleanupAbort(runId);
+        return;
+      }
+    }
+
+    const pathADuration = Date.now() - parallelStartTime;
+    console.log(`[API] Path A completed in ${(pathADuration / 1000).toFixed(1)}s (Path B still running in background)`);
+
+    const { bannerResult, crosstabResult } = pathAResult;
+
+    const extractedStructure = bannerResult.verbose?.data?.extractedStructure;
+    const groupCount = extractedStructure?.bannerCuts?.length || 0;
+    const columnCount = (extractedStructure?.processingMetadata as { totalColumns?: number })?.totalColumns || 0;
+
+    console.log(`[API] Path A: ${groupCount} groups, ${columnCount} columns, ${crosstabResult.result.bannerCuts.length} validated`);
+
+    // -------------------------------------------------------------------------
+    // Handle Human-in-the-Loop Review for CrosstabAgent mappings
+    // -------------------------------------------------------------------------
+    const flaggedCrosstabColumns = getFlaggedCrosstabColumns(crosstabResult.result, bannerResult);
+
+    if (flaggedCrosstabColumns.length > 0) {
+      console.log(`[API] Review required: ${flaggedCrosstabColumns.length} columns need human review (CrosstabAgent mapping)`);
+      console.log('[API] Showing review UI immediately - Path B continues in background');
+
+      const reviewState: CrosstabReviewState = {
+        pipelineId,
+        status: 'awaiting_review',
+        createdAt: new Date().toISOString(),
+        crosstabResult: crosstabResult.result,
+        flaggedColumns: flaggedCrosstabColumns,
+        bannerResult,
+        agentDataMap,
+        outputDir,
+        pathBStatus: 'running',
+        pathBResult: null,
+        pathCStatus: surveyMarkdown ? 'running' : 'skipped',
+        pathCResult: pathCResult,
+        // Expanded context for post-review pipeline completion
+        verboseDataMap,
+        surveyMarkdown,
+        spssPath,
+        loopMappings,
+        baseNameToLoopIndex: Object.fromEntries(baseNameToLoopIndex),
+        deterministicFindings,
+        wizardConfig,
+        loopStatTestingMode,
+      };
+
+      await fs.writeFile(
+        path.join(outputDir, 'crosstab-review-state.json'),
+        JSON.stringify(reviewState, null, 2)
+      );
+      console.log(`[API] Review state saved to crosstab-review-state.json (wizardConfig included: ${wizardConfig !== undefined})`);
+
+      // Upload review files to R2 for resilience against container restarts
+      let reviewR2Keys: ReviewR2Keys | undefined;
+      if (convexOrgId && convexProjectId) {
+        try {
+          const reviewStateKey = await uploadReviewFile(
+            convexOrgId, convexProjectId, runId, path.join(outputDir, 'crosstab-review-state.json'), 'crosstab-review-state.json'
+          );
+          const summaryKey = await uploadReviewFile(
+            convexOrgId, convexProjectId, runId, path.join(outputDir, 'pipeline-summary.json'), 'pipeline-summary.json'
+          );
+          reviewR2Keys = {
+            reviewState: reviewStateKey,
+            pipelineSummary: summaryKey,
+            spssInput: savedPaths.r2Keys?.spss,
+          };
+          console.log('[API] Review state files uploaded to R2');
+        } catch (r2Err) {
+          console.warn('[API] Failed to upload review state to R2 (non-fatal):', r2Err);
+        }
+      }
+
+      const reviewUrl = `/projects/${encodeURIComponent(pipelineId)}/review`;
+
+      // Order matters: updateRunStatus overwrites `result`, updateReviewState merges into it.
+      // So we set base result fields first, then merge reviewState on top.
+      await updateRunStatus(runId, {
+        status: 'pending_review',
+        stage: 'crosstab_review_required',
+        progress: 50,
+        message: `Review required - ${flaggedCrosstabColumns.length} columns need mapping verification`,
+        result: {
+          pipelineId,
+          outputDir,
+          reviewUrl,
+          flaggedColumnCount: flaggedCrosstabColumns.length,
+          ...(reviewR2Keys && { reviewR2Keys }),
+        },
+      });
+
+      await updatePipelineSummary(outputDir, {
+        status: 'pending_review',
+        currentStage: 'crosstab_review',
+        review: {
+          flaggedColumnCount: flaggedCrosstabColumns.length,
+          reviewUrl
+        }
+      });
+
+      // Push review state to Convex — merges into existing result, preserving fields above
+      try {
+        await mutateInternal(internal.runs.updateReviewState, {
+          runId: runId as Id<"runs">,
+          reviewState: {
+            status: 'awaiting_review',
+            flaggedColumns: flaggedCrosstabColumns,
+            pathBStatus: 'running',
+            pathCStatus: surveyMarkdown ? 'running' : 'skipped',
+            totalColumns: reviewState.crosstabResult.bannerCuts.reduce(
+              (sum: number, g: { columns: unknown[] }) => sum + g.columns.length, 0
+            ),
+          },
+        });
+      } catch (err) {
+        console.warn('[API] Failed to push review state to Convex:', err);
+      }
+
+      console.log('[API] Pipeline paused for human review. Path B continues in background.');
+      console.log(`[API] Resume via POST /api/runs/${runId}/review`);
+      // Finish WideEvent with 'partial' — the post-review phase won't be captured,
+      // but this prevents the WideEvent and metrics collector from leaking.
+      metricsCollector.unbindWideEvent();
+      wideEvent.finish('partial', 'Paused for HITL review');
+      return;
+    }
+
+    // No review needed — wait for Path B + C, then run full post-join pipeline
+    console.log('[API] All CrosstabAgent mappings have high confidence - no review needed');
+    console.log('[API] Waiting for Path B and Path C to complete...');
+
+    let pathBResultData: PathBResult;
+    try {
+      pathBResultData = await pathBPromise;
+    } catch (pathBError) {
+      if (isAbortError(pathBError)) {
+        console.log('[API] Pipeline was cancelled during Path B');
+        metricsCollector.unbindWideEvent();
+        wideEvent.finish('cancelled', 'Cancelled during Path B');
+        await handleCancellation(outputDir, runId, 'Cancelled during agent processing');
+        return;
+      }
+
+      const errorMsg = pathBError instanceof Error ? pathBError.message : String(pathBError);
+      console.error(`[API] Path B failed: ${errorMsg}`);
+      metricsCollector.unbindWideEvent();
+      wideEvent.finish('error', `Path B failed: ${errorMsg}`);
+
+      const failureSummary = {
+        pipelineId,
+        dataset: datasetName,
+        timestamp: new Date().toISOString(),
+        source: 'ui',
+        status: 'error',
+        error: `Table processing failed: ${errorMsg}`,
+        inputs: {
+          datamap: fileNames.dataMap,
+          banner: fileNames.bannerPlan,
+          spss: fileNames.dataFile,
+          survey: fileNames.survey,
+        }
+      };
+      await fs.writeFile(
+        path.join(outputDir, 'pipeline-summary.json'),
+        JSON.stringify(failureSummary, null, 2)
+      );
+
+      await updateRunStatus(runId, {
+        status: 'error',
+        stage: 'error',
+        progress: 100,
+        message: 'Table processing failed',
+        error: errorMsg,
+      });
+      cleanupAbort(runId);
+      return;
+    }
+
+    // Wait for Path C (non-blocking — already may be done)
+    try {
+      const pathCFinalResult = await pathCPromise;
+      if (pathCFinalResult) pathCResult = pathCFinalResult;
+    } catch (pathCError) {
+      if (isAbortError(pathCError)) {
+        console.log('[API] Pipeline was cancelled during Path C');
+        metricsCollector.unbindWideEvent();
+        wideEvent.finish('cancelled', 'Cancelled during Path C');
+        await handleCancellation(outputDir, runId, 'Cancelled during agent processing');
+        return;
+      }
+      // Path C failure is graceful — already handled in catch above
+    }
+
+    const { tableAgentResults } = pathBResultData;
+    const tableAgentTables = tableAgentResults.flatMap(r => r.tables);
+    const parallelDuration = Date.now() - parallelStartTime;
+    console.log(`[API] All paths completed in ${(parallelDuration / 1000).toFixed(1)}s`);
+    console.log(`[API] Path B: ${tableAgentTables.length} table definitions`);
+    if (pathCResult?.filterResult) {
+      console.log(`[API] Path C: ${pathCResult.filterCount} filters from ${pathCResult.skipLogicRuleCount} rules`);
+    }
+
+    // -------------------------------------------------------------------------
+    // Step 6: FilterApplicator (apply Path C filters)
+    // -------------------------------------------------------------------------
+    // Convert tableAgentResults → ExtendedTableDefinition[]
+    let extendedTables: ExtendedTableDefinition[] = tableAgentResults.flatMap(group =>
+      group.tables.map(t => toExtendedTable(t, group.questionId))
+    );
+    console.log(`[API] Converted to ${extendedTables.length} ExtendedTableDefinitions`);
+
+    if (pathCResult?.filterResult && pathCResult.filterResult.translation.filters.length > 0) {
+      await updateRunStatus(runId, {
+        status: 'in_progress',
+        stage: 'filtering',
+        progress: 63,
+        message: 'Applying skip logic filters...',
+      });
+      console.log('[API] Step 6: Applying skip logic filters...');
+
+      const validVariables = new Set<string>(verboseDataMap.map(v => v.column));
+      const filterApplicatorResult = applyFilters(extendedTables, pathCResult.filterResult.translation, validVariables);
+      const beforeCount = extendedTables.length;
+      extendedTables = filterApplicatorResult.tables;
+      console.log(`[API] FilterApplicator: ${beforeCount} → ${extendedTables.length} tables`);
+    }
+
+    if (abortSignal?.aborted) {
+      console.log('[API] Pipeline cancelled after filtering');
+      metricsCollector.unbindWideEvent();
+      wideEvent.finish('cancelled', 'Cancelled after filtering');
+      await handleCancellation(outputDir, runId, 'Cancelled after filtering');
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // Step 6b: GridAutoSplitter
+    // -------------------------------------------------------------------------
+    await updateRunStatus(runId, {
+      status: 'in_progress',
+      stage: 'splitting',
+      progress: 65,
+      message: 'Splitting oversized tables...',
+    });
+    console.log('[API] Step 6b: GridAutoSplitter...');
+
+    const { splitOversizedGrids } = await import('@/lib/tables/GridAutoSplitter');
+    const gridSplitResult = splitOversizedGrids(extendedTables, { verboseDataMap });
+    if (gridSplitResult.actions.length > 0) {
+      console.log(`[API] GridAutoSplitter: split ${gridSplitResult.summary.tablesSplit} tables (${gridSplitResult.summary.totalInput} → ${gridSplitResult.summary.totalOutput})`);
+      extendedTables = gridSplitResult.tables;
+
+      // Save report
+      await fs.writeFile(
+        path.join(outputDir, 'gridsplitter-report.json'),
+        JSON.stringify({ actions: gridSplitResult.actions, summary: gridSplitResult.summary }, null, 2)
+      );
+    } else {
+      console.log('[API] GridAutoSplitter: no splits needed');
+    }
+
+    if (abortSignal?.aborted) {
+      console.log('[API] Pipeline cancelled after grid splitting');
+      metricsCollector.unbindWideEvent();
+      wideEvent.finish('cancelled', 'Cancelled after grid splitting');
+      await handleCancellation(outputDir, runId, 'Cancelled after grid splitting');
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // Step 7: VerificationAgent (now sees filtered + split tables)
+    // -------------------------------------------------------------------------
+    await updateRunStatus(runId, {
+      status: 'in_progress',
+      stage: 'verification',
+      progress: 67,
+      message: 'Verifying tables...',
+    });
+
+    if (surveyMarkdown) {
+      console.log('[API] Step 7: VerificationAgent (parallel, concurrency: 3)...');
+      try {
+        const verificationResult = await verifyAllTablesParallel(
+          extendedTables,
+          surveyMarkdown,
+          verboseDataMap,
+          { outputDir, concurrency: 3, abortSignal }
+        );
+        extendedTables = verificationResult.tables;
+        console.log(`[API] VerificationAgent: ${verificationResult.tables.length} verified tables`);
+      } catch (verifyError) {
+        console.warn(`[API] VerificationAgent failed — using unverified tables: ${verifyError instanceof Error ? verifyError.message : String(verifyError)}`);
+        try {
+          await persistSystemError({
+            outputDir,
+            dataset: datasetName,
+            pipelineId,
+            stageNumber: 7,
+            stageName: 'VerificationAgent',
+            severity: 'warning',
+            actionTaken: 'continued',
+            error: verifyError,
+            meta: { action: 'verification_failed_passthrough' },
+          });
+        } catch { /* ignore persistence failure */ }
+      }
+    } else {
+      console.log('[API] Step 7: No survey — skipping VerificationAgent (passthrough)');
+    }
+
+    await updateRunStatus(runId, {
+      status: 'in_progress',
+      stage: 'verification',
+      progress: 77,
+      message: 'Verification complete',
+    });
+
+    if (abortSignal?.aborted) {
+      console.log('[API] Pipeline cancelled after verification');
+      metricsCollector.unbindWideEvent();
+      wideEvent.finish('cancelled', 'Cancelled after verification');
+      await handleCancellation(outputDir, runId, 'Cancelled after verification');
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // Step 7b: TablePostProcessor (deterministic 7-rule cleanup)
+    // -------------------------------------------------------------------------
+    await updateRunStatus(runId, {
+      status: 'in_progress',
+      stage: 'post_processing',
+      progress: 78,
+      message: 'Running post-processor...',
+    });
+    console.log('[API] Step 7b: TablePostProcessor...');
+
+    const postPassResult = normalizePostPass(extendedTables);
+    extendedTables = postPassResult.tables;
+    console.log(`[API] PostProcessor: ${postPassResult.stats.totalFixes} fixes, ${postPassResult.stats.totalWarnings} warnings`);
+
+    // Save postpass report
+    const postpassDir = path.join(outputDir, 'postpass');
+    await fs.mkdir(postpassDir, { recursive: true });
+    await fs.writeFile(
+      path.join(postpassDir, 'postpass-report.json'),
+      JSON.stringify({ actions: postPassResult.actions, stats: postPassResult.stats }, null, 2)
+    );
+
+    // Sort tables for logical Excel output order
+    console.log('[API] Sorting tables...');
+    const sortingMetadata = getSortingMetadata(extendedTables);
+    const sortedTables = sortTables(extendedTables);
+    console.log(`[API] Screeners: ${sortingMetadata.screenerCount}, Main: ${sortingMetadata.mainCount}, Other: ${sortingMetadata.otherCount}`);
+
+    // Stop after verification (wizard config)
+    if (wizardConfig?.stopAfterVerification) {
+      console.log('[API] stopAfterVerification=true — completing with partial status');
+      metricsCollector.unbindWideEvent();
+      wideEvent.set('tableCount', sortedTables.length);
+      wideEvent.finish('partial');
+      await updateRunStatus(runId, {
+        status: 'partial',
+        stage: 'complete',
+        progress: 100,
+        message: `Verification complete: ${sortedTables.length} tables. R/Excel generation skipped.`,
+        result: { pipelineId, outputDir, dataset: datasetName },
+      });
+      cleanupAbort(runId);
+      await updatePipelineSummary(outputDir, { status: 'partial', currentStage: 'verification_only' });
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // Step 8: Cut Expression Validation + Retry
+    // -------------------------------------------------------------------------
+    await updateRunStatus(runId, {
+      status: 'in_progress',
+      stage: 'validating_cuts',
+      progress: 80,
+      message: 'Validating cut expressions...',
+    });
+    console.log('[API] Step 8: Cut expression validation...');
+
+    let validatedCrosstabResult = crosstabResult.result;
+    try {
+      const MAX_CUT_RETRIES = 2;
+      let cutReport = await validateCutExpressions(validatedCrosstabResult, outputDir, 'dataFile.sav');
+      console.log(`[API] Cut validation: ${cutReport.passed}/${cutReport.totalCuts} passed`);
+
+      for (let retryAttempt = 1; retryAttempt <= MAX_CUT_RETRIES && cutReport.failed > 0; retryAttempt++) {
+        console.log(`[API] Cut retry attempt ${retryAttempt}/${MAX_CUT_RETRIES} for ${cutReport.failed} failed cuts...`);
+        const failedGroupNames = Array.from(cutReport.failedByGroup.keys());
+        const updatedBannerCuts = [...validatedCrosstabResult.bannerCuts];
+
+        for (const failedGroupName of failedGroupNames) {
+          const failedCuts = cutReport.failedByGroup.get(failedGroupName) || [];
+
+          // Find the matching agentBanner group for input
+          const bannerGroup = pathAResult.agentBanner.find(g => g.groupName === failedGroupName);
+          if (!bannerGroup) {
+            console.warn(`[API] Skipping group "${failedGroupName}" — not found in agentBanner`);
+            continue;
+          }
+
+          // Build rValidationErrors context with variable types from verbose datamap
+          const failedExpressions = failedCuts.map(f => {
+            const varMatch = f.rExpression.match(/\b([A-Za-z][A-Za-z0-9_.]*)\b/);
+            const primaryVar = varMatch?.[1] || '';
+            const verbose = verboseDataMap.find(v => v.column === primaryVar);
+            return {
+              cutName: f.cutName,
+              rExpression: f.rExpression,
+              error: f.error || 'Unknown error',
+              variableType: verbose?.normalizedType || undefined,
+            };
+          });
+
+          const rValidationErrors: CutValidationErrorContext = {
+            failedAttempt: retryAttempt,
+            maxAttempts: MAX_CUT_RETRIES,
+            failedExpressions,
+          };
+
+          try {
+            const retryResult = await processCrosstabGroup(
+              agentDataMap,
+              { groupName: bannerGroup.groupName, columns: bannerGroup.columns },
+              { abortSignal, outputDir, rValidationErrors }
+            );
+            const groupIdx = updatedBannerCuts.findIndex(g => g.groupName === failedGroupName);
+            if (groupIdx >= 0) {
+              updatedBannerCuts[groupIdx] = retryResult;
+            }
+          } catch (retryErr) {
+            console.warn(`[API] Cut retry failed for group ${failedGroupName}:`, retryErr);
+          }
+        }
+
+        validatedCrosstabResult = { bannerCuts: updatedBannerCuts };
+        cutReport = await validateCutExpressions(validatedCrosstabResult, outputDir, 'dataFile.sav');
+        console.log(`[API] Cut re-validation: ${cutReport.passed}/${cutReport.totalCuts} passed`);
+      }
+
+      if (cutReport.failed > 0) {
+        console.warn(`[API] ${cutReport.failed} cuts still failing after retries — proceeding (R tryCatch safety net)`);
+      }
+    } catch (cutValidationError) {
+      console.warn('[API] Cut expression validation infrastructure failed (non-fatal):', cutValidationError);
+      // Proceed without cut pre-validation — same as CLI behavior
+    }
+
+    const cutsSpec = buildCutsSpec(validatedCrosstabResult);
+
+    if (abortSignal?.aborted) {
+      console.log('[API] Pipeline cancelled after cut validation');
+      metricsCollector.unbindWideEvent();
+      wideEvent.finish('cancelled', 'Cancelled after cut validation');
+      await handleCancellation(outputDir, runId, 'Cancelled after cut validation');
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // Step 8b: R Validation with Retry Loop (per-table)
+    // -------------------------------------------------------------------------
+    await updateRunStatus(runId, {
+      status: 'in_progress',
+      stage: 'validating_r',
+      progress: 85,
+      message: 'Validating R code per table...',
+    });
+    console.log('[API] Step 8b: Validating R code per table...');
+
+    // Tag tables with loopDataFrame
+    let loopTableCount = 0;
+    const tablesWithLoopFrame: TableWithLoopFrame[] = sortedTables.map(table => {
+      let loopDataFrame = '';
+      if (loopMappings.length > 0) {
+        for (const row of table.rows) {
+          const loopIdx = baseNameToLoopIndex.get(row.variable);
+          if (loopIdx !== undefined) {
+            loopDataFrame = loopMappings[loopIdx].stackedFrameName;
+            loopTableCount++;
+            break;
+          }
+        }
+      }
+      return { ...table, loopDataFrame };
+    });
+    if (loopTableCount > 0) {
+      console.log(`[API] Tagged ${loopTableCount} tables with loopDataFrame`);
+    }
+
+    const { validTables, excludedTables: newlyExcluded, validationReport: rValidationReport } = await validateAndFixTables(
+      tablesWithLoopFrame,
+      cutsSpec.cuts,
+      surveyMarkdown || '',
+      verboseDataMap,
+      {
+        outputDir,
+        maxRetries: 8,
+        dataFilePath: 'dataFile.sav',
+        verbose: true,
+        loopMappings: loopMappings.length > 0 ? loopMappings : undefined,
+      }
+    );
+
+    console.log(`[API] R Validation: ${rValidationReport.passedFirstTime} passed, ${rValidationReport.fixedAfterRetry} fixed, ${rValidationReport.excluded} excluded`);
+
+    const allTablesForR = [...validTables, ...newlyExcluded];
+
+    if (abortSignal?.aborted) {
+      console.log('[API] Pipeline cancelled before loop semantics');
+      metricsCollector.unbindWideEvent();
+      wideEvent.finish('cancelled', 'Cancelled before loop semantics');
+      await handleCancellation(outputDir, runId, 'Cancelled before loop semantics');
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // Step 8.5: LoopSemanticsPolicyAgent (if loops)
+    // -------------------------------------------------------------------------
+    let loopSemanticsPolicy: LoopSemanticsPolicy | undefined;
+
+    if (loopMappings.length > 0) {
+      await updateRunStatus(runId, {
+        status: 'in_progress',
+        stage: 'loop_semantics',
+        progress: 78,
+        message: 'Classifying loop semantics...',
+      });
+      console.log('[API] Step 8.5: LoopSemanticsPolicyAgent...');
+
+      try {
+        loopSemanticsPolicy = await runLoopSemanticsPolicyAgent({
+          loopSummary: loopMappings.map(m => ({
+            stackedFrameName: m.stackedFrameName,
+            iterations: m.iterations,
+            variableCount: m.variables.length,
+            skeleton: m.skeleton,
+          })),
+          bannerGroups: cutsSpec.groups.map(g => ({
+            groupName: g.groupName,
+            columns: g.cuts.map(c => ({ name: c.name, original: c.name })),
+          })),
+          cuts: cutsSpec.cuts.map(c => ({
+            name: c.name,
+            groupName: c.groupName,
+            rExpression: c.rExpression,
+          })),
+          deterministicFindings: deterministicFindings || { iterationLinkedVariables: [], evidenceSummary: '' },
+          datamapExcerpt: buildDatamapExcerpt(verboseDataMap, cutsSpec.cuts, deterministicFindings),
+          loopMappings,
+          outputDir,
+          abortSignal,
+        });
+        console.log(`[API] LoopSemantics: ${loopSemanticsPolicy.bannerGroups.length} groups classified`);
+      } catch (lspError) {
+        const fallbackReason = lspError instanceof Error ? lspError.message : String(lspError);
+        console.warn(`[API] LoopSemanticsPolicyAgent failed — using respondent-anchored fallback: ${fallbackReason}`);
+        loopSemanticsPolicy = createRespondentAnchoredFallbackPolicy(
+          cutsSpec.groups.map(g => g.groupName),
+          fallbackReason,
+        );
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Step 9: R Script Generation
+    // -------------------------------------------------------------------------
+    await updateRunStatus(runId, {
+      status: 'in_progress',
+      stage: 'generating_r',
+      progress: 88,
+      message: 'Generating R script...',
+    });
+    console.log('[API] Step 9: Generating R script...');
+
+    const rDir = path.join(outputDir, 'r');
+    await fs.mkdir(rDir, { recursive: true });
+
+    // Build R script input with wizard config overrides
+    const rScriptInput: import('@/lib/r/RScriptGeneratorV2').RScriptV2Input = {
+      tables: allTablesForR,
+      cuts: cutsSpec.cuts,
+      cutGroups: cutsSpec.groups,
+      loopStatTestingMode,
+      ...(loopMappings.length > 0 && { loopMappings }),
+      ...(loopSemanticsPolicy && { loopSemanticsPolicy }),
+      ...(wizardConfig?.weightVariable && { weightVariable: wizardConfig.weightVariable }),
+      ...(wizardConfig?.statTesting && {
+        statTestingConfig: {
+          thresholds: wizardConfig.statTesting.thresholds.map(t => (100 - t) / 100),
+          proportionTest: 'unpooled_z' as const,
+          meanTest: 'welch_t' as const,
+          minBase: wizardConfig.statTesting.minBase,
+        },
+        significanceThresholds: wizardConfig.statTesting.thresholds.map(t => (100 - t) / 100),
+      }),
+    };
+
+    const { script: masterScript, validation: staticValidationReport } = generateRScriptV2WithValidation(
+      rScriptInput,
+      { sessionId: pipelineId, outputDir: 'results' }
+    );
+
+    const masterPath = path.join(rDir, 'master.R');
+    await fs.writeFile(masterPath, masterScript, 'utf-8');
+
+    if (staticValidationReport.invalidTables > 0 || staticValidationReport.warnings.length > 0) {
+      const staticValidationPath = path.join(rDir, 'static-validation-report.json');
+      await fs.writeFile(staticValidationPath, JSON.stringify(staticValidationReport, null, 2), 'utf-8');
+      console.log(`[API] Static validation issues: ${staticValidationReport.invalidTables} invalid, ${staticValidationReport.warnings.length} warnings`);
+    }
+
+    console.log(`[API] Generated R script (${Math.round(masterScript.length / 1024)} KB)`);
+    console.log(`[API] Tables in script: ${allTablesForR.length} (${validTables.length} valid, ${newlyExcluded.length} excluded)`);
+
+    // -------------------------------------------------------------------------
+    // Step 10: R Execution
+    // -------------------------------------------------------------------------
+    await updateRunStatus(runId, {
+      status: 'in_progress',
+      stage: 'executing_r',
+      progress: 92,
+      message: 'Executing R script...',
+    });
+    console.log('[API] Step 10: Executing R script...');
+
+    const resultsDir = path.join(outputDir, 'results');
+    await fs.mkdir(resultsDir, { recursive: true });
+
+    // Find R
+    let rCommand = 'Rscript';
+    const rPaths = ['/opt/homebrew/bin/Rscript', '/usr/local/bin/Rscript', '/usr/bin/Rscript', 'Rscript'];
+    for (const rPath of rPaths) {
+      try {
+        await execFileAsync(rPath, ['--version'], { timeout: 1000 });
+        rCommand = rPath;
+        console.log(`[API] Found R at: ${rPath}`);
+        break;
+      } catch {
+        // Try next
+      }
+    }
+
+    let rExecutionSuccess = false;
+    let excelGenerated = false;
+
+    try {
+      await execFileAsync(
+        rCommand,
+        [masterPath],
+        { cwd: outputDir, maxBuffer: 50 * 1024 * 1024, timeout: 120000 }
+      );
+
+      const resultFiles = await fs.readdir(resultsDir);
+      const weightVariable = wizardConfig?.weightVariable;
+
+      // Check for weighted dual-output first (tables-weighted.json + tables-unweighted.json)
+      if (weightVariable && resultFiles.includes('tables-weighted.json') && resultFiles.includes('tables-unweighted.json')) {
+        console.log('[API] Found dual weighted/unweighted output');
+        rExecutionSuccess = true;
+
+        // Streamlined data from weighted output
+        try {
+          const wContent = await fs.readFile(path.join(resultsDir, 'tables-weighted.json'), 'utf-8');
+          const streamlined = extractStreamlinedData(JSON.parse(wContent));
+          await fs.writeFile(path.join(resultsDir, 'data-streamlined.json'), JSON.stringify(streamlined, null, 2), 'utf-8');
+        } catch { /* non-fatal */ }
+
+        // -------------------------------------------------------------------------
+        // Step 11: Dual Excel Export (weighted + unweighted)
+        // -------------------------------------------------------------------------
+        await updateRunStatus(runId, {
+          status: 'in_progress',
+          stage: 'writing_outputs',
+          progress: 97,
+          message: 'Generating weighted & unweighted Excel workbooks...',
+        });
+        console.log('[API] Step 11: Generating dual Excel workbooks...');
+
+        try {
+          if (wizardConfig?.theme) {
+            const { setActiveTheme } = await import('@/lib/excel/styles');
+            setActiveTheme(wizardConfig.theme);
+          }
+          const fmtOpts = {
+            format: wizardConfig?.format ?? 'standard',
+            displayMode: wizardConfig?.displayMode ?? 'frequency',
+            separateWorkbooks: wizardConfig?.separateWorkbooks ?? false,
+            hideExcludedTables: wizardConfig?.hideExcludedTables,
+          };
+          console.log('[API] Dual-output fmtOpts:', JSON.stringify(fmtOpts));
+          // Weighted workbook
+          const wFormatter = new ExcelFormatter(fmtOpts);
+          await wFormatter.formatFromFile(path.join(resultsDir, 'tables-weighted.json'));
+          await wFormatter.saveToFile(path.join(resultsDir, 'crosstabs-weighted.xlsx'));
+          if (wFormatter.hasSecondWorkbook()) {
+            await wFormatter.saveSecondWorkbook(path.join(resultsDir, 'crosstabs-weighted-counts.xlsx'));
+          }
+          // Unweighted workbook
+          const uwFormatter = new ExcelFormatter(fmtOpts);
+          await uwFormatter.formatFromFile(path.join(resultsDir, 'tables-unweighted.json'));
+          await uwFormatter.saveToFile(path.join(resultsDir, 'crosstabs-unweighted.xlsx'));
+          if (uwFormatter.hasSecondWorkbook()) {
+            await uwFormatter.saveSecondWorkbook(path.join(resultsDir, 'crosstabs-unweighted-counts.xlsx'));
+          }
+          excelGenerated = true;
+          console.log('[API] Generated dual Excel: crosstabs-weighted.xlsx + crosstabs-unweighted.xlsx');
+        } catch (excelError) {
+          console.error('[API] Dual Excel generation failed:', excelError);
+        }
+      } else if (resultFiles.includes('tables.json')) {
+        // Single-output path (non-weighted or weighted files missing)
+        console.log('[API] Successfully generated tables.json');
+        rExecutionSuccess = true;
+
+        const tablesJsonPath = path.join(resultsDir, 'tables.json');
+
+        // Extract streamlined data for golden dataset evaluation
+        try {
+          const tablesJsonContent = await fs.readFile(tablesJsonPath, 'utf-8');
+          const tablesJsonData = JSON.parse(tablesJsonContent);
+          const streamlinedData = extractStreamlinedData(tablesJsonData);
+          const streamlinedPath = path.join(resultsDir, 'data-streamlined.json');
+          await fs.writeFile(streamlinedPath, JSON.stringify(streamlinedData, null, 2), 'utf-8');
+          console.log('[API] Generated data-streamlined.json');
+        } catch (err) {
+          console.warn('[API] Could not generate streamlined data:', err);
+        }
+
+        // -------------------------------------------------------------------------
+        // Step 11: Excel Export
+        // -------------------------------------------------------------------------
+        await updateRunStatus(runId, {
+          status: 'in_progress',
+          stage: 'writing_outputs',
+          progress: 97,
+          message: 'Generating Excel workbook...',
+        });
+        console.log('[API] Step 11: Generating Excel workbook...');
+
+        const excelPath = path.join(resultsDir, 'crosstabs.xlsx');
+
+        try {
+          // Apply wizard config: theme + display mode
+          if (wizardConfig?.theme) {
+            const { setActiveTheme } = await import('@/lib/excel/styles');
+            setActiveTheme(wizardConfig.theme);
+          }
+          const fmtOpts = {
+            format: wizardConfig?.format ?? 'standard',
+            displayMode: wizardConfig?.displayMode ?? 'frequency',
+            separateWorkbooks: wizardConfig?.separateWorkbooks ?? false,
+            hideExcludedTables: wizardConfig?.hideExcludedTables,
+          };
+          console.log('[API] Single-output fmtOpts:', JSON.stringify(fmtOpts));
+          const formatter = new ExcelFormatter(fmtOpts);
+          await formatter.formatFromFile(tablesJsonPath);
+          await formatter.saveToFile(excelPath);
+          // Save second workbook if formatter created one
+          if (formatter.hasSecondWorkbook()) {
+            const countsPath = path.join(resultsDir, 'crosstabs-counts.xlsx');
+            await formatter.saveSecondWorkbook(countsPath);
+            console.log('[API] Generated crosstabs-counts.xlsx');
+          }
+          excelGenerated = true;
+          console.log('[API] Generated crosstabs.xlsx');
+        } catch (excelError) {
+          console.error('[API] Excel generation failed:', excelError);
+        }
+      }
+    } catch (rError) {
+      const errorMsg = rError instanceof Error ? rError.message : String(rError);
+      if (errorMsg.includes('command not found')) {
+        console.warn(`[API] R not installed - script saved for manual execution`);
+      } else {
+        // Log full error (no truncation) for debugging
+        console.error(`[API] R execution failed:`, errorMsg);
+        // Also persist to errors.ndjson for structured error tracking
+        try {
+          await persistSystemError({
+            outputDir,
+            dataset: datasetName,
+            pipelineId,
+            stageNumber: 10,
+            stageName: 'R Execution',
+            severity: 'error',
+            classification: 'unknown',
+            actionTaken: 'continued',
+            error: rError,
+            meta: { scriptPath: masterPath, resultsDir },
+          });
+        } catch {
+          // ignore persistence errors
+        }
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Cleanup temporary files
+    // -------------------------------------------------------------------------
+    console.log('[API] Cleaning up temporary files...');
+
+    try {
+      await fs.unlink(spssDestPath);
+    } catch { /* File may not exist */ }
+
+    try {
+      await fs.rm(path.join(outputDir, 'banner-images'), { recursive: true });
+    } catch { /* Folder may not exist */ }
+
+    try {
+      const allFiles = await fs.readdir(outputDir);
+      for (const file of allFiles) {
+        if (file.endsWith('.html') || (file.endsWith('.png') && file.includes('_html_'))) {
+          await fs.unlink(path.join(outputDir, file));
+        }
+      }
+    } catch { /* Ignore cleanup errors */ }
+
+    // -------------------------------------------------------------------------
+    // Write pipeline summary and complete
+    // -------------------------------------------------------------------------
+
+    if (abortSignal?.aborted) {
+      console.log('[API] Pipeline cancelled - not writing final summary');
+      metricsCollector.unbindWideEvent();
+      wideEvent.finish('cancelled', 'Cancelled before completion');
+      await handleCancellation(outputDir, runId, 'Cancelled before completion');
+      return;
+    }
+
+    const processingEndTime = Date.now();
+    const durationMs = processingEndTime - processingStartTime;
+    const durationSec = (durationMs / 1000).toFixed(1);
+
+    const costMetrics = await metricsCollector.getSummary();
+
+    const pipelineSummary: PipelineSummary = {
+      pipelineId,
+      dataset: datasetName,
+      timestamp: new Date().toISOString(),
+      source: 'ui',
+      duration: {
+        ms: durationMs,
+        formatted: `${durationSec}s`
+      },
+      status: excelGenerated ? 'success' : (rExecutionSuccess ? 'partial' : 'error'),
+      inputs: {
+        datamap: fileNames.dataMap,
+        banner: fileNames.bannerPlan,
+        spss: fileNames.dataFile,
+        survey: fileNames.survey,
+      },
+      outputs: {
+        variables: verboseDataMap.length,
+        tableGeneratorTables: tableAgentTables.length,
+        verifiedTables: sortedTables.length,
+        validatedTables: validTables.length,
+        excludedTables: newlyExcluded.length,
+        totalTablesInR: allTablesForR.length,
+        cuts: cutsSpec.cuts.length,
+        bannerGroups: groupCount,
+        sorting: {
+          screeners: sortingMetadata.screenerCount,
+          main: sortingMetadata.mainCount,
+          other: sortingMetadata.otherCount
+        },
+        rValidation: {
+          passedFirstTime: rValidationReport.passedFirstTime,
+          fixedAfterRetry: rValidationReport.fixedAfterRetry,
+          excluded: rValidationReport.excluded,
+          durationMs: rValidationReport.durationMs
+        }
+      },
+      costs: {
+        byAgent: costMetrics.byAgent.map(a => ({
+          agent: a.agentName,
+          model: a.model,
+          calls: a.calls,
+          inputTokens: a.totalInputTokens,
+          outputTokens: a.totalOutputTokens,
+          durationMs: a.totalDurationMs,
+          estimatedCostUsd: a.estimatedCostUsd,
+        })),
+        totals: {
+          calls: costMetrics.totals.calls,
+          inputTokens: costMetrics.totals.inputTokens,
+          outputTokens: costMetrics.totals.outputTokens,
+          totalTokens: costMetrics.totals.totalTokens,
+          durationMs: costMetrics.totals.durationMs,
+          estimatedCostUsd: costMetrics.totals.estimatedCostUsd,
+        },
+      }
+    };
+
+    // Attach error persistence summary
+    try {
+      const errorRead = await readPipelineErrors(outputDir);
+      const errorSummary = summarizePipelineErrors(errorRead.records);
+      pipelineSummary.errors = { ...errorSummary, invalidLines: errorRead.invalidLines.length };
+    } catch {
+      // ignore
+    }
+
+    // Check if already cancelled before writing
+    const summaryPath = path.join(outputDir, 'pipeline-summary.json');
+    try {
+      const existing = JSON.parse(await fs.readFile(summaryPath, 'utf-8'));
+      if (existing.status === 'cancelled') {
+        console.log('[API] Pipeline was cancelled - not overwriting summary');
+        metricsCollector.unbindWideEvent();
+        wideEvent.finish('cancelled', 'Pipeline already cancelled');
+        return;
+      }
+    } catch {
+      // File doesn't exist, proceed with write
+    }
+
+    await fs.writeFile(summaryPath, JSON.stringify(pipelineSummary, null, 2));
+    console.log(`[API] Pipeline completed in ${durationSec}s - summary saved`);
+
+    const costSummaryText = await getPipelineCostSummary();
+    console.log(costSummaryText);
+
+    // Finish observability
+    metricsCollector.unbindWideEvent();
+    wideEvent.set('tableCount', allTablesForR.length);
+    wideEvent.finish(excelGenerated ? 'success' : (rExecutionSuccess ? 'partial' : 'error'));
+
+    // Upload outputs to R2
+    let r2Manifest: R2FileManifest | undefined;
+    let r2UploadFailed = false;
+    if (convexOrgId && convexProjectId) {
+      try {
+        r2Manifest = await uploadPipelineOutputs(convexOrgId, convexProjectId, runId, outputDir);
+        console.log(`[API] Uploaded ${Object.keys(r2Manifest.outputs).length} output files to R2`);
+      } catch (r2Error) {
+        r2UploadFailed = true;
+        console.error('[API] R2 output upload failed — downloads will be unavailable:', r2Error);
+      }
+    }
+
+    // Update Convex run status
+    // Downgrade to 'partial' if Excel was generated but R2 upload failed (files can't be downloaded)
+    const terminalStatus: RunStatus = excelGenerated
+      ? (r2UploadFailed ? 'partial' : 'success')
+      : (rExecutionSuccess ? 'partial' : 'error');
+    const terminalMessage = excelGenerated
+      ? r2UploadFailed
+        ? `Generated ${allTablesForR.length} tables but file upload failed — contact support.`
+        : `Complete! Generated ${allTablesForR.length} crosstab tables in ${durationSec}s`
+      : rExecutionSuccess
+        ? 'R execution complete but Excel generation failed.'
+        : 'R scripts generated. Execution failed - check R installation.';
+
+    await updateRunStatus(runId, {
+      status: terminalStatus,
+      stage: 'complete',
+      progress: 100,
+      message: terminalMessage,
+      result: {
+        pipelineId,
+        outputDir,
+        downloadUrl: excelGenerated
+          ? `/api/runs/${encodeURIComponent(runId)}/download/crosstabs.xlsx`
+          : undefined,
+        dataset: datasetName,
+        r2Files: r2Manifest ? { inputs: r2Manifest.inputs, outputs: r2Manifest.outputs } : undefined,
+        summary: {
+          tables: allTablesForR.length,
+          cuts: cutsSpec.cuts.length,
+          bannerGroups: groupCount,
+          durationMs,
+        },
+        costSummary: {
+          totalCostUsd: costMetrics.totals.estimatedCostUsd,
+          totalTokens: costMetrics.totals.totalTokens,
+          totalCalls: costMetrics.totals.calls,
+          byAgent: costMetrics.byAgent.map(a => ({
+            agent: a.agentName,
+            model: a.model,
+            calls: a.calls,
+            tokens: a.totalInputTokens + a.totalOutputTokens,
+            costUsd: a.estimatedCostUsd,
+          })),
+        },
+      },
+    });
+    cleanupAbort(runId);
+
+    // Track pipeline completion (server-side)
+    const posthog = getPostHogClient();
+    posthog.capture({
+      distinctId: convexOrgId || 'anonymous',
+      event: 'pipeline_completed',
+      properties: {
+        run_id: runId,
+        pipeline_id: pipelineId,
+        status: terminalStatus,
+        table_count: allTablesForR.length,
+        cut_count: cutsSpec.cuts.length,
+        duration_sec: durationSec,
+        excel_generated: excelGenerated,
+        r2_upload_failed: r2UploadFailed,
+        total_cost_usd: costMetrics.totals.estimatedCostUsd,
+        total_tokens: costMetrics.totals.totalTokens,
+      },
+    });
+
+    // Send email notification (fire-and-forget)
+    sendPipelineNotification({
+      runId,
+      status: terminalStatus as 'success' | 'partial' | 'error',
+      launchedBy,
+      convexProjectId,
+      tableCount: allTablesForR.length,
+      durationFormatted: `${durationSec}s`,
+    }).catch(() => { /* swallowed */ });
+
+    // Clean up temp session files (/tmp/hawktab-ai/{sessionId}/)
+    try { await cleanupSession(sessionId); } catch { /* best-effort */ }
+
+  } catch (processingError) {
+    if (isAbortError(processingError)) {
+      console.log('[API] Pipeline processing was cancelled');
+      metricsCollector.unbindWideEvent();
+      wideEvent.finish('cancelled', 'Pipeline cancelled');
+      await handleCancellation(outputDir, runId, 'Pipeline cancelled');
+      try { await cleanupSession(sessionId); } catch { /* best-effort */ }
+      return;
+    }
+
+    const procErrorMsg = processingError instanceof Error ? processingError.message : 'Unknown error';
+    metricsCollector.unbindWideEvent();
+    wideEvent.finish('error', procErrorMsg);
+    console.error('[API] Pipeline error:', processingError);
+    try {
+      await persistSystemError({
+        outputDir: outputDir || getGlobalSystemOutputDir(),
+        dataset: datasetName || '',
+        pipelineId: pipelineId || '',
+        stageNumber: 0,
+        stageName: 'API',
+        severity: 'fatal',
+        actionTaken: 'failed_pipeline',
+        error: processingError,
+        meta: { runId },
+      });
+    } catch {
+      // ignore
+    }
+    await updateRunStatus(runId, {
+      status: 'error',
+      stage: 'error',
+      progress: 100,
+      message: 'Processing error',
+      error: processingError instanceof Error ? processingError.message : 'Unknown error',
+    });
+    cleanupAbort(runId);
+
+    // Track pipeline failure (server-side)
+    const posthog = getPostHogClient();
+    posthog.capture({
+      distinctId: convexOrgId || 'anonymous',
+      event: 'pipeline_failed',
+      properties: {
+        run_id: runId,
+        pipeline_id: pipelineId || '',
+        error_message: procErrorMsg,
+      },
+    });
+
+    // Send error email notification (fire-and-forget)
+    sendPipelineNotification({
+      runId,
+      status: 'error',
+      launchedBy,
+      convexProjectId,
+      errorMessage: procErrorMsg,
+    }).catch(() => { /* swallowed */ });
+
+    // Clean up temp session files on error too
+    try { await cleanupSession(sessionId); } catch { /* best-effort */ }
+  } finally {
+    stopHeartbeat();
+  }
+  }); // end runWithMetricsCollector
+}

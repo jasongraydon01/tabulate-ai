@@ -1,0 +1,3082 @@
+{
+  "metadata": {
+    "generatedAt": "2026-02-20T22:19:17.510Z",
+    "tableCount": 84,
+    "cutCount": 17,
+    "significanceTest": "unpooled z-test for column proportions",
+    "meanSignificanceTest": "two-sample t-test",
+    "significanceThresholds": 0.1,
+    "significanceLevel": 0.1,
+    "totalRespondents": 177,
+    "bannerGroups": [
+      {
+        "groupName": "Total",
+        "columns": [
+          {
+            "name": "Total",
+            "statLetter": "T"
+          }
+        ]
+      },
+      {
+        "groupName": "Specialty",
+        "columns": [
+          {
+            "name": "Primary Care Physician (General Medicine, Family Medicine)",
+            "statLetter": "A"
+          },
+          {
+            "name": "Pediatrician",
+            "statLetter": "B"
+          }
+        ]
+      },
+      {
+        "groupName": "Private vs. Public",
+        "columns": [
+          {
+            "name": "Private",
+            "statLetter": "C"
+          },
+          {
+            "name": "Public",
+            "statLetter": "D"
+          }
+        ]
+      },
+      {
+        "groupName": "FQHC vs. Non-FQHC",
+        "columns": [
+          {
+            "name": "Yes",
+            "statLetter": "E"
+          },
+          {
+            "name": "No",
+            "statLetter": "F"
+          }
+        ]
+      },
+      {
+        "groupName": "Public/FQHC vs. Not",
+        "columns": [
+          {
+            "name": "Public/FQHC",
+            "statLetter": "G"
+          },
+          {
+            "name": "Non-User",
+            "statLetter": "H"
+          }
+        ]
+      },
+      {
+        "groupName": "IDN vs. Independent",
+        "columns": [
+          {
+            "name": "IDN",
+            "statLetter": "I"
+          },
+          {
+            "name": "Independent",
+            "statLetter": "J"
+          }
+        ]
+      },
+      {
+        "groupName": "Role in Decision Making",
+        "columns": [
+          {
+            "name": "Decision Maker",
+            "statLetter": "K"
+          },
+          {
+            "name": "Limited Input",
+            "statLetter": "L"
+          }
+        ]
+      },
+      {
+        "groupName": "Brand A Usage",
+        "columns": [
+          {
+            "name": "User",
+            "statLetter": "M"
+          },
+          {
+            "name": "Non-User",
+            "statLetter": "N"
+          }
+        ]
+      },
+      {
+        "groupName": "Brand B Usage",
+        "columns": [
+          {
+            "name": "User",
+            "statLetter": "O"
+          },
+          {
+            "name": "Non-User",
+            "statLetter": "P"
+          }
+        ]
+      }
+    ],
+    "comparisonGroups": [
+      "A/B",
+      "C/D",
+      "E/F",
+      "G/H",
+      "I/J",
+      "K/L",
+      "M/N",
+      "O/P"
+    ]
+  },
+  "tables": {
+    "_demo_banner_x_banner": {
+      "tableId": "_demo_banner_x_banner",
+      "questionId": "",
+      "questionText": "Banner Profile",
+      "tableType": "frequency",
+      "isDerived": false,
+      "sourceTableId": "",
+      "surveySection": "DEMO",
+      "baseText": "All qualified respondents",
+      "userNote": "Auto-generated banner profile showing respondent distribution",
+      "tableSubtitle": "",
+      "excluded": false,
+      "excludeReason": "",
+      "data": {
+        "Total": {
+          "stat_letter": "T",
+          "row_0_Total": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 177,
+            "count": 177,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_1_T": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 177,
+            "count": 177,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_2_A": {
+            "label": "Primary Care Physician (General Medicine, Family Medicine)",
+            "groupName": "Specialty",
+            "n": 177,
+            "count": 75,
+            "pct": 42.3729,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_3_B": {
+            "label": "Pediatrician",
+            "groupName": "Specialty",
+            "n": 177,
+            "count": 102,
+            "pct": 57.6271,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_4_C": {
+            "label": "Private",
+            "groupName": "Private vs. Public",
+            "n": 177,
+            "count": 155,
+            "pct": 87.5706,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_5_D": {
+            "label": "Public",
+            "groupName": "Private vs. Public",
+            "n": 177,
+            "count": 22,
+            "pct": 12.4294,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_6_E": {
+            "label": "Yes",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 177,
+            "count": 30,
+            "pct": 16.9492,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_7_F": {
+            "label": "No",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 177,
+            "count": 147,
+            "pct": 83.0508,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_8_G": {
+            "label": "Public/FQHC",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 177,
+            "count": 39,
+            "pct": 22.0339,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_9_H": {
+            "label": "Non-User",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 177,
+            "count": 138,
+            "pct": 77.9661,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_10_I": {
+            "label": "IDN",
+            "groupName": "IDN vs. Independent",
+            "n": 177,
+            "count": 52,
+            "pct": 29.3785,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_11_J": {
+            "label": "Independent",
+            "groupName": "IDN vs. Independent",
+            "n": 177,
+            "count": 125,
+            "pct": 70.6215,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_12_K": {
+            "label": "Decision Maker",
+            "groupName": "Role in Decision Making",
+            "n": 177,
+            "count": 139,
+            "pct": 78.5311,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_13_L": {
+            "label": "Limited Input",
+            "groupName": "Role in Decision Making",
+            "n": 177,
+            "count": 38,
+            "pct": 21.4689,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_14_M": {
+            "label": "User",
+            "groupName": "Brand A Usage",
+            "n": 177,
+            "count": 155,
+            "pct": 87.5706,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_15_N": {
+            "label": "Non-User",
+            "groupName": "Brand A Usage",
+            "n": 177,
+            "count": 138,
+            "pct": 77.9661,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_16_O": {
+            "label": "User",
+            "groupName": "Brand B Usage",
+            "n": 177,
+            "count": 155,
+            "pct": 87.5706,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_17_P": {
+            "label": "Non-User",
+            "groupName": "Brand B Usage",
+            "n": 177,
+            "count": 138,
+            "pct": 77.9661,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          }
+        },
+        "Primary Care Physician (General Medicine, Family Medicine)": {
+          "stat_letter": "A",
+          "row_0_Total": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 75,
+            "count": 75,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_1_T": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 75,
+            "count": 75,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_2_A": {
+            "label": "Primary Care Physician (General Medicine, Family Medicine)",
+            "groupName": "Specialty",
+            "n": 75,
+            "count": 75,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "higher"
+          },
+          "row_3_B": {
+            "label": "Pediatrician",
+            "groupName": "Specialty",
+            "n": 75,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_4_C": {
+            "label": "Private",
+            "groupName": "Private vs. Public",
+            "n": 75,
+            "count": 60,
+            "pct": 80,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_5_D": {
+            "label": "Public",
+            "groupName": "Private vs. Public",
+            "n": 75,
+            "count": 15,
+            "pct": 20,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "B",
+            "sig_vs_total": null
+          },
+          "row_6_E": {
+            "label": "Yes",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 75,
+            "count": 16,
+            "pct": 21.3333,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_7_F": {
+            "label": "No",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 75,
+            "count": 59,
+            "pct": 78.6667,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_8_G": {
+            "label": "Public/FQHC",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 75,
+            "count": 23,
+            "pct": 30.6667,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "B",
+            "sig_vs_total": null
+          },
+          "row_9_H": {
+            "label": "Non-User",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 75,
+            "count": 52,
+            "pct": 69.3333,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_10_I": {
+            "label": "IDN",
+            "groupName": "IDN vs. Independent",
+            "n": 75,
+            "count": 33,
+            "pct": 44,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "B",
+            "sig_vs_total": "higher"
+          },
+          "row_11_J": {
+            "label": "Independent",
+            "groupName": "IDN vs. Independent",
+            "n": 75,
+            "count": 42,
+            "pct": 56,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_12_K": {
+            "label": "Decision Maker",
+            "groupName": "Role in Decision Making",
+            "n": 75,
+            "count": 56,
+            "pct": 74.6667,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_13_L": {
+            "label": "Limited Input",
+            "groupName": "Role in Decision Making",
+            "n": 75,
+            "count": 19,
+            "pct": 25.3333,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_14_M": {
+            "label": "User",
+            "groupName": "Brand A Usage",
+            "n": 75,
+            "count": 70,
+            "pct": 93.3333,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "B",
+            "sig_vs_total": null
+          },
+          "row_15_N": {
+            "label": "Non-User",
+            "groupName": "Brand A Usage",
+            "n": 75,
+            "count": 52,
+            "pct": 69.3333,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_16_O": {
+            "label": "User",
+            "groupName": "Brand B Usage",
+            "n": 75,
+            "count": 70,
+            "pct": 93.3333,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "B",
+            "sig_vs_total": null
+          },
+          "row_17_P": {
+            "label": "Non-User",
+            "groupName": "Brand B Usage",
+            "n": 75,
+            "count": 52,
+            "pct": 69.3333,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          }
+        },
+        "Pediatrician": {
+          "stat_letter": "B",
+          "row_0_Total": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 102,
+            "count": 102,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_1_T": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 102,
+            "count": 102,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_2_A": {
+            "label": "Primary Care Physician (General Medicine, Family Medicine)",
+            "groupName": "Specialty",
+            "n": 102,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_3_B": {
+            "label": "Pediatrician",
+            "groupName": "Specialty",
+            "n": 102,
+            "count": 102,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "higher"
+          },
+          "row_4_C": {
+            "label": "Private",
+            "groupName": "Private vs. Public",
+            "n": 102,
+            "count": 95,
+            "pct": 93.1373,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "A",
+            "sig_vs_total": null
+          },
+          "row_5_D": {
+            "label": "Public",
+            "groupName": "Private vs. Public",
+            "n": 102,
+            "count": 7,
+            "pct": 6.8627,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_6_E": {
+            "label": "Yes",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 102,
+            "count": 14,
+            "pct": 13.7255,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_7_F": {
+            "label": "No",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 102,
+            "count": 88,
+            "pct": 86.2745,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_8_G": {
+            "label": "Public/FQHC",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 102,
+            "count": 16,
+            "pct": 15.6863,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_9_H": {
+            "label": "Non-User",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 102,
+            "count": 86,
+            "pct": 84.3137,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "A",
+            "sig_vs_total": null
+          },
+          "row_10_I": {
+            "label": "IDN",
+            "groupName": "IDN vs. Independent",
+            "n": 102,
+            "count": 19,
+            "pct": 18.6275,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_11_J": {
+            "label": "Independent",
+            "groupName": "IDN vs. Independent",
+            "n": 102,
+            "count": 83,
+            "pct": 81.3725,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "A",
+            "sig_vs_total": "higher"
+          },
+          "row_12_K": {
+            "label": "Decision Maker",
+            "groupName": "Role in Decision Making",
+            "n": 102,
+            "count": 83,
+            "pct": 81.3725,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_13_L": {
+            "label": "Limited Input",
+            "groupName": "Role in Decision Making",
+            "n": 102,
+            "count": 19,
+            "pct": 18.6275,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_14_M": {
+            "label": "User",
+            "groupName": "Brand A Usage",
+            "n": 102,
+            "count": 85,
+            "pct": 83.3333,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_15_N": {
+            "label": "Non-User",
+            "groupName": "Brand A Usage",
+            "n": 102,
+            "count": 86,
+            "pct": 84.3137,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "A",
+            "sig_vs_total": null
+          },
+          "row_16_O": {
+            "label": "User",
+            "groupName": "Brand B Usage",
+            "n": 102,
+            "count": 85,
+            "pct": 83.3333,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_17_P": {
+            "label": "Non-User",
+            "groupName": "Brand B Usage",
+            "n": 102,
+            "count": 86,
+            "pct": 84.3137,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "A",
+            "sig_vs_total": null
+          }
+        },
+        "Private": {
+          "stat_letter": "C",
+          "row_0_Total": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 155,
+            "count": 155,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_1_T": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 155,
+            "count": 155,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_2_A": {
+            "label": "Primary Care Physician (General Medicine, Family Medicine)",
+            "groupName": "Specialty",
+            "n": 155,
+            "count": 60,
+            "pct": 38.7097,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_3_B": {
+            "label": "Pediatrician",
+            "groupName": "Specialty",
+            "n": 155,
+            "count": 95,
+            "pct": 61.2903,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "D",
+            "sig_vs_total": null
+          },
+          "row_4_C": {
+            "label": "Private",
+            "groupName": "Private vs. Public",
+            "n": 155,
+            "count": 155,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "higher"
+          },
+          "row_5_D": {
+            "label": "Public",
+            "groupName": "Private vs. Public",
+            "n": 155,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_6_E": {
+            "label": "Yes",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 155,
+            "count": 17,
+            "pct": 10.9677,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_7_F": {
+            "label": "No",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 155,
+            "count": 138,
+            "pct": 89.0323,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "D",
+            "sig_vs_total": null
+          },
+          "row_8_G": {
+            "label": "Public/FQHC",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 155,
+            "count": 17,
+            "pct": 10.9677,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_9_H": {
+            "label": "Non-User",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 155,
+            "count": 138,
+            "pct": 89.0323,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "D",
+            "sig_vs_total": "higher"
+          },
+          "row_10_I": {
+            "label": "IDN",
+            "groupName": "IDN vs. Independent",
+            "n": 155,
+            "count": 43,
+            "pct": 27.7419,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_11_J": {
+            "label": "Independent",
+            "groupName": "IDN vs. Independent",
+            "n": 155,
+            "count": 112,
+            "pct": 72.2581,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_12_K": {
+            "label": "Decision Maker",
+            "groupName": "Role in Decision Making",
+            "n": 155,
+            "count": 125,
+            "pct": 80.6452,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_13_L": {
+            "label": "Limited Input",
+            "groupName": "Role in Decision Making",
+            "n": 155,
+            "count": 30,
+            "pct": 19.3548,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_14_M": {
+            "label": "User",
+            "groupName": "Brand A Usage",
+            "n": 155,
+            "count": 133,
+            "pct": 85.8065,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_15_N": {
+            "label": "Non-User",
+            "groupName": "Brand A Usage",
+            "n": 155,
+            "count": 138,
+            "pct": 89.0323,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "D",
+            "sig_vs_total": "higher"
+          },
+          "row_16_O": {
+            "label": "User",
+            "groupName": "Brand B Usage",
+            "n": 155,
+            "count": 133,
+            "pct": 85.8065,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_17_P": {
+            "label": "Non-User",
+            "groupName": "Brand B Usage",
+            "n": 155,
+            "count": 138,
+            "pct": 89.0323,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "D",
+            "sig_vs_total": "higher"
+          }
+        },
+        "Public": {
+          "stat_letter": "D",
+          "row_0_Total": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 22,
+            "count": 22,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_1_T": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 22,
+            "count": 22,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_2_A": {
+            "label": "Primary Care Physician (General Medicine, Family Medicine)",
+            "groupName": "Specialty",
+            "n": 22,
+            "count": 15,
+            "pct": 68.1818,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "C",
+            "sig_vs_total": "higher"
+          },
+          "row_3_B": {
+            "label": "Pediatrician",
+            "groupName": "Specialty",
+            "n": 22,
+            "count": 7,
+            "pct": 31.8182,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_4_C": {
+            "label": "Private",
+            "groupName": "Private vs. Public",
+            "n": 22,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_5_D": {
+            "label": "Public",
+            "groupName": "Private vs. Public",
+            "n": 22,
+            "count": 22,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "higher"
+          },
+          "row_6_E": {
+            "label": "Yes",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 22,
+            "count": 13,
+            "pct": 59.0909,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "C",
+            "sig_vs_total": "higher"
+          },
+          "row_7_F": {
+            "label": "No",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 22,
+            "count": 9,
+            "pct": 40.9091,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_8_G": {
+            "label": "Public/FQHC",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 22,
+            "count": 22,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "C",
+            "sig_vs_total": "higher"
+          },
+          "row_9_H": {
+            "label": "Non-User",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 22,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_10_I": {
+            "label": "IDN",
+            "groupName": "IDN vs. Independent",
+            "n": 22,
+            "count": 9,
+            "pct": 40.9091,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_11_J": {
+            "label": "Independent",
+            "groupName": "IDN vs. Independent",
+            "n": 22,
+            "count": 13,
+            "pct": 59.0909,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_12_K": {
+            "label": "Decision Maker",
+            "groupName": "Role in Decision Making",
+            "n": 22,
+            "count": 14,
+            "pct": 63.6364,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_13_L": {
+            "label": "Limited Input",
+            "groupName": "Role in Decision Making",
+            "n": 22,
+            "count": 8,
+            "pct": 36.3636,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_14_M": {
+            "label": "User",
+            "groupName": "Brand A Usage",
+            "n": 22,
+            "count": 22,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "C",
+            "sig_vs_total": "higher"
+          },
+          "row_15_N": {
+            "label": "Non-User",
+            "groupName": "Brand A Usage",
+            "n": 22,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_16_O": {
+            "label": "User",
+            "groupName": "Brand B Usage",
+            "n": 22,
+            "count": 22,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "C",
+            "sig_vs_total": "higher"
+          },
+          "row_17_P": {
+            "label": "Non-User",
+            "groupName": "Brand B Usage",
+            "n": 22,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          }
+        },
+        "Yes": {
+          "stat_letter": "E",
+          "row_0_Total": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 30,
+            "count": 30,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_1_T": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 30,
+            "count": 30,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_2_A": {
+            "label": "Primary Care Physician (General Medicine, Family Medicine)",
+            "groupName": "Specialty",
+            "n": 30,
+            "count": 16,
+            "pct": 53.3333,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_3_B": {
+            "label": "Pediatrician",
+            "groupName": "Specialty",
+            "n": 30,
+            "count": 14,
+            "pct": 46.6667,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_4_C": {
+            "label": "Private",
+            "groupName": "Private vs. Public",
+            "n": 30,
+            "count": 17,
+            "pct": 56.6667,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_5_D": {
+            "label": "Public",
+            "groupName": "Private vs. Public",
+            "n": 30,
+            "count": 13,
+            "pct": 43.3333,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "F",
+            "sig_vs_total": "higher"
+          },
+          "row_6_E": {
+            "label": "Yes",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 30,
+            "count": 30,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "higher"
+          },
+          "row_7_F": {
+            "label": "No",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 30,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_8_G": {
+            "label": "Public/FQHC",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 30,
+            "count": 30,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "F",
+            "sig_vs_total": "higher"
+          },
+          "row_9_H": {
+            "label": "Non-User",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 30,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_10_I": {
+            "label": "IDN",
+            "groupName": "IDN vs. Independent",
+            "n": 30,
+            "count": 13,
+            "pct": 43.3333,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "F",
+            "sig_vs_total": null
+          },
+          "row_11_J": {
+            "label": "Independent",
+            "groupName": "IDN vs. Independent",
+            "n": 30,
+            "count": 17,
+            "pct": 56.6667,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_12_K": {
+            "label": "Decision Maker",
+            "groupName": "Role in Decision Making",
+            "n": 30,
+            "count": 22,
+            "pct": 73.3333,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_13_L": {
+            "label": "Limited Input",
+            "groupName": "Role in Decision Making",
+            "n": 30,
+            "count": 8,
+            "pct": 26.6667,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_14_M": {
+            "label": "User",
+            "groupName": "Brand A Usage",
+            "n": 30,
+            "count": 30,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "F",
+            "sig_vs_total": "higher"
+          },
+          "row_15_N": {
+            "label": "Non-User",
+            "groupName": "Brand A Usage",
+            "n": 30,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_16_O": {
+            "label": "User",
+            "groupName": "Brand B Usage",
+            "n": 30,
+            "count": 30,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "F",
+            "sig_vs_total": "higher"
+          },
+          "row_17_P": {
+            "label": "Non-User",
+            "groupName": "Brand B Usage",
+            "n": 30,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          }
+        },
+        "No": {
+          "stat_letter": "F",
+          "row_0_Total": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 147,
+            "count": 147,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_1_T": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 147,
+            "count": 147,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_2_A": {
+            "label": "Primary Care Physician (General Medicine, Family Medicine)",
+            "groupName": "Specialty",
+            "n": 147,
+            "count": 59,
+            "pct": 40.1361,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_3_B": {
+            "label": "Pediatrician",
+            "groupName": "Specialty",
+            "n": 147,
+            "count": 88,
+            "pct": 59.8639,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_4_C": {
+            "label": "Private",
+            "groupName": "Private vs. Public",
+            "n": 147,
+            "count": 138,
+            "pct": 93.8776,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "E",
+            "sig_vs_total": "higher"
+          },
+          "row_5_D": {
+            "label": "Public",
+            "groupName": "Private vs. Public",
+            "n": 147,
+            "count": 9,
+            "pct": 6.1224,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_6_E": {
+            "label": "Yes",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 147,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_7_F": {
+            "label": "No",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 147,
+            "count": 147,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "higher"
+          },
+          "row_8_G": {
+            "label": "Public/FQHC",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 147,
+            "count": 9,
+            "pct": 6.1224,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_9_H": {
+            "label": "Non-User",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 147,
+            "count": 138,
+            "pct": 93.8776,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "E",
+            "sig_vs_total": "higher"
+          },
+          "row_10_I": {
+            "label": "IDN",
+            "groupName": "IDN vs. Independent",
+            "n": 147,
+            "count": 39,
+            "pct": 26.5306,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_11_J": {
+            "label": "Independent",
+            "groupName": "IDN vs. Independent",
+            "n": 147,
+            "count": 108,
+            "pct": 73.4694,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "E",
+            "sig_vs_total": null
+          },
+          "row_12_K": {
+            "label": "Decision Maker",
+            "groupName": "Role in Decision Making",
+            "n": 147,
+            "count": 117,
+            "pct": 79.5918,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_13_L": {
+            "label": "Limited Input",
+            "groupName": "Role in Decision Making",
+            "n": 147,
+            "count": 30,
+            "pct": 20.4082,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_14_M": {
+            "label": "User",
+            "groupName": "Brand A Usage",
+            "n": 147,
+            "count": 125,
+            "pct": 85.034,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_15_N": {
+            "label": "Non-User",
+            "groupName": "Brand A Usage",
+            "n": 147,
+            "count": 138,
+            "pct": 93.8776,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "E",
+            "sig_vs_total": "higher"
+          },
+          "row_16_O": {
+            "label": "User",
+            "groupName": "Brand B Usage",
+            "n": 147,
+            "count": 125,
+            "pct": 85.034,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_17_P": {
+            "label": "Non-User",
+            "groupName": "Brand B Usage",
+            "n": 147,
+            "count": 138,
+            "pct": 93.8776,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "E",
+            "sig_vs_total": "higher"
+          }
+        },
+        "Public/FQHC": {
+          "stat_letter": "G",
+          "row_0_Total": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 39,
+            "count": 39,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_1_T": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 39,
+            "count": 39,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_2_A": {
+            "label": "Primary Care Physician (General Medicine, Family Medicine)",
+            "groupName": "Specialty",
+            "n": 39,
+            "count": 23,
+            "pct": 58.9744,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "H",
+            "sig_vs_total": "higher"
+          },
+          "row_3_B": {
+            "label": "Pediatrician",
+            "groupName": "Specialty",
+            "n": 39,
+            "count": 16,
+            "pct": 41.0256,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_4_C": {
+            "label": "Private",
+            "groupName": "Private vs. Public",
+            "n": 39,
+            "count": 17,
+            "pct": 43.5897,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_5_D": {
+            "label": "Public",
+            "groupName": "Private vs. Public",
+            "n": 39,
+            "count": 22,
+            "pct": 56.4103,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "H",
+            "sig_vs_total": "higher"
+          },
+          "row_6_E": {
+            "label": "Yes",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 39,
+            "count": 30,
+            "pct": 76.9231,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "H",
+            "sig_vs_total": "higher"
+          },
+          "row_7_F": {
+            "label": "No",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 39,
+            "count": 9,
+            "pct": 23.0769,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_8_G": {
+            "label": "Public/FQHC",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 39,
+            "count": 39,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "higher"
+          },
+          "row_9_H": {
+            "label": "Non-User",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 39,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_10_I": {
+            "label": "IDN",
+            "groupName": "IDN vs. Independent",
+            "n": 39,
+            "count": 16,
+            "pct": 41.0256,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "H",
+            "sig_vs_total": null
+          },
+          "row_11_J": {
+            "label": "Independent",
+            "groupName": "IDN vs. Independent",
+            "n": 39,
+            "count": 23,
+            "pct": 58.9744,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_12_K": {
+            "label": "Decision Maker",
+            "groupName": "Role in Decision Making",
+            "n": 39,
+            "count": 29,
+            "pct": 74.359,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_13_L": {
+            "label": "Limited Input",
+            "groupName": "Role in Decision Making",
+            "n": 39,
+            "count": 10,
+            "pct": 25.641,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_14_M": {
+            "label": "User",
+            "groupName": "Brand A Usage",
+            "n": 39,
+            "count": 39,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "H",
+            "sig_vs_total": "higher"
+          },
+          "row_15_N": {
+            "label": "Non-User",
+            "groupName": "Brand A Usage",
+            "n": 39,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_16_O": {
+            "label": "User",
+            "groupName": "Brand B Usage",
+            "n": 39,
+            "count": 39,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "H",
+            "sig_vs_total": "higher"
+          },
+          "row_17_P": {
+            "label": "Non-User",
+            "groupName": "Brand B Usage",
+            "n": 39,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          }
+        },
+        "Non-User": {
+          "stat_letter": "H",
+          "row_0_Total": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 138,
+            "count": 138,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_1_T": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 138,
+            "count": 138,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_2_A": {
+            "label": "Primary Care Physician (General Medicine, Family Medicine)",
+            "groupName": "Specialty",
+            "n": 138,
+            "count": 52,
+            "pct": 37.6812,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_3_B": {
+            "label": "Pediatrician",
+            "groupName": "Specialty",
+            "n": 138,
+            "count": 86,
+            "pct": 62.3188,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "G",
+            "sig_vs_total": null
+          },
+          "row_4_C": {
+            "label": "Private",
+            "groupName": "Private vs. Public",
+            "n": 138,
+            "count": 138,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "G",
+            "sig_vs_total": "higher"
+          },
+          "row_5_D": {
+            "label": "Public",
+            "groupName": "Private vs. Public",
+            "n": 138,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_6_E": {
+            "label": "Yes",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 138,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_7_F": {
+            "label": "No",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 138,
+            "count": 138,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "G",
+            "sig_vs_total": "higher"
+          },
+          "row_8_G": {
+            "label": "Public/FQHC",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 138,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_9_H": {
+            "label": "Non-User",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 138,
+            "count": 138,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "higher"
+          },
+          "row_10_I": {
+            "label": "IDN",
+            "groupName": "IDN vs. Independent",
+            "n": 138,
+            "count": 36,
+            "pct": 26.087,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_11_J": {
+            "label": "Independent",
+            "groupName": "IDN vs. Independent",
+            "n": 138,
+            "count": 102,
+            "pct": 73.913,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "G",
+            "sig_vs_total": null
+          },
+          "row_12_K": {
+            "label": "Decision Maker",
+            "groupName": "Role in Decision Making",
+            "n": 138,
+            "count": 110,
+            "pct": 79.7101,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_13_L": {
+            "label": "Limited Input",
+            "groupName": "Role in Decision Making",
+            "n": 138,
+            "count": 28,
+            "pct": 20.2899,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_14_M": {
+            "label": "User",
+            "groupName": "Brand A Usage",
+            "n": 138,
+            "count": 116,
+            "pct": 84.058,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_15_N": {
+            "label": "Non-User",
+            "groupName": "Brand A Usage",
+            "n": 138,
+            "count": 138,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "higher"
+          },
+          "row_16_O": {
+            "label": "User",
+            "groupName": "Brand B Usage",
+            "n": 138,
+            "count": 116,
+            "pct": 84.058,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_17_P": {
+            "label": "Non-User",
+            "groupName": "Brand B Usage",
+            "n": 138,
+            "count": 138,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "higher"
+          }
+        },
+        "IDN": {
+          "stat_letter": "I",
+          "row_0_Total": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 52,
+            "count": 52,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_1_T": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 52,
+            "count": 52,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_2_A": {
+            "label": "Primary Care Physician (General Medicine, Family Medicine)",
+            "groupName": "Specialty",
+            "n": 52,
+            "count": 33,
+            "pct": 63.4615,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "J",
+            "sig_vs_total": "higher"
+          },
+          "row_3_B": {
+            "label": "Pediatrician",
+            "groupName": "Specialty",
+            "n": 52,
+            "count": 19,
+            "pct": 36.5385,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_4_C": {
+            "label": "Private",
+            "groupName": "Private vs. Public",
+            "n": 52,
+            "count": 43,
+            "pct": 82.6923,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_5_D": {
+            "label": "Public",
+            "groupName": "Private vs. Public",
+            "n": 52,
+            "count": 9,
+            "pct": 17.3077,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_6_E": {
+            "label": "Yes",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 52,
+            "count": 13,
+            "pct": 25,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "J",
+            "sig_vs_total": null
+          },
+          "row_7_F": {
+            "label": "No",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 52,
+            "count": 39,
+            "pct": 75,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_8_G": {
+            "label": "Public/FQHC",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 52,
+            "count": 16,
+            "pct": 30.7692,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "J",
+            "sig_vs_total": null
+          },
+          "row_9_H": {
+            "label": "Non-User",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 52,
+            "count": 36,
+            "pct": 69.2308,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_10_I": {
+            "label": "IDN",
+            "groupName": "IDN vs. Independent",
+            "n": 52,
+            "count": 52,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "higher"
+          },
+          "row_11_J": {
+            "label": "Independent",
+            "groupName": "IDN vs. Independent",
+            "n": 52,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_12_K": {
+            "label": "Decision Maker",
+            "groupName": "Role in Decision Making",
+            "n": 52,
+            "count": 38,
+            "pct": 73.0769,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_13_L": {
+            "label": "Limited Input",
+            "groupName": "Role in Decision Making",
+            "n": 52,
+            "count": 14,
+            "pct": 26.9231,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_14_M": {
+            "label": "User",
+            "groupName": "Brand A Usage",
+            "n": 52,
+            "count": 50,
+            "pct": 96.1538,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "J",
+            "sig_vs_total": "higher"
+          },
+          "row_15_N": {
+            "label": "Non-User",
+            "groupName": "Brand A Usage",
+            "n": 52,
+            "count": 36,
+            "pct": 69.2308,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_16_O": {
+            "label": "User",
+            "groupName": "Brand B Usage",
+            "n": 52,
+            "count": 50,
+            "pct": 96.1538,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "J",
+            "sig_vs_total": "higher"
+          },
+          "row_17_P": {
+            "label": "Non-User",
+            "groupName": "Brand B Usage",
+            "n": 52,
+            "count": 36,
+            "pct": 69.2308,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          }
+        },
+        "Independent": {
+          "stat_letter": "J",
+          "row_0_Total": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 125,
+            "count": 125,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_1_T": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 125,
+            "count": 125,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_2_A": {
+            "label": "Primary Care Physician (General Medicine, Family Medicine)",
+            "groupName": "Specialty",
+            "n": 125,
+            "count": 42,
+            "pct": 33.6,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_3_B": {
+            "label": "Pediatrician",
+            "groupName": "Specialty",
+            "n": 125,
+            "count": 83,
+            "pct": 66.4,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "I",
+            "sig_vs_total": null
+          },
+          "row_4_C": {
+            "label": "Private",
+            "groupName": "Private vs. Public",
+            "n": 125,
+            "count": 112,
+            "pct": 89.6,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_5_D": {
+            "label": "Public",
+            "groupName": "Private vs. Public",
+            "n": 125,
+            "count": 13,
+            "pct": 10.4,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_6_E": {
+            "label": "Yes",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 125,
+            "count": 17,
+            "pct": 13.6,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_7_F": {
+            "label": "No",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 125,
+            "count": 108,
+            "pct": 86.4,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "I",
+            "sig_vs_total": null
+          },
+          "row_8_G": {
+            "label": "Public/FQHC",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 125,
+            "count": 23,
+            "pct": 18.4,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_9_H": {
+            "label": "Non-User",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 125,
+            "count": 102,
+            "pct": 81.6,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "I",
+            "sig_vs_total": null
+          },
+          "row_10_I": {
+            "label": "IDN",
+            "groupName": "IDN vs. Independent",
+            "n": 125,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_11_J": {
+            "label": "Independent",
+            "groupName": "IDN vs. Independent",
+            "n": 125,
+            "count": 125,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "higher"
+          },
+          "row_12_K": {
+            "label": "Decision Maker",
+            "groupName": "Role in Decision Making",
+            "n": 125,
+            "count": 101,
+            "pct": 80.8,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_13_L": {
+            "label": "Limited Input",
+            "groupName": "Role in Decision Making",
+            "n": 125,
+            "count": 24,
+            "pct": 19.2,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_14_M": {
+            "label": "User",
+            "groupName": "Brand A Usage",
+            "n": 125,
+            "count": 105,
+            "pct": 84,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_15_N": {
+            "label": "Non-User",
+            "groupName": "Brand A Usage",
+            "n": 125,
+            "count": 102,
+            "pct": 81.6,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "I",
+            "sig_vs_total": null
+          },
+          "row_16_O": {
+            "label": "User",
+            "groupName": "Brand B Usage",
+            "n": 125,
+            "count": 105,
+            "pct": 84,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_17_P": {
+            "label": "Non-User",
+            "groupName": "Brand B Usage",
+            "n": 125,
+            "count": 102,
+            "pct": 81.6,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "I",
+            "sig_vs_total": null
+          }
+        },
+        "Decision Maker": {
+          "stat_letter": "K",
+          "row_0_Total": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 139,
+            "count": 139,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_1_T": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 139,
+            "count": 139,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_2_A": {
+            "label": "Primary Care Physician (General Medicine, Family Medicine)",
+            "groupName": "Specialty",
+            "n": 139,
+            "count": 56,
+            "pct": 40.2878,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_3_B": {
+            "label": "Pediatrician",
+            "groupName": "Specialty",
+            "n": 139,
+            "count": 83,
+            "pct": 59.7122,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_4_C": {
+            "label": "Private",
+            "groupName": "Private vs. Public",
+            "n": 139,
+            "count": 125,
+            "pct": 89.9281,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_5_D": {
+            "label": "Public",
+            "groupName": "Private vs. Public",
+            "n": 139,
+            "count": 14,
+            "pct": 10.0719,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_6_E": {
+            "label": "Yes",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 139,
+            "count": 22,
+            "pct": 15.8273,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_7_F": {
+            "label": "No",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 139,
+            "count": 117,
+            "pct": 84.1727,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_8_G": {
+            "label": "Public/FQHC",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 139,
+            "count": 29,
+            "pct": 20.8633,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_9_H": {
+            "label": "Non-User",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 139,
+            "count": 110,
+            "pct": 79.1367,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_10_I": {
+            "label": "IDN",
+            "groupName": "IDN vs. Independent",
+            "n": 139,
+            "count": 38,
+            "pct": 27.3381,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_11_J": {
+            "label": "Independent",
+            "groupName": "IDN vs. Independent",
+            "n": 139,
+            "count": 101,
+            "pct": 72.6619,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_12_K": {
+            "label": "Decision Maker",
+            "groupName": "Role in Decision Making",
+            "n": 139,
+            "count": 139,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "higher"
+          },
+          "row_13_L": {
+            "label": "Limited Input",
+            "groupName": "Role in Decision Making",
+            "n": 139,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_14_M": {
+            "label": "User",
+            "groupName": "Brand A Usage",
+            "n": 139,
+            "count": 122,
+            "pct": 87.7698,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_15_N": {
+            "label": "Non-User",
+            "groupName": "Brand A Usage",
+            "n": 139,
+            "count": 110,
+            "pct": 79.1367,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_16_O": {
+            "label": "User",
+            "groupName": "Brand B Usage",
+            "n": 139,
+            "count": 122,
+            "pct": 87.7698,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_17_P": {
+            "label": "Non-User",
+            "groupName": "Brand B Usage",
+            "n": 139,
+            "count": 110,
+            "pct": 79.1367,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          }
+        },
+        "Limited Input": {
+          "stat_letter": "L",
+          "row_0_Total": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 38,
+            "count": 38,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_1_T": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 38,
+            "count": 38,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_2_A": {
+            "label": "Primary Care Physician (General Medicine, Family Medicine)",
+            "groupName": "Specialty",
+            "n": 38,
+            "count": 19,
+            "pct": 50,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_3_B": {
+            "label": "Pediatrician",
+            "groupName": "Specialty",
+            "n": 38,
+            "count": 19,
+            "pct": 50,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_4_C": {
+            "label": "Private",
+            "groupName": "Private vs. Public",
+            "n": 38,
+            "count": 30,
+            "pct": 78.9474,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_5_D": {
+            "label": "Public",
+            "groupName": "Private vs. Public",
+            "n": 38,
+            "count": 8,
+            "pct": 21.0526,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_6_E": {
+            "label": "Yes",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 38,
+            "count": 8,
+            "pct": 21.0526,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_7_F": {
+            "label": "No",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 38,
+            "count": 30,
+            "pct": 78.9474,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_8_G": {
+            "label": "Public/FQHC",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 38,
+            "count": 10,
+            "pct": 26.3158,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_9_H": {
+            "label": "Non-User",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 38,
+            "count": 28,
+            "pct": 73.6842,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_10_I": {
+            "label": "IDN",
+            "groupName": "IDN vs. Independent",
+            "n": 38,
+            "count": 14,
+            "pct": 36.8421,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_11_J": {
+            "label": "Independent",
+            "groupName": "IDN vs. Independent",
+            "n": 38,
+            "count": 24,
+            "pct": 63.1579,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_12_K": {
+            "label": "Decision Maker",
+            "groupName": "Role in Decision Making",
+            "n": 38,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "lower"
+          },
+          "row_13_L": {
+            "label": "Limited Input",
+            "groupName": "Role in Decision Making",
+            "n": 38,
+            "count": 38,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": "higher"
+          },
+          "row_14_M": {
+            "label": "User",
+            "groupName": "Brand A Usage",
+            "n": 38,
+            "count": 33,
+            "pct": 86.8421,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_15_N": {
+            "label": "Non-User",
+            "groupName": "Brand A Usage",
+            "n": 38,
+            "count": 28,
+            "pct": 73.6842,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_16_O": {
+            "label": "User",
+            "groupName": "Brand B Usage",
+            "n": 38,
+            "count": 33,
+            "pct": 86.8421,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_17_P": {
+            "label": "Non-User",
+            "groupName": "Brand B Usage",
+            "n": 38,
+            "count": 28,
+            "pct": 73.6842,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          }
+        },
+        "User": {
+          "stat_letter": "M",
+          "row_0_Total": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 155,
+            "count": 155,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_1_T": {
+            "label": "Total",
+            "groupName": "Total",
+            "n": 155,
+            "count": 155,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_2_A": {
+            "label": "Primary Care Physician (General Medicine, Family Medicine)",
+            "groupName": "Specialty",
+            "n": 155,
+            "count": 70,
+            "pct": 45.1613,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_3_B": {
+            "label": "Pediatrician",
+            "groupName": "Specialty",
+            "n": 155,
+            "count": 85,
+            "pct": 54.8387,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_4_C": {
+            "label": "Private",
+            "groupName": "Private vs. Public",
+            "n": 155,
+            "count": 133,
+            "pct": 85.8065,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_5_D": {
+            "label": "Public",
+            "groupName": "Private vs. Public",
+            "n": 155,
+            "count": 22,
+            "pct": 14.1935,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "H",
+            "sig_vs_total": null
+          },
+          "row_6_E": {
+            "label": "Yes",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 155,
+            "count": 30,
+            "pct": 19.3548,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "H",
+            "sig_vs_total": null
+          },
+          "row_7_F": {
+            "label": "No",
+            "groupName": "FQHC vs. Non-FQHC",
+            "n": 155,
+            "count": 125,
+            "pct": 80.6452,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_8_G": {
+            "label": "Public/FQHC",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 155,
+            "count": 39,
+            "pct": 25.1613,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "H",
+            "sig_vs_total": null
+          },
+          "row_9_H": {
+            "label": "Non-User",
+            "groupName": "Public/FQHC vs. Not",
+            "n": 155,
+            "count": 116,
+            "pct": 74.8387,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_10_I": {
+            "label": "IDN",
+            "groupName": "IDN vs. Independent",
+            "n": 155,
+            "count": 50,
+            "pct": 32.2581,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_11_J": {
+            "label": "Independent",
+            "groupName": "IDN vs. Independent",
+            "n": 155,
+            "count": 105,
+            "pct": 67.7419,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_12_K": {
+            "label": "Decision Maker",
+            "groupName": "Role in Decision Making",
+            "n": 155,
+            "count": 122,
+            "pct": 78.7097,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_13_L": {
+            "label": "Limited Input",
+            "groupName": "Role in Decision Making",
+            "n": 155,
+            "count": 33,
+            "pct": 21.2903,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_14_M": {
+            "label": "User",
+            "groupName": "Brand A Usage",
+            "n": 155,
+            "count": 155,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "H",
+            "sig_vs_total": "higher"
+          },
+          "row_15_N": {
+            "label": "Non-User",
+            "groupName": "Brand A Usage",
+            "n": 155,
+            "count": 116,
+            "pct": 74.8387,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "row_16_O": {
+            "label": "User",
+            "groupName": "Brand B Usage",
+            "n": 155,
+            "count": 155,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_higher_than": "H",
+            "sig_vs_total": "higher"
+          },
+          "row_17_P": {
+            "label": "Non-User",
+            "groupName": "Brand B Usage",
+            "n": 155,
+            "count": 116,
+            "pct": 74.8387,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          }
+        }
+      }
+    },
+    "s2": {
+      "tableId": "s2",
+      "questionId": "S2",
+      "questionText": "ADVERSE EVENTS We are obligated to disclose to the company sponsoring this study any adverse events that are reported about a product they make (e.g., undesirable change of health, side effects during treatment, lack of effectiveness, etc.) so that they can report this to the regulatory authorities. We ask for only the minimum amount of information needed to satisfy the adverse event reporting requirements. If you do mention a drug-related adverse event, we will ask if you are willing to waive the confidentiality given to you under the Market Research Codes of conduct specifically in relation to that adverse event. We will request to disclose your name and contact information to the research sponsor, who would use it only for the purpose of complying with their obligations to the regulatory authorities. Everything else you say during the course of the interview will continue to remain confidential, and you will still have the option to remain anonymous if you so wish. Are you willing to proceed with the screening on this basis?",
+      "tableType": "frequency",
+      "isDerived": false,
+      "sourceTableId": "s2",
+      "surveySection": "SCREENER",
+      "baseText": "",
+      "userNote": "(Selecting \"No\" terminates the survey.)",
+      "tableSubtitle": "",
+      "excluded": false,
+      "excludeReason": "",
+      "data": {
+        "Total": {
+          "stat_letter": "T",
+          "S2_row_1": {
+            "label": "Yes",
+            "n": 177,
+            "count": 177,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "S2_row_2": {
+            "label": "No",
+            "n": 177,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          }
+        },
+        "Primary Care Physician (General Medicine, Family Medicine)": {
+          "stat_letter": "A",
+          "S2_row_1": {
+            "label": "Yes",
+            "n": 75,
+            "count": 75,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "S2_row_2": {
+            "label": "No",
+            "n": 75,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          }
+        },
+        "Pediatrician": {
+          "stat_letter": "B",
+          "S2_row_1": {
+            "label": "Yes",
+            "n": 102,
+            "count": 102,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "S2_row_2": {
+            "label": "No",
+            "n": 102,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          }
+        },
+        "Private": {
+          "stat_letter": "C",
+          "S2_row_1": {
+            "label": "Yes",
+            "n": 155,
+            "count": 155,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "S2_row_2": {
+            "label": "No",
+            "n": 155,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          }
+        },
+        "Public": {
+          "stat_letter": "D",
+          "S2_row_1": {
+            "label": "Yes",
+            "n": 22,
+            "count": 22,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "S2_row_2": {
+            "label": "No",
+            "n": 22,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          }
+        },
+        "Yes": {
+          "stat_letter": "E",
+          "S2_row_1": {
+            "label": "Yes",
+            "n": 30,
+            "count": 30,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "S2_row_2": {
+            "label": "No",
+            "n": 30,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          }
+        },
+        "No": {
+          "stat_letter": "F",
+          "S2_row_1": {
+            "label": "Yes",
+            "n": 147,
+            "count": 147,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "S2_row_2": {
+            "label": "No",
+            "n": 147,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          }
+        },
+        "Public/FQHC": {
+          "stat_letter": "G",
+          "S2_row_1": {
+            "label": "Yes",
+            "n": 39,
+            "count": 39,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "S2_row_2": {
+            "label": "No",
+            "n": 39,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          }
+        },
+        "Non-User": {
+          "stat_letter": "H",
+          "S2_row_1": {
+            "label": "Yes",
+            "n": 138,
+            "count": 138,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "S2_row_2": {
+            "label": "No",
+            "n": 138,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          }
+        },
+        "IDN": {
+          "stat_letter": "I",
+          "S2_row_1": {
+            "label": "Yes",
+            "n": 52,
+            "count": 52,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "S2_row_2": {
+            "label": "No",
+            "n": 52,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          }
+        },
+        "Independent": {
+          "stat_letter": "J",
+          "S2_row_1": {
+            "label": "Yes",
+            "n": 125,
+            "count": 125,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "S2_row_2": {
+            "label": "No",
+            "n": 125,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          }
+        },
+        "Decision Maker": {
+          "stat_letter": "K",
+          "S2_row_1": {
+            "label": "Yes",
+            "n": 139,
+            "count": 139,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "S2_row_2": {
+            "label": "No",
+            "n": 139,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          }
+        },
+        "Limited Input": {
+          "stat_letter": "L",
+          "S2_row_1": {
+            "label": "Yes",
+            "n": 38,
+            "count": 38,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "S2_row_2": {
+            "label": "No",
+            "n": 38,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          }
+        },
+        "User": {
+          "stat_letter": "M",
+          "S2_row_1": {
+            "label": "Yes",
+            "n": 155,
+            "count": 155,
+            "pct": 100,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          },
+          "S2_row_2": {
+            "label": "No",
+            "n": 155,
+            "count": 0,
+            "pct": 0,
+            "isNet": false,
+            "indent": 0,
+            "sig_vs_total": null
+          }
+        }
+      }
+    }
+  }
+}

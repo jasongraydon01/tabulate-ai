@@ -1,0 +1,2326 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tabulate AI — Design System</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================
+   DESIGN TOKENS
+   ============================================ */
+:root {
+  /* Typography */
+  --font-display: 'Instrument Serif', Georgia, serif;
+  --font-body: 'Outfit', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Type Scale */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 2rem;
+  --text-4xl: 2.5rem;
+  --text-5xl: 3.5rem;
+  --text-6xl: 4.5rem;
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-24: 6rem;
+  --space-32: 8rem;
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* Transitions */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+  --duration-slow: 400ms;
+}
+
+/* Dark Theme (Primary) */
+.dark {
+  --bg-primary: #0a0b0f;
+  --bg-secondary: #12131a;
+  --bg-elevated: #1a1b24;
+  --bg-surface: #22232e;
+  --bg-surface-hover: #2a2b38;
+
+  --text-primary: #eaedf3;
+  --text-secondary: #8b8fa4;
+  --text-tertiary: #555770;
+  --text-inverse: #0a0b0f;
+
+  --border: #1e2030;
+  --border-subtle: #161720;
+  --border-emphasis: #2e3048;
+
+  --accent-emerald: #34d399;
+  --accent-emerald-dim: rgba(52, 211, 153, 0.12);
+  --accent-amber: #fbbf24;
+  --accent-amber-dim: rgba(251, 191, 36, 0.12);
+  --accent-blue: #60a5fa;
+  --accent-blue-dim: rgba(96, 165, 250, 0.12);
+  --accent-red: #f87171;
+  --accent-red-dim: rgba(248, 113, 113, 0.12);
+  --accent-violet: #a78bfa;
+  --accent-violet-dim: rgba(167, 139, 250, 0.12);
+
+  --dot-color: rgba(255, 255, 255, 0.04);
+  --gradient-hero: linear-gradient(135deg, #0a0b0f 0%, #111320 50%, #0d0e16 100%);
+}
+
+/* Light Theme */
+.light {
+  --bg-primary: #f8f9fc;
+  --bg-secondary: #f0f1f6;
+  --bg-elevated: #ffffff;
+  --bg-surface: #f4f5f9;
+  --bg-surface-hover: #eaebf2;
+
+  --text-primary: #111328;
+  --text-secondary: #5c5f78;
+  --text-tertiary: #9496ac;
+  --text-inverse: #f8f9fc;
+
+  --border: #e2e4ee;
+  --border-subtle: #eceef5;
+  --border-emphasis: #cccee0;
+
+  --accent-emerald: #059669;
+  --accent-emerald-dim: rgba(5, 150, 105, 0.08);
+  --accent-amber: #d97706;
+  --accent-amber-dim: rgba(217, 119, 6, 0.08);
+  --accent-blue: #2563eb;
+  --accent-blue-dim: rgba(37, 99, 235, 0.08);
+  --accent-red: #dc2626;
+  --accent-red-dim: rgba(220, 38, 38, 0.08);
+  --accent-violet: #7c3aed;
+  --accent-violet-dim: rgba(124, 58, 237, 0.08);
+
+  --dot-color: rgba(0, 0, 0, 0.04);
+  --gradient-hero: linear-gradient(135deg, #f8f9fc 0%, #eef0f8 50%, #f4f5fb 100%);
+}
+
+/* ============================================
+   RESET & BASE
+   ============================================ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Dot grid background */
+.dot-grid {
+  background-image: radial-gradient(circle, var(--dot-color) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* ============================================
+   NAVIGATION
+   ============================================ */
+.nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  padding: var(--space-4) var(--space-8);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(10, 11, 15, 0.8);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+.light .nav { background: rgba(248, 249, 252, 0.85); }
+
+.nav-logo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  text-decoration: none;
+  color: var(--text-primary);
+}
+.nav-logo-mark {
+  width: 32px;
+  height: 32px;
+  background: var(--text-primary);
+  color: var(--text-inverse);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  border-radius: var(--radius-sm);
+}
+.nav-logo-text {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  letter-spacing: 0.02em;
+}
+.nav-logo-sub {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  list-style: none;
+}
+.nav-links a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  transition: color var(--duration-fast);
+}
+.nav-links a:hover { color: var(--text-primary); }
+
+.nav-cta {
+  background: var(--text-primary);
+  color: var(--text-inverse);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  border: none;
+  cursor: pointer;
+  transition: opacity var(--duration-fast);
+}
+.nav-cta:hover { opacity: 0.85; }
+
+#theme-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-base);
+  transition: all var(--duration-fast);
+}
+#theme-toggle:hover { border-color: var(--border-emphasis); color: var(--text-primary); }
+
+/* ============================================
+   HERO SECTION
+   ============================================ */
+.hero {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: var(--space-32) var(--space-8) var(--space-16);
+  background: var(--gradient-hero);
+  position: relative;
+  overflow: hidden;
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, var(--dot-color) 1px, transparent 1px);
+  background-size: 24px 24px;
+  pointer-events: none;
+}
+
+.hero-content {
+  max-width: 900px;
+  margin: 0 auto;
+  text-align: center;
+  position: relative;
+  z-index: 1;
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin-bottom: var(--space-8);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.hero-badge .dot {
+  width: 6px;
+  height: 6px;
+  background: var(--accent-emerald);
+  border-radius: 50%;
+  animation: pulse-dot 2s ease infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.hero h1 {
+  font-family: var(--font-display);
+  font-size: clamp(2.5rem, 6vw, var(--text-6xl));
+  font-weight: 400;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin-bottom: var(--space-6);
+}
+
+.hero p {
+  font-size: clamp(1rem, 1.5vw, var(--text-lg));
+  color: var(--text-secondary);
+  max-width: 600px;
+  margin: 0 auto var(--space-8);
+  line-height: 1.7;
+}
+
+.hero-actions {
+  display: flex;
+  gap: var(--space-4);
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--text-primary);
+  color: var(--text-inverse);
+  padding: var(--space-3) var(--space-6);
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  border: none;
+  cursor: pointer;
+  transition: all var(--duration-base) var(--ease-out);
+  text-decoration: none;
+}
+.btn-primary:hover { opacity: 0.85; transform: translateY(-1px); }
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: transparent;
+  color: var(--text-secondary);
+  padding: var(--space-3) var(--space-6);
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: var(--text-sm);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all var(--duration-base) var(--ease-out);
+  text-decoration: none;
+}
+.btn-secondary:hover { border-color: var(--border-emphasis); color: var(--text-primary); }
+
+/* Crosstab preview in hero */
+.hero-visual {
+  margin-top: var(--space-16);
+  position: relative;
+}
+.hero-table {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  max-width: 720px;
+  margin: 0 auto;
+  font-size: var(--text-sm);
+}
+.hero-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.hero-table th {
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  font-weight: 600;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+.hero-table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+.hero-table tr:last-child td { border-bottom: none; }
+.hero-table .val {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.hero-table .sig {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--accent-emerald);
+  vertical-align: super;
+  margin-left: 2px;
+}
+.hero-table-label {
+  text-align: center;
+  padding: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+  font-family: var(--font-mono);
+}
+
+/* ============================================
+   METRICS STRIP
+   ============================================ */
+.metrics-strip {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-16);
+  padding: var(--space-12) var(--space-8);
+  border-bottom: 1px solid var(--border);
+}
+.metric {
+  text-align: center;
+}
+.metric-value {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xl);
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1;
+}
+.metric-label {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: var(--space-2);
+}
+
+/* ============================================
+   SECTIONS (shared)
+   ============================================ */
+.section {
+  padding: var(--space-24) var(--space-8);
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.section-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: var(--space-4);
+}
+.section-title {
+  font-family: var(--font-display);
+  font-size: clamp(1.8rem, 3vw, var(--text-4xl));
+  font-weight: 400;
+  line-height: 1.2;
+  margin-bottom: var(--space-4);
+}
+.section-subtitle {
+  font-size: var(--text-lg);
+  color: var(--text-secondary);
+  max-width: 600px;
+  line-height: 1.7;
+}
+
+/* ============================================
+   HOW IT WORKS — Pipeline
+   ============================================ */
+.pipeline-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-6);
+  margin-top: var(--space-12);
+}
+.pipeline-step {
+  position: relative;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  transition: border-color var(--duration-base);
+}
+.pipeline-step:hover { border-color: var(--border-emphasis); }
+.pipeline-step-number {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-3);
+}
+.pipeline-step h3 {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  margin-bottom: var(--space-2);
+}
+.pipeline-step p {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+.pipeline-step-files {
+  margin-top: var(--space-4);
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.file-chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: var(--space-1) var(--space-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+
+/* Pipeline flow diagram */
+.pipeline-flow {
+  margin-top: var(--space-12);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-8);
+  position: relative;
+  overflow: hidden;
+}
+.pipeline-flow::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, var(--dot-color) 1px, transparent 1px);
+  background-size: 20px 20px;
+  pointer-events: none;
+}
+
+.flow-paths {
+  display: grid;
+  grid-template-columns: 120px 1fr 100px 1fr 120px;
+  gap: var(--space-4);
+  align-items: center;
+  position: relative;
+}
+.flow-node {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-xs);
+  text-align: center;
+  position: relative;
+  z-index: 1;
+}
+.flow-node-label {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.flow-node-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-top: 2px;
+}
+.flow-source {
+  border-color: var(--accent-blue);
+  background: var(--accent-blue-dim);
+}
+.flow-output {
+  border-color: var(--accent-emerald);
+  background: var(--accent-emerald-dim);
+}
+.flow-parallel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.flow-path-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-tertiary);
+  letter-spacing: 0.05em;
+}
+.flow-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  font-size: var(--text-xl);
+}
+.flow-converge {
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+}
+
+/* ============================================
+   FEATURES — Agent Grid
+   ============================================ */
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+  margin-top: var(--space-12);
+}
+.feature-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  transition: all var(--duration-base) var(--ease-out);
+  position: relative;
+  overflow: hidden;
+}
+.feature-card:hover {
+  border-color: var(--border-emphasis);
+  transform: translateY(-2px);
+}
+.feature-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+}
+.feature-card.agent-banner::before { background: var(--accent-blue); }
+.feature-card.agent-crosstab::before { background: var(--accent-violet); }
+.feature-card.agent-skiplogic::before { background: var(--accent-amber); }
+.feature-card.agent-filter::before { background: var(--accent-emerald); }
+.feature-card.agent-verify::before { background: var(--accent-red); }
+.feature-card.agent-loop::before { background: var(--text-tertiary); }
+
+.feature-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-lg);
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+.feature-card h3 {
+  font-size: var(--text-base);
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+.feature-card p {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+.feature-tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-tertiary);
+  margin-top: var(--space-3);
+  padding: 2px var(--space-2);
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
+}
+
+/* ============================================
+   BLOG PREVIEW
+   ============================================ */
+.blog-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-6);
+  margin-top: var(--space-12);
+}
+.blog-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  transition: all var(--duration-base) var(--ease-out);
+}
+.blog-card:hover {
+  border-color: var(--border-emphasis);
+  transform: translateY(-2px);
+}
+.blog-card-image {
+  height: 160px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-3xl);
+  background-image: radial-gradient(circle, var(--dot-color) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+.blog-card-body {
+  padding: var(--space-6);
+}
+.blog-card-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent-blue);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: var(--space-2);
+}
+.blog-card h3 {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  margin-bottom: var(--space-2);
+}
+.blog-card p {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* ============================================
+   CTA SECTION
+   ============================================ */
+.cta-section {
+  text-align: center;
+  padding: var(--space-32) var(--space-8);
+  position: relative;
+}
+.cta-section::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, var(--dot-color) 1px, transparent 1px);
+  background-size: 24px 24px;
+  pointer-events: none;
+}
+.cta-section h2 {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4vw, var(--text-5xl));
+  margin-bottom: var(--space-4);
+  position: relative;
+}
+.cta-section p {
+  color: var(--text-secondary);
+  font-size: var(--text-lg);
+  margin-bottom: var(--space-8);
+  position: relative;
+}
+
+/* ============================================
+   SECTION DIVIDER
+   ============================================ */
+.section-divider {
+  text-align: center;
+  padding: var(--space-16) var(--space-8);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  position: relative;
+}
+.section-divider::before {
+  content: '';
+  position: absolute;
+  left: 20%;
+  right: 20%;
+  top: 50%;
+  height: 1px;
+  background: var(--border);
+}
+.section-divider span {
+  background: var(--bg-primary);
+  padding: 0 var(--space-6);
+  position: relative;
+}
+
+/* ============================================
+   PRODUCT MOCKUPS
+   ============================================ */
+.product-section {
+  padding: var(--space-16) var(--space-8);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* App frame */
+.app-frame {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 600px;
+}
+.app-sidebar {
+  background: var(--bg-elevated);
+  border-right: 1px solid var(--border);
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+}
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-logo {
+  width: 28px;
+  height: 28px;
+  background: var(--text-primary);
+  color: var(--text-inverse);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  border-radius: var(--radius-sm);
+}
+.sidebar-brand-text {
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+.sidebar-brand-sub {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.sidebar-nav { list-style: none; flex: 1; }
+.sidebar-nav li {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--duration-fast);
+  margin-bottom: 2px;
+}
+.sidebar-nav li:hover { background: var(--bg-surface); color: var(--text-primary); }
+.sidebar-nav li.active { background: var(--bg-surface); color: var(--text-primary); font-weight: 500; }
+
+.sidebar-projects {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.sidebar-projects-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: var(--space-2);
+}
+.sidebar-project-item {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.sidebar-project-item:hover { color: var(--text-primary); }
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.status-dot.success { background: var(--accent-emerald); }
+.status-dot.in-progress { background: var(--accent-blue); }
+.status-dot.review { background: var(--accent-amber); }
+.status-dot.error { background: var(--accent-red); }
+
+.app-content {
+  padding: var(--space-6) var(--space-8);
+  overflow-y: auto;
+}
+
+/* Product Tab Navigation */
+.product-tabs {
+  display: flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-8);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0;
+}
+.product-tab {
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: var(--font-body);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: all var(--duration-fast);
+}
+.product-tab:hover { color: var(--text-secondary); }
+.product-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--text-primary);
+}
+
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* ---- Dashboard Mockup ---- */
+.dash-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-6);
+}
+.dash-header h2 {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+}
+.dash-header p {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.project-list { display: flex; flex-direction: column; gap: var(--space-3); }
+.project-card {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: var(--space-6);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-6);
+  transition: border-color var(--duration-fast);
+  cursor: pointer;
+}
+.project-card:hover { border-color: var(--border-emphasis); }
+.project-name {
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+.project-date {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+.project-stat {
+  text-align: center;
+}
+.project-stat-value {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+.project-stat-label {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 3px var(--space-2);
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.badge-success { background: var(--accent-emerald-dim); color: var(--accent-emerald); }
+.badge-warning { background: var(--accent-amber-dim); color: var(--accent-amber); }
+.badge-active { background: var(--accent-blue-dim); color: var(--accent-blue); }
+.badge-error { background: var(--accent-red-dim); color: var(--accent-red); }
+.badge-neutral { background: var(--bg-surface); color: var(--text-tertiary); }
+
+/* ---- Upload Mockup ---- */
+.upload-zone {
+  border: 2px dashed var(--border-emphasis);
+  border-radius: var(--radius-lg);
+  padding: var(--space-12);
+  text-align: center;
+  transition: all var(--duration-base);
+  background: var(--bg-elevated);
+  margin-bottom: var(--space-6);
+}
+.upload-zone:hover {
+  border-color: var(--accent-blue);
+  background: var(--accent-blue-dim);
+}
+.upload-icon {
+  font-size: var(--text-4xl);
+  margin-bottom: var(--space-4);
+}
+.upload-text {
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+.upload-hint {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
+
+.upload-files {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-4);
+}
+.upload-file-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.upload-file-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-lg);
+  flex-shrink: 0;
+}
+.upload-file-icon.sav { background: var(--accent-blue-dim); }
+.upload-file-icon.banner { background: var(--accent-violet-dim); }
+.upload-file-icon.survey { background: var(--accent-amber-dim); }
+.upload-file-icon.datamap { background: var(--accent-emerald-dim); }
+.upload-file-name { font-weight: 500; font-size: var(--text-sm); }
+.upload-file-type { font-size: var(--text-xs); color: var(--text-tertiary); }
+.upload-file-status {
+  margin-left: auto;
+  color: var(--accent-emerald);
+  font-size: var(--text-sm);
+}
+
+/* ---- Pipeline Progress Mockup ---- */
+.pipeline-progress { }
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-6);
+}
+.progress-overall {
+  height: 4px;
+  background: var(--bg-surface);
+  border-radius: 2px;
+  margin-bottom: var(--space-8);
+  overflow: hidden;
+}
+.progress-overall-fill {
+  height: 100%;
+  width: 68%;
+  background: var(--accent-blue);
+  border-radius: 2px;
+  transition: width 1s var(--ease-out);
+}
+
+.progress-paths {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-8);
+}
+.progress-path {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+}
+.progress-path-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-3);
+}
+.progress-path-name {
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+.progress-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.progress-step-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+.progress-step-icon.done { background: var(--accent-emerald-dim); color: var(--accent-emerald); }
+.progress-step-icon.running { background: var(--accent-blue-dim); color: var(--accent-blue); }
+.progress-step-icon.pending { background: var(--bg-surface); color: var(--text-tertiary); }
+
+.progress-sequential {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+}
+.progress-sequential-title {
+  font-weight: 600;
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-4);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.progress-sequential-steps {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.seq-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  padding: var(--space-1) var(--space-3);
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
+}
+.seq-step.done { color: var(--accent-emerald); background: var(--accent-emerald-dim); }
+.seq-step.running { color: var(--accent-blue); background: var(--accent-blue-dim); }
+.seq-arrow { color: var(--text-tertiary); font-size: var(--text-xs); }
+
+/* ---- HITL Review Mockup ---- */
+.review-header {
+  margin-bottom: var(--space-6);
+}
+.review-header h2 {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  margin-bottom: var(--space-1);
+}
+.review-header p {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.review-group-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin-bottom: var(--space-3);
+  margin-top: var(--space-6);
+  color: var(--text-secondary);
+}
+.review-cards { display: flex; flex-direction: column; gap: var(--space-3); }
+.review-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-amber);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-6);
+}
+.review-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-3);
+}
+.review-card-title {
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+.confidence-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.confidence-fill {
+  width: 60px;
+  height: 4px;
+  background: var(--bg-surface);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.confidence-fill-inner {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s var(--ease-out);
+}
+.confidence-fill-inner.high { background: var(--accent-emerald); }
+.confidence-fill-inner.medium { background: var(--accent-amber); }
+.confidence-fill-inner.low { background: var(--accent-red); }
+.confidence-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.review-comparison {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.review-comp-label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-1);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.review-comp-value {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  background: var(--bg-surface);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+.review-comp-value.ai {
+  border-color: var(--accent-blue);
+  background: var(--accent-blue-dim);
+  color: var(--accent-blue);
+}
+
+.review-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+.review-btn {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  font-family: var(--font-body);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--duration-fast);
+}
+.review-btn:hover { border-color: var(--border-emphasis); color: var(--text-primary); }
+.review-btn.selected {
+  background: var(--text-primary);
+  color: var(--text-inverse);
+  border-color: var(--text-primary);
+}
+
+/* Review sticky footer */
+.review-footer {
+  position: sticky;
+  bottom: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-6);
+  margin-top: var(--space-6);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.review-summary {
+  display: flex;
+  gap: var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.review-summary span { display: flex; align-items: center; gap: var(--space-1); }
+
+/* ============================================
+   DESIGN SYSTEM SHOWCASE
+   ============================================ */
+.ds-section {
+  padding: var(--space-16) var(--space-8);
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.ds-section h2 {
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  margin-bottom: var(--space-8);
+}
+
+/* Color swatches */
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--space-4);
+}
+.color-swatch {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.color-swatch-fill {
+  height: 80px;
+}
+.color-swatch-info {
+  padding: var(--space-3);
+  background: var(--bg-elevated);
+}
+.color-swatch-name {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.color-swatch-value {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+/* Typography showcase */
+.type-scale { margin-top: var(--space-8); }
+.type-sample {
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  align-items: baseline;
+  gap: var(--space-4);
+}
+.type-sample-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+/* Component showcase */
+.component-row {
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: var(--space-6);
+}
+.component-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: var(--space-3);
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+@media (max-width: 900px) {
+  .pipeline-steps,
+  .features-grid,
+  .blog-grid,
+  .progress-paths { grid-template-columns: 1fr; }
+  .app-frame { grid-template-columns: 1fr; }
+  .app-sidebar { display: none; }
+  .flow-paths { grid-template-columns: 1fr; }
+  .metrics-strip { gap: var(--space-8); flex-wrap: wrap; }
+  .review-comparison { grid-template-columns: 1fr; }
+  .upload-files { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .hero h1 { font-size: var(--text-3xl); }
+  .section { padding: var(--space-16) var(--space-4); }
+}
+
+/* Spin animation for loading indicators */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spinning { animation: spin 1s linear infinite; }
+</style>
+</head>
+<body>
+
+<!-- ============ NAVIGATION ============ -->
+<nav class="nav">
+  <a href="#" class="nav-logo">
+    <div class="nav-logo-mark">Ct</div>
+    <div>
+      <div class="nav-logo-text">Tabulate AI</div>
+    </div>
+  </a>
+  <ul class="nav-links">
+    <li><a href="#how-it-works">How It Works</a></li>
+    <li><a href="#features">Features</a></li>
+    <li><a href="#blog">Guides</a></li>
+    <li><button id="theme-toggle" title="Toggle theme">&#9789;</button></li>
+    <li><button class="nav-cta">Get Started &rarr;</button></li>
+  </ul>
+</nav>
+
+<!-- ============ HERO ============ -->
+<section class="hero">
+  <div class="hero-content">
+    <div class="hero-badge">
+      <span class="dot"></span>
+      Now in production
+    </div>
+    <h1>Crosstabs that understand your research.</h1>
+    <p>Tabulate AI replaces hours of manual crosstab production with an intelligent pipeline. Upload your files, review the AI's work as needed, and download client-ready Excel.</p>
+    <div class="hero-actions">
+      <button class="btn-primary">Upload Your First Dataset &rarr;</button>
+      <button class="btn-secondary">See How It Works</button>
+    </div>
+
+    <div class="hero-visual">
+      <div class="hero-table">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:35%"></th>
+              <th>Total</th>
+              <th>Male</th>
+              <th>Female</th>
+              <th>18-34</th>
+              <th>35-54</th>
+              <th>55+</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Base: All respondents</td>
+              <td class="val">n=402</td>
+              <td class="val">n=198</td>
+              <td class="val">n=204</td>
+              <td class="val">n=134</td>
+              <td class="val">n=156</td>
+              <td class="val">n=112</td>
+            </tr>
+            <tr>
+              <td>Very satisfied (T2B)</td>
+              <td class="val">62%</td>
+              <td class="val">58%</td>
+              <td class="val">66%<span class="sig">B</span></td>
+              <td class="val">71%<span class="sig">EF</span></td>
+              <td class="val">60%</td>
+              <td class="val">53%</td>
+            </tr>
+            <tr>
+              <td>Somewhat satisfied</td>
+              <td class="val">24%</td>
+              <td class="val">27%</td>
+              <td class="val">21%</td>
+              <td class="val">19%</td>
+              <td class="val">26%</td>
+              <td class="val">28%</td>
+            </tr>
+            <tr>
+              <td>Not at all satisfied (B2B)</td>
+              <td class="val">14%</td>
+              <td class="val">15%</td>
+              <td class="val">13%</td>
+              <td class="val">10%</td>
+              <td class="val">14%</td>
+              <td class="val">19%<span class="sig">D</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="hero-table-label">Statistical testing at 95% confidence &middot; Column letters denote significant differences</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ METRICS ============ -->
+<div class="metrics-strip">
+  <div class="metric">
+    <div class="metric-value">Minutes</div>
+    <div class="metric-label">Not hours</div>
+  </div>
+  <div class="metric">
+    <div class="metric-value">Intelligent</div>
+    <div class="metric-label">Not just automated</div>
+  </div>
+  <div class="metric">
+    <div class="metric-value">Verified</div>
+    <div class="metric-label">Data you can trust</div>
+  </div>
+  <div class="metric">
+    <div class="metric-value">Client-ready</div>
+    <div class="metric-label">Publication-quality Excel</div>
+  </div>
+</div>
+
+<!-- ============ HOW IT WORKS ============ -->
+<section class="section" id="how-it-works">
+  <div class="section-label">How It Works</div>
+  <h2 class="section-title">Upload your files. Download when ready.</h2>
+  <p class="section-subtitle">You bring the data and the spec. Tabulate AI handles everything in between.</p>
+
+  <div class="pipeline-steps">
+    <div class="pipeline-step">
+      <div class="pipeline-step-number">01</div>
+      <h3>Upload</h3>
+      <p>Drop your SPSS data file, banner plan, and optional survey document. The system validates everything before it begins.</p>
+      <div class="pipeline-step-files">
+        <span class="file-chip">.sav</span>
+        <span class="file-chip">.pdf</span>
+        <span class="file-chip">.docx</span>
+      </div>
+    </div>
+    <div class="pipeline-step">
+      <div class="pipeline-step-number">02</div>
+      <h3>Process</h3>
+      <p>The pipeline reads your data, interprets your spec, builds tables, applies filters, and validates every expression &mdash; checking in with you only when it needs to.</p>
+      <div class="pipeline-step-files">
+        <span class="file-chip">AI reasoning</span>
+        <span class="file-chip">Deterministic computation</span>
+      </div>
+    </div>
+    <div class="pipeline-step">
+      <div class="pipeline-step-number">03</div>
+      <h3>Download</h3>
+      <p>Client-ready Excel with statistical testing, proper NET rows, and formatting your clients expect. Ready to deliver.</p>
+      <div class="pipeline-step-files">
+        <span class="file-chip">.xlsx</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Intelligent + Deterministic Concept -->
+  <div class="pipeline-flow">
+    <div style="display:grid; grid-template-columns:1fr; gap:var(--space-6);">
+      <div style="text-align:center;">
+        <div class="flow-node flow-source" style="display:inline-block;">
+          <div class="flow-node-label">Your files</div>
+          <div class="flow-node-name">Data + Banner + Survey</div>
+        </div>
+      </div>
+      <div style="text-align:center; color:var(--text-tertiary); font-size:var(--text-sm);">&darr;</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:var(--space-6);">
+        <div style="background:var(--accent-violet-dim); border:1px solid rgba(167,139,250,0.2); border-radius:var(--radius-lg); padding:var(--space-6);">
+          <div class="flow-path-label" style="color:var(--accent-violet); margin-bottom:var(--space-3);">AI Reasoning</div>
+          <div style="font-size:var(--text-sm); color:var(--text-secondary); line-height:1.7;">
+            Interprets your banner plan. Matches cuts to real variables. Reads skip logic from the survey. Fixes labels and adds NET rows using domain knowledge. Retries when something doesn't validate.
+          </div>
+          <div style="margin-top:var(--space-3); font-family:var(--font-mono); font-size:10px; color:var(--text-tertiary);">Used where judgment is needed</div>
+        </div>
+        <div style="background:var(--accent-blue-dim); border:1px solid rgba(96,165,250,0.2); border-radius:var(--radius-lg); padding:var(--space-6);">
+          <div class="flow-path-label" style="color:var(--accent-blue); margin-bottom:var(--space-3);">Deterministic Computation</div>
+          <div style="font-size:var(--text-sm); color:var(--text-secondary); line-height:1.7;">
+            Builds table structures from the actual data. Applies filters mechanically. Generates R scripts. Runs statistical tests. Formats Excel output. No guessing &mdash; just math.
+          </div>
+          <div style="margin-top:var(--space-3); font-family:var(--font-mono); font-size:10px; color:var(--text-tertiary);">Used where precision is needed</div>
+        </div>
+      </div>
+      <div style="text-align:center; color:var(--text-tertiary); font-size:var(--text-sm);">&darr;</div>
+      <div style="text-align:center;">
+        <div class="flow-node flow-output" style="display:inline-block;">
+          <div class="flow-node-label">Output</div>
+          <div class="flow-node-name">Client-ready crosstabs</div>
+        </div>
+      </div>
+      <p style="text-align:center; font-size:var(--text-sm); color:var(--text-tertiary); max-width:500px; margin:0 auto;">The pipeline can never make up data because the system won't let it. Intelligence is used intentionally &mdash; only where it genuinely helps.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FEATURES ============ -->
+<section class="section" id="features">
+  <div class="section-label">Why It's Different</div>
+  <h2 class="section-title">More than automatic. Intentionally intelligent.</h2>
+  <p class="section-subtitle">Other tools output tables. Tabulate AI understands your project, your data, and how you want your research delivered.</p>
+
+  <div class="features-grid">
+    <div class="feature-card agent-crosstab">
+      <div class="feature-icon">&#8801;</div>
+      <h3>Finds the right cuts</h3>
+      <p>Reads your banner plan and matches each cut to the actual variables in your data. Validates every expression before anything runs.</p>
+      <span class="feature-tag">Banner interpretation &rarr; Validated cuts</span>
+    </div>
+    <div class="feature-card agent-verify">
+      <div class="feature-icon">&#10003;</div>
+      <h3>Builds the right tables</h3>
+      <p>Adds NET rows, Top 2 Box, Bottom 2 Box. Fixes labels to match the survey wording. Splits tables when they need splitting. Prioritizes what matters.</p>
+      <span class="feature-tag">Domain-aware table construction</span>
+    </div>
+    <div class="feature-card agent-skiplogic">
+      <div class="feature-icon">&#8644;</div>
+      <h3>Respects your survey logic</h3>
+      <p>Reads skip logic and filter rules from the survey document. Only the right respondents appear in the right tables.</p>
+      <span class="feature-tag">Automatic base filtering</span>
+    </div>
+    <div class="feature-card agent-banner">
+      <div class="feature-icon">&#9776;</div>
+      <h3>Handles complex data</h3>
+      <p>Looped data, stacked structures, weighted samples. The system detects these automatically and handles them correctly.</p>
+      <span class="feature-tag">Loops, weights, multi-response</span>
+    </div>
+    <div class="feature-card agent-filter">
+      <div class="feature-icon">&#10697;</div>
+      <h3>Data you can trust</h3>
+      <p>Every expression is validated against the real data before execution. Hallucinations are caught and corrected. The pipeline can never make up a number.</p>
+      <span class="feature-tag">Validated at every step</span>
+    </div>
+    <div class="feature-card agent-loop">
+      <div class="feature-icon">&#8634;</div>
+      <h3>Human in the loop</h3>
+      <p>When the system isn't sure, it asks. You review flagged items, provide corrections, and the pipeline continues. Your expertise stays in the process.</p>
+      <span class="feature-tag">AI asks, you decide</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ BLOG / GUIDES ============ -->
+<section class="section" id="blog">
+  <div class="section-label">Resources</div>
+  <h2 class="section-title">Guides &amp; insights</h2>
+  <p class="section-subtitle">Practical guidance on getting the most from your crosstab workflow.</p>
+
+  <div class="blog-grid">
+    <div class="blog-card">
+      <div class="blog-card-image">&#9638;</div>
+      <div class="blog-card-body">
+        <div class="blog-card-tag">Guide</div>
+        <h3>Understanding banner plans</h3>
+        <p>How to structure your banner plan for optimal AI interpretation and accurate cut generation.</p>
+      </div>
+    </div>
+    <div class="blog-card">
+      <div class="blog-card-image">&#9641;</div>
+      <div class="blog-card-body">
+        <div class="blog-card-tag">Deep Dive</div>
+        <h3>The HITL review process</h3>
+        <p>When and why the AI asks for your input, and how your corrections improve future runs.</p>
+      </div>
+    </div>
+    <div class="blog-card">
+      <div class="blog-card-image">&#9643;</div>
+      <div class="blog-card-body">
+        <div class="blog-card-tag">Technical</div>
+        <h3>Statistical testing explained</h3>
+        <p>How Tabulate AI runs significance tests and what the column letters in your output mean.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CTA ============ -->
+<section class="cta-section">
+  <h2>Faster time to insights.</h2>
+  <p>Answer your clients' questions sooner. Understand your data better. Spend your time on the analysis, not the tables.</p>
+  <button class="btn-primary" style="position:relative;">Upload Your First Dataset &rarr;</button>
+</section>
+
+<!-- ============ DIVIDER: PRODUCT ============ -->
+<div class="section-divider"><span>Product Experience</span></div>
+
+<!-- ============ PRODUCT MOCKUPS ============ -->
+<div class="product-section">
+  <div class="app-frame">
+    <!-- Sidebar -->
+    <div class="app-sidebar">
+      <div class="sidebar-brand">
+        <div class="sidebar-logo">Ct</div>
+        <div>
+          <div class="sidebar-brand-text">Tabulate AI</div>
+        </div>
+      </div>
+      <ul class="sidebar-nav">
+        <li class="active">&#9776; &nbsp;Dashboard</li>
+        <li>&#43; &nbsp;New Project</li>
+        <li>&#9881; &nbsp;Settings</li>
+      </ul>
+      <div class="sidebar-projects">
+        <div class="sidebar-projects-label">Recent Projects</div>
+        <div class="sidebar-project-item"><span class="status-dot success"></span> Consumer Insights Q1</div>
+        <div class="sidebar-project-item"><span class="status-dot success"></span> Brand Health Q4</div>
+        <div class="sidebar-project-item"><span class="status-dot review"></span> Growth Strategy 2026</div>
+        <div class="sidebar-project-item"><span class="status-dot in-progress"></span> Media Habits 2025</div>
+        <div class="sidebar-project-item"><span class="status-dot error"></span> Claims Testing v2</div>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="app-content">
+      <div class="product-tabs">
+        <button class="product-tab active" data-tab="dashboard">Dashboard</button>
+        <button class="product-tab" data-tab="upload">Upload</button>
+        <button class="product-tab" data-tab="pipeline">Pipeline</button>
+        <button class="product-tab" data-tab="review">Review</button>
+      </div>
+
+      <!-- Dashboard Tab -->
+      <div class="tab-content active" id="tab-dashboard">
+        <div class="dash-header">
+          <div>
+            <h2>Projects</h2>
+            <p>Your crosstab pipeline runs</p>
+          </div>
+          <button class="btn-primary" style="font-size:var(--text-xs); padding:var(--space-2) var(--space-4);">New Project</button>
+        </div>
+
+        <div class="project-list">
+          <div class="project-card">
+            <div>
+              <div class="project-name">Consumer Insights Q1</div>
+              <div class="project-date">Feb 8, 2026 &middot; 3 min 42s</div>
+            </div>
+            <div class="project-stat">
+              <div class="project-stat-value">148</div>
+              <div class="project-stat-label">Tables</div>
+            </div>
+            <div class="project-stat">
+              <div class="project-stat-value">24</div>
+              <div class="project-stat-label">Cuts</div>
+            </div>
+            <span class="badge badge-success">&#10003; Success</span>
+          </div>
+
+          <div class="project-card">
+            <div>
+              <div class="project-name">Growth Strategy 2026</div>
+              <div class="project-date">Feb 7, 2026 &middot; Paused</div>
+            </div>
+            <div class="project-stat">
+              <div class="project-stat-value">92</div>
+              <div class="project-stat-label">Tables</div>
+            </div>
+            <div class="project-stat">
+              <div class="project-stat-value">18</div>
+              <div class="project-stat-label">Cuts</div>
+            </div>
+            <span class="badge badge-warning">&#9888; Review</span>
+          </div>
+
+          <div class="project-card">
+            <div>
+              <div class="project-name">Media Habits 2025</div>
+              <div class="project-date">Feb 7, 2026 &middot; Running</div>
+            </div>
+            <div class="project-stat">
+              <div class="project-stat-value">&mdash;</div>
+              <div class="project-stat-label">Tables</div>
+            </div>
+            <div class="project-stat">
+              <div class="project-stat-value">&mdash;</div>
+              <div class="project-stat-label">Cuts</div>
+            </div>
+            <span class="badge badge-active">&#8987; In Progress</span>
+          </div>
+
+          <div class="project-card">
+            <div>
+              <div class="project-name">Claims Testing v2</div>
+              <div class="project-date">Feb 5, 2026 &middot; Failed</div>
+            </div>
+            <div class="project-stat">
+              <div class="project-stat-value">0</div>
+              <div class="project-stat-label">Tables</div>
+            </div>
+            <div class="project-stat">
+              <div class="project-stat-value">0</div>
+              <div class="project-stat-label">Cuts</div>
+            </div>
+            <span class="badge badge-error">&#10005; Error</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Upload Tab -->
+      <div class="tab-content" id="tab-upload">
+        <div class="dash-header">
+          <div>
+            <h2>New Project</h2>
+            <p>Upload your data files to generate automated crosstabs</p>
+          </div>
+        </div>
+
+        <div class="upload-zone">
+          <div class="upload-icon">&#8613;</div>
+          <div class="upload-text">Drop your SPSS data file here</div>
+          <div class="upload-hint">or click to browse &middot; .sav files up to 500MB</div>
+        </div>
+
+        <div class="upload-files">
+          <div class="upload-file-card">
+            <div class="upload-file-icon sav">&#9776;</div>
+            <div>
+              <div class="upload-file-name">study_data.sav</div>
+              <div class="upload-file-type">SPSS Data &middot; 12.4 MB</div>
+            </div>
+            <div class="upload-file-status">&#10003;</div>
+          </div>
+          <div class="upload-file-card">
+            <div class="upload-file-icon banner">&#9638;</div>
+            <div>
+              <div class="upload-file-name">banner_plan.pdf</div>
+              <div class="upload-file-type">Banner Plan &middot; 340 KB</div>
+            </div>
+            <div class="upload-file-status">&#10003;</div>
+          </div>
+          <div class="upload-file-card">
+            <div class="upload-file-icon survey">&#9643;</div>
+            <div>
+              <div class="upload-file-name">survey_instrument.docx</div>
+              <div class="upload-file-type">Survey Doc &middot; 2.1 MB</div>
+            </div>
+            <div class="upload-file-status">&#10003;</div>
+          </div>
+          <div class="upload-file-card" style="border-style:dashed; opacity:0.6;">
+            <div class="upload-file-icon datamap">&#43;</div>
+            <div>
+              <div class="upload-file-name">Data map (optional)</div>
+              <div class="upload-file-type">.csv or .xlsx</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:var(--space-6); text-align:right;">
+          <button class="btn-secondary" style="margin-right:var(--space-3);">Cancel</button>
+          <button class="btn-primary">Process Crosstabs &rarr;</button>
+        </div>
+      </div>
+
+      <!-- Pipeline Tab -->
+      <div class="tab-content" id="tab-pipeline">
+        <div class="progress-header">
+          <div>
+            <h2 style="font-size:var(--text-xl); font-weight:700;">Processing: Media Habits 2025</h2>
+            <p style="font-size:var(--text-sm); color:var(--text-secondary);">Running for 2m 14s</p>
+          </div>
+          <span class="badge badge-active">&#8987; 68% Complete</span>
+        </div>
+        <div class="progress-overall"><div class="progress-overall-fill"></div></div>
+
+        <div class="progress-paths">
+          <div class="progress-path">
+            <div class="progress-path-header">
+              <span class="progress-path-name">Path A: Banner</span>
+              <span class="badge badge-success" style="font-size:10px;">Done</span>
+            </div>
+            <div class="progress-step">
+              <span class="progress-step-icon done">&#10003;</span>
+              Banner Agent
+            </div>
+            <div class="progress-step">
+              <span class="progress-step-icon done">&#10003;</span>
+              Crosstab Agent
+            </div>
+          </div>
+          <div class="progress-path">
+            <div class="progress-path-header">
+              <span class="progress-path-name">Path B: Tables</span>
+              <span class="badge badge-success" style="font-size:10px;">Done</span>
+            </div>
+            <div class="progress-step">
+              <span class="progress-step-icon done">&#10003;</span>
+              Table Generator
+            </div>
+          </div>
+          <div class="progress-path">
+            <div class="progress-path-header">
+              <span class="progress-path-name">Path C: Filters</span>
+              <span class="badge badge-active" style="font-size:10px;">Running</span>
+            </div>
+            <div class="progress-step">
+              <span class="progress-step-icon done">&#10003;</span>
+              Skip Logic Agent
+            </div>
+            <div class="progress-step">
+              <span class="progress-step-icon running">&#9679;</span>
+              <span style="color:var(--accent-blue);">Filter Translator</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="progress-sequential">
+          <div class="progress-sequential-title">Sequential Phase</div>
+          <div class="progress-sequential-steps">
+            <div class="seq-step pending">Filter Apply</div>
+            <span class="seq-arrow">&rarr;</span>
+            <div class="seq-step pending">Verification</div>
+            <span class="seq-arrow">&rarr;</span>
+            <div class="seq-step pending">R Validation</div>
+            <span class="seq-arrow">&rarr;</span>
+            <div class="seq-step pending">R Execute</div>
+            <span class="seq-arrow">&rarr;</span>
+            <div class="seq-step pending">Excel Format</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Review Tab -->
+      <div class="tab-content" id="tab-review">
+        <div class="review-header">
+          <h2>Quick Review Needed</h2>
+          <p>The AI wasn't certain about 3 matches. Please confirm or correct.</p>
+        </div>
+
+        <div style="display:flex; gap:var(--space-3); margin-bottom:var(--space-6);">
+          <span class="badge badge-warning">&#9888; 3 Flagged</span>
+          <span class="badge badge-success">&#10003; Tables Ready</span>
+        </div>
+
+        <div class="review-group-label">Gender</div>
+        <div class="review-cards">
+          <div class="review-card">
+            <div class="review-card-header">
+              <span class="review-card-title">Male</span>
+              <div class="confidence-bar">
+                <div class="confidence-fill">
+                  <div class="confidence-fill-inner medium" style="width:72%"></div>
+                </div>
+                <span class="confidence-text">72%</span>
+              </div>
+            </div>
+            <div class="review-comparison">
+              <div>
+                <div class="review-comp-label">Banner Says</div>
+                <div class="review-comp-value">Male</div>
+              </div>
+              <div>
+                <div class="review-comp-label">AI Suggests</div>
+                <div class="review-comp-value ai">Q2 == 1</div>
+              </div>
+            </div>
+            <div class="review-actions">
+              <button class="review-btn selected">Accept</button>
+              <button class="review-btn">Alternative</button>
+              <button class="review-btn">Give Hint</button>
+              <button class="review-btn">Skip</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="review-group-label">Region</div>
+        <div class="review-cards">
+          <div class="review-card">
+            <div class="review-card-header">
+              <span class="review-card-title">Northeast</span>
+              <div class="confidence-bar">
+                <div class="confidence-fill">
+                  <div class="confidence-fill-inner low" style="width:45%"></div>
+                </div>
+                <span class="confidence-text">45%</span>
+              </div>
+            </div>
+            <div class="review-comparison">
+              <div>
+                <div class="review-comp-label">Banner Says</div>
+                <div class="review-comp-value">Northeast</div>
+              </div>
+              <div>
+                <div class="review-comp-label">AI Suggests</div>
+                <div class="review-comp-value ai">Q8 %in% c(1,2,3)</div>
+              </div>
+            </div>
+            <div class="review-actions">
+              <button class="review-btn">Accept</button>
+              <button class="review-btn selected">Alternative</button>
+              <button class="review-btn">Give Hint</button>
+              <button class="review-btn">Skip</button>
+            </div>
+          </div>
+
+          <div class="review-card">
+            <div class="review-card-header">
+              <span class="review-card-title">Midwest</span>
+              <div class="confidence-bar">
+                <div class="confidence-fill">
+                  <div class="confidence-fill-inner high" style="width:88%"></div>
+                </div>
+                <span class="confidence-text">88%</span>
+              </div>
+            </div>
+            <div class="review-comparison">
+              <div>
+                <div class="review-comp-label">Banner Says</div>
+                <div class="review-comp-value">Midwest</div>
+              </div>
+              <div>
+                <div class="review-comp-label">AI Suggests</div>
+                <div class="review-comp-value ai">Q8 %in% c(7,8,9,10,11,12)</div>
+              </div>
+            </div>
+            <div class="review-actions">
+              <button class="review-btn selected">Accept</button>
+              <button class="review-btn">Alternative</button>
+              <button class="review-btn">Give Hint</button>
+              <button class="review-btn">Skip</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="review-footer">
+          <div class="review-summary">
+            <span style="color:var(--accent-emerald);">&#10003; 2 Accepted</span>
+            <span style="color:var(--accent-violet);">&#8801; 1 Alternative</span>
+          </div>
+          <div style="display:flex; gap:var(--space-2);">
+            <button class="btn-secondary" style="font-size:var(--text-xs); padding:var(--space-2) var(--space-4);">Cancel</button>
+            <button class="btn-primary" style="font-size:var(--text-xs); padding:var(--space-2) var(--space-4);">Save &amp; Continue &rarr;</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DIVIDER: DESIGN SYSTEM ============ -->
+<div class="section-divider"><span>Design System</span></div>
+
+<!-- ============ COLORS ============ -->
+<div class="ds-section">
+  <h2>Color Palette</h2>
+
+  <div class="component-label" style="margin-top:var(--space-6);">Backgrounds</div>
+  <div class="color-grid">
+    <div class="color-swatch">
+      <div class="color-swatch-fill" style="background:var(--bg-primary);"></div>
+      <div class="color-swatch-info">
+        <div class="color-swatch-name">Primary</div>
+        <div class="color-swatch-value">--bg-primary</div>
+      </div>
+    </div>
+    <div class="color-swatch">
+      <div class="color-swatch-fill" style="background:var(--bg-secondary);"></div>
+      <div class="color-swatch-info">
+        <div class="color-swatch-name">Secondary</div>
+        <div class="color-swatch-value">--bg-secondary</div>
+      </div>
+    </div>
+    <div class="color-swatch">
+      <div class="color-swatch-fill" style="background:var(--bg-elevated);"></div>
+      <div class="color-swatch-info">
+        <div class="color-swatch-name">Elevated</div>
+        <div class="color-swatch-value">--bg-elevated</div>
+      </div>
+    </div>
+    <div class="color-swatch">
+      <div class="color-swatch-fill" style="background:var(--bg-surface);"></div>
+      <div class="color-swatch-info">
+        <div class="color-swatch-name">Surface</div>
+        <div class="color-swatch-value">--bg-surface</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="component-label" style="margin-top:var(--space-8);">Text</div>
+  <div class="color-grid">
+    <div class="color-swatch">
+      <div class="color-swatch-fill" style="background:var(--text-primary);"></div>
+      <div class="color-swatch-info">
+        <div class="color-swatch-name">Primary</div>
+        <div class="color-swatch-value">--text-primary</div>
+      </div>
+    </div>
+    <div class="color-swatch">
+      <div class="color-swatch-fill" style="background:var(--text-secondary);"></div>
+      <div class="color-swatch-info">
+        <div class="color-swatch-name">Secondary</div>
+        <div class="color-swatch-value">--text-secondary</div>
+      </div>
+    </div>
+    <div class="color-swatch">
+      <div class="color-swatch-fill" style="background:var(--text-tertiary);"></div>
+      <div class="color-swatch-info">
+        <div class="color-swatch-name">Tertiary</div>
+        <div class="color-swatch-value">--text-tertiary</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="component-label" style="margin-top:var(--space-8);">Accent / Status</div>
+  <div class="color-grid">
+    <div class="color-swatch">
+      <div class="color-swatch-fill" style="background:var(--accent-emerald);"></div>
+      <div class="color-swatch-info">
+        <div class="color-swatch-name">Emerald</div>
+        <div class="color-swatch-value">Success / Complete</div>
+      </div>
+    </div>
+    <div class="color-swatch">
+      <div class="color-swatch-fill" style="background:var(--accent-amber);"></div>
+      <div class="color-swatch-info">
+        <div class="color-swatch-name">Amber</div>
+        <div class="color-swatch-value">Review / Warning</div>
+      </div>
+    </div>
+    <div class="color-swatch">
+      <div class="color-swatch-fill" style="background:var(--accent-blue);"></div>
+      <div class="color-swatch-info">
+        <div class="color-swatch-name">Blue</div>
+        <div class="color-swatch-value">Active / In Progress</div>
+      </div>
+    </div>
+    <div class="color-swatch">
+      <div class="color-swatch-fill" style="background:var(--accent-red);"></div>
+      <div class="color-swatch-info">
+        <div class="color-swatch-name">Red</div>
+        <div class="color-swatch-value">Error / Destructive</div>
+      </div>
+    </div>
+    <div class="color-swatch">
+      <div class="color-swatch-fill" style="background:var(--accent-violet);"></div>
+      <div class="color-swatch-info">
+        <div class="color-swatch-name">Violet</div>
+        <div class="color-swatch-value">AI / Alternative</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TYPOGRAPHY ============ -->
+<div class="ds-section">
+  <h2>Typography</h2>
+
+  <div class="component-label">Display &middot; Instrument Serif</div>
+  <div class="type-scale">
+    <div class="type-sample">
+      <span class="type-sample-label">6xl / 4.5rem</span>
+      <span style="font-family:var(--font-display); font-size:var(--text-6xl); line-height:1.1;">Crosstabs</span>
+    </div>
+    <div class="type-sample">
+      <span class="type-sample-label">5xl / 3.5rem</span>
+      <span style="font-family:var(--font-display); font-size:var(--text-5xl); line-height:1.1;">Crosstabs</span>
+    </div>
+    <div class="type-sample">
+      <span class="type-sample-label">4xl / 2.5rem</span>
+      <span style="font-family:var(--font-display); font-size:var(--text-4xl); line-height:1.2;">Crosstabs</span>
+    </div>
+    <div class="type-sample">
+      <span class="type-sample-label">3xl / 2rem</span>
+      <span style="font-family:var(--font-display); font-size:var(--text-3xl); line-height:1.2;">Crosstabs</span>
+    </div>
+  </div>
+
+  <div class="component-label" style="margin-top:var(--space-8);">Body &middot; Outfit</div>
+  <div class="type-scale">
+    <div class="type-sample">
+      <span class="type-sample-label">2xl / 1.5rem</span>
+      <span style="font-size:var(--text-2xl); font-weight:700;">Project Dashboard</span>
+    </div>
+    <div class="type-sample">
+      <span class="type-sample-label">xl / 1.25rem</span>
+      <span style="font-size:var(--text-xl); font-weight:600;">Quick Review Needed</span>
+    </div>
+    <div class="type-sample">
+      <span class="type-sample-label">lg / 1.125rem</span>
+      <span style="font-size:var(--text-lg);">Upload your survey data and get publication-ready crosstabs.</span>
+    </div>
+    <div class="type-sample">
+      <span class="type-sample-label">base / 1rem</span>
+      <span style="font-size:var(--text-base);">Each agent is purpose-built for one piece of the puzzle.</span>
+    </div>
+    <div class="type-sample">
+      <span class="type-sample-label">sm / 0.875rem</span>
+      <span style="font-size:var(--text-sm); color:var(--text-secondary);">Created on February 8, 2026</span>
+    </div>
+    <div class="type-sample">
+      <span class="type-sample-label">xs / 0.75rem</span>
+      <span style="font-size:var(--text-xs); color:var(--text-tertiary);">BANNER PLAN &middot; 340 KB</span>
+    </div>
+  </div>
+
+  <div class="component-label" style="margin-top:var(--space-8);">Mono &middot; JetBrains Mono</div>
+  <div class="type-scale">
+    <div class="type-sample">
+      <span class="type-sample-label">Data values</span>
+      <span style="font-family:var(--font-mono); font-size:var(--text-sm);">n=402 &nbsp; 62% &nbsp; Q2 == 1 &nbsp; Q8 %in% c(1,2,3)</span>
+    </div>
+    <div class="type-sample">
+      <span class="type-sample-label">Labels</span>
+      <span style="font-family:var(--font-mono); font-size:var(--text-xs); color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.1em;">PATH A &middot; BANNER &nbsp; | &nbsp; SEQUENTIAL PHASE</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============ COMPONENTS ============ -->
+<div class="ds-section">
+  <h2>Components</h2>
+
+  <div class="component-label">Buttons</div>
+  <div class="component-row">
+    <button class="btn-primary">Primary Action &rarr;</button>
+    <button class="btn-secondary">Secondary</button>
+    <button class="btn-primary" style="opacity:0.5; pointer-events:none;">Disabled</button>
+    <button class="btn-primary" style="background:var(--accent-red); color:white;">Destructive</button>
+  </div>
+
+  <div class="component-label">Status Badges</div>
+  <div class="component-row">
+    <span class="badge badge-success">&#10003; Success</span>
+    <span class="badge badge-warning">&#9888; Review Required</span>
+    <span class="badge badge-active">&#8987; In Progress</span>
+    <span class="badge badge-error">&#10005; Error</span>
+    <span class="badge badge-neutral">Pending</span>
+  </div>
+
+  <div class="component-label">Confidence Indicators</div>
+  <div class="component-row" style="gap:var(--space-8);">
+    <div class="confidence-bar">
+      <div class="confidence-fill" style="width:80px;">
+        <div class="confidence-fill-inner high" style="width:92%"></div>
+      </div>
+      <span class="confidence-text">92% High</span>
+    </div>
+    <div class="confidence-bar">
+      <div class="confidence-fill" style="width:80px;">
+        <div class="confidence-fill-inner medium" style="width:72%"></div>
+      </div>
+      <span class="confidence-text">72% Medium</span>
+    </div>
+    <div class="confidence-bar">
+      <div class="confidence-fill" style="width:80px;">
+        <div class="confidence-fill-inner low" style="width:38%"></div>
+      </div>
+      <span class="confidence-text">38% Low</span>
+    </div>
+  </div>
+
+  <div class="component-label">File Chips</div>
+  <div class="component-row">
+    <span class="file-chip">.sav</span>
+    <span class="file-chip">.pdf</span>
+    <span class="file-chip">.docx</span>
+    <span class="file-chip">.xlsx</span>
+    <span class="file-chip">.json</span>
+    <span class="file-chip">.R</span>
+  </div>
+
+  <div class="component-label">Cards</div>
+  <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:var(--space-4); margin-bottom:var(--space-8);">
+    <div class="feature-card agent-banner">
+      <h3 style="font-size:var(--text-sm);">Default Card</h3>
+      <p style="font-size:var(--text-xs); color:var(--text-secondary); margin-top:var(--space-2);">Subtle border, top accent line, hover lift.</p>
+    </div>
+    <div style="background:var(--bg-elevated); border:1px solid var(--border); border-left:3px solid var(--accent-amber); border-radius:var(--radius-lg); padding:var(--space-6);">
+      <h3 style="font-size:var(--text-sm);">Review Card</h3>
+      <p style="font-size:var(--text-xs); color:var(--text-secondary); margin-top:var(--space-2);">Left accent border for flagged items.</p>
+    </div>
+    <div style="background:var(--accent-emerald-dim); border:1px solid var(--accent-emerald); border-radius:var(--radius-lg); padding:var(--space-6);">
+      <h3 style="font-size:var(--text-sm); color:var(--accent-emerald);">Status Card</h3>
+      <p style="font-size:var(--text-xs); color:var(--text-secondary); margin-top:var(--space-2);">Tinted background for status contexts.</p>
+    </div>
+  </div>
+
+  <div class="component-label">Data Table</div>
+  <div class="hero-table" style="max-width:100%;">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:35%">Question</th>
+          <th>Total</th>
+          <th>Segment A</th>
+          <th>Segment B</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Base: Qualified respondents</td>
+          <td class="val">n=250</td>
+          <td class="val">n=125</td>
+          <td class="val">n=125</td>
+        </tr>
+        <tr>
+          <td>Strongly agree (T2B)</td>
+          <td class="val">47%</td>
+          <td class="val">54%<span class="sig">B</span></td>
+          <td class="val">40%</td>
+        </tr>
+        <tr>
+          <td>Somewhat agree</td>
+          <td class="val">31%</td>
+          <td class="val">28%</td>
+          <td class="val">34%</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="hero-table-label">Column letters indicate statistical significance at p&lt;0.05</div>
+  </div>
+</div>
+
+<!-- Footer -->
+<footer style="text-align:center; padding:var(--space-16) var(--space-8); border-top:1px solid var(--border);">
+  <div style="display:flex; align-items:center; justify-content:center; gap:var(--space-3); margin-bottom:var(--space-4);">
+    <div class="nav-logo-mark" style="width:24px; height:24px; font-size:var(--text-sm);">Ct</div>
+    <span style="font-weight:600; font-size:var(--text-sm);">Tabulate AI</span>
+  </div>
+  <p style="font-size:var(--text-xs); color:var(--text-tertiary);">Design System v1.0 &middot; 2026</p>
+</footer>
+
+<script>
+// Theme toggle
+const toggle = document.getElementById('theme-toggle');
+toggle.addEventListener('click', () => {
+  const html = document.documentElement;
+  const isDark = html.classList.contains('dark');
+  html.classList.remove('dark', 'light');
+  html.classList.add(isDark ? 'light' : 'dark');
+  toggle.textContent = isDark ? '\u2600' : '\u263D';
+});
+
+// Product tabs
+document.querySelectorAll('.product-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.product-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+</script>
+
+</body>
+</html>

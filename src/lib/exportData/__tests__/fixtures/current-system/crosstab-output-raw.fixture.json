@@ -1,0 +1,47 @@
+{
+  "bannerCuts": [
+    {
+      "groupName": "Specialty",
+      "columns": [
+        {
+          "name": "Primary Care Physician (General Medicine, Family Medicine)",
+          "adjusted": "S5 == 1",
+          "confidence": 0.95,
+          "reasoning": "Exact variable S5 found with Answer_Options showing 1=Primary Care Physician (General Medicine, Family Medicine). Original expression S5=1 is a direct variable equality so S5 == 1 is used. Also identified hSpecialty (hidden) that consolidates specialty (1=PCP) and included as an alternative because some banner plans prefer hidden consolidated flags.",
+          "userSummary": "We used the survey question that asks specialty (the original S5 code) to select Primary Care Physicians. A hidden consolidated specialty flag is available as an alternative.",
+          "alternatives": [
+            {
+              "expression": "hSpecialty == 1",
+              "rank": 2,
+              "userSummary": "Uses the hidden consolidated specialty variable that classifies respondents as PCP (this is a broader hidden flag that maps to primary care)."
+            }
+          ],
+          "uncertainties": [
+            "Hidden variable hSpecialty encodes PCP as 1; confirm whether the banner intends to use the original S5 question or the hidden consolidated hSpecialty.",
+            "If the banner intent was to capture a broader PCP group that includes multiple S5 codes, verify that S5==1 is sufficiently inclusive."
+          ],
+          "expressionType": "direct_variable"
+        },
+        {
+          "name": "Pediatrician",
+          "adjusted": "S5 == 3",
+          "confidence": 0.95,
+          "reasoning": "Exact variable S5 found with Answer_Options showing 3=Pediatrician. Original expression S5=3 is a direct variable equality so S5 == 3 is used. Also found hSpecialty which codes 2=PED (consolidated hidden variable) and included it as an alternative in case the plan expects the hidden consolidated flag.",
+          "userSummary": "We matched 'Pediatrician' to the specialty question (the original S5 code). A hidden consolidated specialty flag is available as an alternative.",
+          "alternatives": [
+            {
+              "expression": "hSpecialty == 2",
+              "rank": 2,
+              "userSummary": "Uses the hidden consolidated specialty variable that classifies respondents as Pediatrician (this is a broader hidden flag that maps to pediatrics)."
+            }
+          ],
+          "uncertainties": [
+            "hSpecialty uses 2=PED while S5 uses 3=Pediatrician; confirm whether the banner intended the S5 original code or the consolidated hidden flag.",
+            "No evidence that 'Pediatrician' maps to any other S5 code, but verify that respondents coded '95=Other' for S5 were not intended to be included."
+          ],
+          "expressionType": "direct_variable"
+        }
+      ]
+    }
+  ]
+}
