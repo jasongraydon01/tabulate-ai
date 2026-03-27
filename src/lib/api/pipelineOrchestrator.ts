@@ -1401,10 +1401,12 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
     }
     wideEvent.finish(excelGenerated ? 'success' : (rExecutionSuccess ? 'partial' : 'error'));
 
-    // Upload outputs to R2 (skip for demo mode — outputs are ephemeral)
+    // Upload outputs to R2 for all run types, including demos.
+    // Demo runs still use local temp paths for current email delivery, but
+    // durable uploads are required for debugging and post-mortem inspection.
     let r2Manifest: R2FileManifest | undefined;
     let r2UploadFailed = false;
-    if (convexOrgId && convexProjectId && !wizardConfig?.demoMode) {
+    if (convexOrgId && convexProjectId) {
       try {
         const runTimestamp = pipelineId.replace('pipeline-', '').replace(/-(\d{3}Z)$/, '.$1');
         r2Manifest = await uploadPipelineOutputs(
