@@ -15,7 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ExternalLink, LogOut, Settings } from "lucide-react";
+import { ExternalLink, Inbox, LogOut, Settings } from "lucide-react";
 import Link from "next/link";
 import { canPerform } from "@/lib/permissions";
 
@@ -56,7 +56,7 @@ function roleLabel(role: string | null) {
 }
 
 export function AppHeader({ children }: { children?: React.ReactNode }) {
-  const { name, email, role, isBypass } = useAuthContext();
+  const { name, email, role, isBypass, isInternalOperator } = useAuthContext();
   const initials = getInitials(name, email);
 
   return (
@@ -103,6 +103,14 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                 <Link href="/settings" className="cursor-pointer">
                   <Settings className="mr-2 h-4 w-4" />
                   Settings
+                </Link>
+              </DropdownMenuItem>
+            )}
+            {isInternalOperator && (
+              <DropdownMenuItem asChild>
+                <Link href="/ops/access-requests" className="cursor-pointer">
+                  <Inbox className="mr-2 h-4 w-4" />
+                  Access Requests
                 </Link>
               </DropdownMenuItem>
             )}

@@ -22,6 +22,7 @@ import { syncAuthToConvex } from '@/lib/auth-sync';
 import { queryInternal } from '@/lib/convex';
 import { internal } from '../../../../convex/_generated/api';
 import { canPerform } from '@/lib/permissions';
+import { isInternalAccessUser } from '@/lib/internalOperators';
 
 /** @temporary — remove gate when pricing is production-ready */
 export default async function PricingPage({
@@ -31,6 +32,7 @@ export default async function PricingPage({
 }) {
   const auth = await getAuth();
   const isAuthenticated = !!auth;
+  const hasInternalAccess = isInternalAccessUser(auth?.email ?? null);
   const params = await searchParams;
   const checkoutPlanParam = params[PRICING_CHECKOUT_PLAN_PARAM];
   const checkoutPlan = parsePlanId(
@@ -53,7 +55,7 @@ export default async function PricingPage({
       const subscription = await queryInternal(internal.subscriptions.getByOrgInternal, {
         orgId: ids.orgId,
       });
-      hasActiveSubscription = hasActiveSubscriptionStatus(subscription?.status ?? null);
+      hasActiveSubscription = hasInternalAccess || hasActiveSubscriptionStatus(subscription?.status ?? null);
       currentPlanId = parsePlanId(subscription?.plan ?? null);
     } catch (error) {
       console.warn('[PricingPage] Could not load pricing context:', error);

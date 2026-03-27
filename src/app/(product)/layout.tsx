@@ -10,6 +10,10 @@ import { queryInternal } from "@/lib/convex";
 import { internal } from "../../../convex/_generated/api";
 import type { Role } from "@/lib/permissions";
 import { hasActiveSubscriptionStatus } from "@/lib/billing/subscriptionStatus";
+import {
+  isInternalAccessUser,
+  isInternalOperator as isInternalOperatorEmail,
+} from "@/lib/internalOperators";
 
 export default async function ProductLayout({
   children,
@@ -26,6 +30,8 @@ export default async function ProductLayout({
   let convexOrgId: string | null = null;
   let convexUserId: string | null = null;
   let role: Role | null = null;
+  const isInternalOperator = isInternalOperatorEmail(auth.email);
+  const isInternalAccess = isInternalAccessUser(auth.email);
   let hasActiveSubscription = false;
   let subscriptionPlan: string | null = null;
 
@@ -50,8 +56,8 @@ export default async function ProductLayout({
     const subscription = await queryInternal(internal.subscriptions.getByOrgInternal, {
       orgId: ids.orgId,
     });
-    hasActiveSubscription = hasActiveSubscriptionStatus(subscription?.status ?? null);
-    subscriptionPlan = subscription?.plan ?? null;
+    hasActiveSubscription = isInternalAccess || hasActiveSubscriptionStatus(subscription?.status ?? null);
+    subscriptionPlan = isInternalAccess ? 'internal' : (subscription?.plan ?? null);
   } catch (err) {
     console.warn('[Layout] Could not sync auth to Convex:', err);
   }
@@ -65,6 +71,8 @@ export default async function ProductLayout({
         name={auth.name}
         role={role}
         isBypass={auth.isBypass}
+        isInternalOperator={isInternalOperator}
+        isInternalAccess={isInternalAccess}
         hasActiveSubscription={hasActiveSubscription}
         subscriptionPlan={subscriptionPlan}
       >

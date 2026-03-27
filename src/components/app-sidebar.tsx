@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   PlusCircle,
   Settings,
+  Inbox,
   Loader2,
   CheckCircle,
   AlertCircle,
@@ -77,7 +78,7 @@ interface SidebarProject {
 export function AppSidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const { convexOrgId, hasActiveSubscription, role } = useAuthContext();
+  const { convexOrgId, hasActiveSubscription, role, isInternalOperator } = useAuthContext();
 
   const projects = useQuery(
     api.projects.listByOrg,
@@ -176,6 +177,18 @@ export function AppSidebar() {
                   <span>{createProjectCta?.label ?? 'Choose Plan'}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              {isInternalOperator && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    isActive={pathname === "/ops/access-requests"}
+                    onClick={() => router.push("/ops/access-requests")}
+                    className="cursor-pointer"
+                  >
+                    <Inbox className="h-4 w-4" />
+                    <span>Access Requests</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

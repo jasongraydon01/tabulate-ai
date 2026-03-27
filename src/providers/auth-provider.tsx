@@ -12,6 +12,8 @@ interface AuthContextValue {
   name: string | null;
   role: Role | null;
   isBypass: boolean;
+  isInternalOperator: boolean;
+  isInternalAccess: boolean;
   hasActiveSubscription: boolean;
   subscriptionPlan: string | null;
 }
@@ -23,6 +25,8 @@ const AuthContext = createContext<AuthContextValue>({
   name: null,
   role: null,
   isBypass: false,
+  isInternalOperator: false,
+  isInternalAccess: false,
   hasActiveSubscription: false,
   subscriptionPlan: null,
 });
@@ -35,6 +39,8 @@ interface AuthProviderProps {
   name?: string | null;
   role?: Role | null;
   isBypass?: boolean;
+  isInternalOperator?: boolean;
+  isInternalAccess?: boolean;
   hasActiveSubscription?: boolean;
   subscriptionPlan?: string | null;
 }
@@ -47,6 +53,8 @@ export function AuthProvider({
   name = null,
   role = null,
   isBypass = false,
+  isInternalOperator = false,
+  isInternalAccess = false,
   hasActiveSubscription = false,
   subscriptionPlan = null,
 }: AuthProviderProps) {
@@ -71,6 +79,8 @@ export function AuthProvider({
         name: name ?? null,
         role: role ?? null,
         isBypass,
+        isInternalOperator,
+        isInternalAccess,
         hasActiveSubscription,
         subscriptionPlan,
       }}

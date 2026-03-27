@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { canPerform, type Role } from '@/lib/permissions';
 import { type PlanId } from '@/lib/billing/plans';
+import { useAuthContext } from '@/providers/auth-provider';
 
 interface SubscriptionData {
   plan: PlanId;
@@ -63,6 +64,7 @@ function formatDate(unixMs: number) {
 export function BillingSection({ role }: { role: Role | null }) {
   const canView = canPerform(role, 'view_billing');
   const canManage = canPerform(role, 'manage_billing');
+  const { isInternalAccess } = useAuthContext();
   const [subscription, setSubscription] = useState<SubscriptionData | null | undefined>(undefined);
   const [portalLoading, setPortalLoading] = useState(false);
 
@@ -124,13 +126,21 @@ export function BillingSection({ role }: { role: Role | null }) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground mb-4">
-            No active billing plan. Choose a plan to start processing projects.
-          </p>
-          {canManage && (
-            <Button variant="outline" size="sm" asChild>
-              <a href="/pricing">View Plans</a>
-            </Button>
+          {isInternalAccess ? (
+            <p className="text-sm text-muted-foreground">
+              This workspace has internal team access, so billing is bypassed for your domain.
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground mb-4">
+                No active billing plan. Choose a plan to start processing projects.
+              </p>
+              {canManage && (
+                <Button variant="outline" size="sm" asChild>
+                  <a href="/pricing">View Plans</a>
+                </Button>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
