@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   getAuth: vi.fn(),
+  getSessionAuth: vi.fn(),
   syncAuthToConvex: vi.fn(),
   queryInternal: vi.fn(),
   redirect: vi.fn(),
@@ -15,6 +16,7 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/lib/auth', () => ({
   getAuth: mocks.getAuth,
+  getSessionAuth: mocks.getSessionAuth,
 }));
 
 vi.mock('@/lib/auth-sync', () => ({
@@ -60,6 +62,7 @@ describe('pricing page', () => {
   });
 
   it('renders unauthenticated pricing CTAs with request-access routing', async () => {
+    mocks.getSessionAuth.mockResolvedValue(null);
     mocks.getAuth.mockResolvedValue(null);
     const { default: PricingPage } = await import('@/app/(marketing)/pricing/page');
 
@@ -76,6 +79,12 @@ describe('pricing page', () => {
   });
 
   it('passes authenticated billing context into the pricing cards and switches CTA copy', async () => {
+    mocks.getSessionAuth.mockResolvedValue({
+      userId: 'user_123',
+      email: 'admin@tabulate-ai.com',
+      name: 'Admin User',
+      isBypass: false,
+    });
     mocks.getAuth.mockResolvedValue({
       userId: 'user_123',
       email: 'admin@tabulate-ai.com',
@@ -105,5 +114,28 @@ describe('pricing page', () => {
     expect(markup).toContain('&quot;hasActiveSubscription&quot;:true');
     expect(markup).toContain('&quot;currentPlanId&quot;:&quot;starter&quot;');
     expect(markup).toContain('&quot;resumePlanId&quot;:&quot;professional&quot;');
+  });
+
+  it('keeps signed-in users without workspace access on the request-access path', async () => {
+    mocks.getSessionAuth.mockResolvedValue({
+      userId: 'user_234',
+      email: 'pending@client.com',
+      name: 'Pending User',
+      isBypass: false,
+    });
+    mocks.getAuth.mockResolvedValue(null);
+
+    const { default: PricingPage } = await import('@/app/(marketing)/pricing/page');
+
+    const markup = renderToStaticMarkup(
+      await PricingPage({
+        searchParams: Promise.resolve({}),
+      }),
+    );
+
+    expect(markup).toContain('/request-access?source=pricing');
+    expect(markup).toContain('>Request Access<');
+    expect(markup).toContain('&quot;isAuthenticated&quot;:true');
+    expect(markup).toContain('&quot;hasWorkspaceAccess&quot;:false');
   });
 });

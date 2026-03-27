@@ -28,18 +28,23 @@ describe('navigation helpers', () => {
   });
 
   it('returns the correct marketing CTA for auth state', () => {
-    expect(getMarketingPrimaryCta(false)).toEqual({
+    expect(getMarketingPrimaryCta({ isAuthenticated: false, hasWorkspaceAccess: false })).toEqual({
       href: '/demo',
       label: 'Try Demo',
     });
-    expect(getMarketingPrimaryCta(true)).toEqual({
+    expect(getMarketingPrimaryCta({ isAuthenticated: true, hasWorkspaceAccess: true })).toEqual({
       href: '/dashboard',
       label: 'Dashboard',
     });
-    expect(getMarketingSecondaryCta(false)).toEqual({
+    expect(getMarketingPrimaryCta({ isAuthenticated: true, hasWorkspaceAccess: false })).toEqual({
       href: '/request-access?source=marketing',
       label: 'Request Access',
     });
-    expect(getMarketingSecondaryCta(true)).toBeNull();
+    expect(getMarketingSecondaryCta({ isAuthenticated: false, hasWorkspaceAccess: false })).toEqual({
+      href: '/request-access?source=marketing',
+      label: 'Request Access',
+    });
+    expect(getMarketingSecondaryCta({ isAuthenticated: true, hasWorkspaceAccess: false })).toBeNull();
+    expect(getMarketingSecondaryCta({ isAuthenticated: true, hasWorkspaceAccess: true })).toBeNull();
   });
 });

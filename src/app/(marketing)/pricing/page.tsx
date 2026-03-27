@@ -17,7 +17,7 @@ import {
   PRICING_CHECKOUT_PLAN_PARAM,
 } from '@/lib/billing/pricingFlow';
 import { hasActiveSubscriptionStatus } from '@/lib/billing/subscriptionStatus';
-import { getAuth } from '@/lib/auth';
+import { getAuth, getSessionAuth } from '@/lib/auth';
 import { syncAuthToConvex } from '@/lib/auth-sync';
 import { queryInternal } from '@/lib/convex';
 import { internal } from '../../../../convex/_generated/api';
@@ -31,8 +31,9 @@ export default async function PricingPage({
 }: {
   searchParams: Promise<{ [PRICING_CHECKOUT_PLAN_PARAM]?: string | string[] }>;
 }) {
-  const auth = await getAuth();
-  const isAuthenticated = !!auth;
+  const [sessionAuth, auth] = await Promise.all([getSessionAuth(), getAuth()]);
+  const isAuthenticated = !!sessionAuth;
+  const hasWorkspaceAccess = !!auth;
   const hasInternalAccess = isInternalAccessUser(auth?.email ?? null);
   const params = await searchParams;
   const checkoutPlanParam = params[PRICING_CHECKOUT_PLAN_PARAM];
@@ -65,6 +66,7 @@ export default async function PricingPage({
 
   const primaryCta = getPricingPagePrimaryCta({
     isAuthenticated,
+    hasWorkspaceAccess,
     canManageBilling,
     hasActiveSubscription,
   });
@@ -107,6 +109,7 @@ export default async function PricingPage({
         <div className="max-w-6xl mx-auto">
           <PlanCards
             isAuthenticated={isAuthenticated}
+            hasWorkspaceAccess={hasWorkspaceAccess}
             canManageBilling={canManageBilling}
             hasActiveSubscription={hasActiveSubscription}
             currentPlanId={currentPlanId}

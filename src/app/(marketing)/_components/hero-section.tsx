@@ -20,11 +20,12 @@ const CrystallizationHero = dynamic(
 
 interface HeroSectionProps {
   isAuthenticated: boolean;
+  hasWorkspaceAccess: boolean;
 }
 
-export function HeroSection({ isAuthenticated }: HeroSectionProps) {
-  const primaryCta = getMarketingPrimaryCta(isAuthenticated);
-  const secondaryCta = getMarketingSecondaryCta(isAuthenticated);
+export function HeroSection({ isAuthenticated, hasWorkspaceAccess }: HeroSectionProps) {
+  const primaryCta = getMarketingPrimaryCta({ isAuthenticated, hasWorkspaceAccess });
+  const secondaryCta = getMarketingSecondaryCta({ isAuthenticated, hasWorkspaceAccess });
   const signInHref = buildSignInPath('/dashboard');
 
   return (
@@ -83,7 +84,7 @@ export function HeroSection({ isAuthenticated }: HeroSectionProps) {
               className="animate-fade-up flex gap-4 flex-wrap"
               style={{ animationDelay: "1.1s" }}
             >
-              {isAuthenticated ? (
+              {hasWorkspaceAccess ? (
                 <>
                   <Button
                     asChild
@@ -126,7 +127,7 @@ export function HeroSection({ isAuthenticated }: HeroSectionProps) {
                         cta_text: primaryCta.label,
                       }}
                     >
-                      {!isAuthenticated && <Play className="mr-2 h-4 w-4" />}
+                      {primaryCta.label === "Try Demo" && <Play className="mr-2 h-4 w-4" />}
                       {primaryCta.label}
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </TrackedLink>

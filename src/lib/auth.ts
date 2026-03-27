@@ -22,6 +22,13 @@ export interface AuthContext {
   isBypass: boolean;
 }
 
+export interface SessionAuthContext {
+  userId: string;
+  email: string;
+  name: string;
+  isBypass: boolean;
+}
+
 const DEV_USER: AuthContext = {
   userId: "dev_user_001",
   email: "dev@crosstab.ai",
@@ -55,6 +62,48 @@ async function fetchOrgName(orgId: string): Promise<string> {
   }
 }
 
+function buildSessionContext(user: {
+  id: string;
+  email?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+}): SessionAuthContext {
+  return {
+    userId: user.id,
+    email: user.email ?? "",
+    name: [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "Unknown",
+    isBypass: false,
+  };
+}
+
+/**
+ * Get the current signed-in session, regardless of whether the user has a workspace yet.
+ * Returns null only when there is no authenticated WorkOS session.
+ */
+export async function getSessionAuth(): Promise<SessionAuthContext | null> {
+  if (process.env.AUTH_BYPASS === "true") {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("AUTH_BYPASS must not be enabled in production");
+    }
+    setSentryUser(DEV_USER);
+    return {
+      userId: DEV_USER.userId,
+      email: DEV_USER.email,
+      name: DEV_USER.name,
+      isBypass: true,
+    };
+  }
+
+  try {
+    const auth = await withAuth();
+    if (!auth.user) return null;
+
+    return buildSessionContext(auth.user);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Get the current authenticated user context.
  * In AUTH_BYPASS mode, returns a hardcoded dev user.
@@ -81,10 +130,11 @@ export async function getAuth(): Promise<AuthContext | null> {
 
     const orgName = await fetchOrgName(orgId);
 
+    const session = buildSessionContext(user);
     const ctx: AuthContext = {
-      userId: user.id,
-      email: user.email ?? "",
-      name: [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "Unknown",
+      userId: session.userId,
+      email: session.email,
+      name: session.name,
       orgId,
       orgName,
       role: auth.role ?? undefined,

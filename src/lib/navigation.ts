@@ -19,15 +19,35 @@ export function buildSignInPath(returnTo = '/dashboard'): string {
   return `/auth/sign-in?returnTo=${encodeURIComponent(sanitizedReturnTo)}`;
 }
 
-export function getMarketingPrimaryCta(isAuthenticated: boolean): { href: string; label: string } {
-  if (isAuthenticated) {
+export function getMarketingPrimaryCta({
+  isAuthenticated,
+  hasWorkspaceAccess,
+}: {
+  isAuthenticated: boolean;
+  hasWorkspaceAccess: boolean;
+}): { href: string; label: string } {
+  if (hasWorkspaceAccess) {
     return { href: '/dashboard', label: 'Dashboard' };
+  }
+
+  if (isAuthenticated) {
+    return { href: buildRequestAccessPath('marketing'), label: 'Request Access' };
   }
 
   return { href: '/demo', label: 'Try Demo' };
 }
 
-export function getMarketingSecondaryCta(isAuthenticated: boolean): { href: string; label: string } | null {
+export function getMarketingSecondaryCta({
+  isAuthenticated,
+  hasWorkspaceAccess,
+}: {
+  isAuthenticated: boolean;
+  hasWorkspaceAccess: boolean;
+}): { href: string; label: string } | null {
+  if (hasWorkspaceAccess) {
+    return null;
+  }
+
   if (isAuthenticated) {
     return null;
   }

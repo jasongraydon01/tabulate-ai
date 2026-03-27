@@ -19,6 +19,7 @@ import { buildPricingCheckoutReturnPath } from '@/lib/billing/pricingFlow';
 
 interface PlanCardsProps {
   isAuthenticated: boolean;
+  hasWorkspaceAccess: boolean;
   canManageBilling: boolean;
   hasActiveSubscription: boolean;
   currentPlanId: PlanId | null;
@@ -27,6 +28,7 @@ interface PlanCardsProps {
 
 export function PlanCards({
   isAuthenticated,
+  hasWorkspaceAccess,
   canManageBilling,
   hasActiveSubscription,
   currentPlanId,
@@ -79,6 +81,7 @@ export function PlanCards({
     const state = getPricingPlanUiState({
       planId,
       isAuthenticated,
+      hasWorkspaceAccess,
       canManageBilling,
       hasActiveSubscription,
       currentPlanId,
@@ -111,6 +114,7 @@ export function PlanCards({
     const state = getPricingPlanUiState({
       planId: resumePlanId,
       isAuthenticated,
+      hasWorkspaceAccess,
       canManageBilling,
       hasActiveSubscription,
       currentPlanId,
@@ -124,7 +128,7 @@ export function PlanCards({
     if (state.action === 'contact_admin') {
       toast.info('Billing is managed by your organization admin.');
     }
-  }, [resumePlanId, isAuthenticated, canManageBilling, hasActiveSubscription, currentPlanId]);
+  }, [resumePlanId, isAuthenticated, hasWorkspaceAccess, canManageBilling, hasActiveSubscription, currentPlanId]);
 
   return (
     <StaggerContainer
@@ -140,6 +144,7 @@ export function PlanCards({
         const planUi = getPricingPlanUiState({
           planId,
           isAuthenticated,
+          hasWorkspaceAccess,
           canManageBilling,
           hasActiveSubscription,
           currentPlanId,

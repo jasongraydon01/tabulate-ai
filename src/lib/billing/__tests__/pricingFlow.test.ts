@@ -25,6 +25,7 @@ describe('pricing flow helpers', () => {
       getPricingPlanUiState({
         planId: 'starter',
         isAuthenticated: false,
+        hasWorkspaceAccess: false,
         canManageBilling: false,
         hasActiveSubscription: false,
         currentPlanId: null,
@@ -42,6 +43,7 @@ describe('pricing flow helpers', () => {
       getPricingPlanUiState({
         planId: 'starter',
         isAuthenticated: true,
+        hasWorkspaceAccess: true,
         canManageBilling: false,
         hasActiveSubscription: false,
         currentPlanId: null,
@@ -59,6 +61,7 @@ describe('pricing flow helpers', () => {
       getPricingPlanUiState({
         planId: 'starter',
         isAuthenticated: true,
+        hasWorkspaceAccess: true,
         canManageBilling: true,
         hasActiveSubscription: true,
         currentPlanId: 'starter',
@@ -76,6 +79,7 @@ describe('pricing flow helpers', () => {
       getPricingPlanUiState({
         planId: 'professional',
         isAuthenticated: true,
+        hasWorkspaceAccess: true,
         canManageBilling: true,
         hasActiveSubscription: true,
         currentPlanId: 'starter',
@@ -93,6 +97,7 @@ describe('pricing flow helpers', () => {
       getPricingPlanUiState({
         planId: 'payg',
         isAuthenticated: true,
+        hasWorkspaceAccess: true,
         canManageBilling: true,
         hasActiveSubscription: false,
         currentPlanId: null,
@@ -101,6 +106,24 @@ describe('pricing flow helpers', () => {
       action: 'checkout',
       ctaLabel: 'Start Plan',
       ctaHref: null,
+      disabled: false,
+    });
+  });
+
+  it('keeps signed-in users without a workspace on request access from pricing', () => {
+    expect(
+      getPricingPlanUiState({
+        planId: 'starter',
+        isAuthenticated: true,
+        hasWorkspaceAccess: false,
+        canManageBilling: false,
+        hasActiveSubscription: false,
+        currentPlanId: null,
+      }),
+    ).toEqual({
+      action: 'request_access',
+      ctaLabel: 'Request Access',
+      ctaHref: '/request-access?source=pricing',
       disabled: false,
     });
   });
@@ -120,6 +143,7 @@ describe('pricing flow helpers', () => {
   it('returns pricing page CTA based on auth and billing state', () => {
     expect(getPricingPagePrimaryCta({
       isAuthenticated: false,
+      hasWorkspaceAccess: false,
       canManageBilling: false,
       hasActiveSubscription: false,
     })).toEqual({
@@ -129,11 +153,22 @@ describe('pricing flow helpers', () => {
 
     expect(getPricingPagePrimaryCta({
       isAuthenticated: true,
+      hasWorkspaceAccess: true,
       canManageBilling: true,
       hasActiveSubscription: false,
     })).toEqual({
       href: '#pricing-plans',
       label: 'Choose a Plan',
+    });
+
+    expect(getPricingPagePrimaryCta({
+      isAuthenticated: true,
+      hasWorkspaceAccess: false,
+      canManageBilling: false,
+      hasActiveSubscription: false,
+    })).toEqual({
+      href: '/request-access?source=pricing',
+      label: 'Request Access',
     });
   });
 });

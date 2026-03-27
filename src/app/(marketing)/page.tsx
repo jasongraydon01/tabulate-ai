@@ -3,7 +3,7 @@ import { ArrowRight, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TrackedLink } from "@/components/TrackedLink";
 import { ScrollReveal } from "@/components/ui/scroll-reveal";
-import { getAuth } from "@/lib/auth";
+import { getAuth, getSessionAuth } from "@/lib/auth";
 import { getMarketingPrimaryCta, getMarketingSecondaryCta } from "@/lib/navigation";
 import { HeroSection } from "./_components/hero-section";
 import { HowItWorksSection } from "./_components/how-it-works-section";
@@ -12,14 +12,18 @@ import { FeaturesSection } from "./_components/features-section";
 export const dynamic = 'force-dynamic';
 
 export default async function LandingPage() {
-  const auth = await getAuth();
-  const isAuthenticated = !!auth;
-  const primaryCta = getMarketingPrimaryCta(isAuthenticated);
-  const secondaryCta = getMarketingSecondaryCta(isAuthenticated);
+  const [sessionAuth, auth] = await Promise.all([getSessionAuth(), getAuth()]);
+  const isAuthenticated = !!sessionAuth;
+  const hasWorkspaceAccess = !!auth;
+  const primaryCta = getMarketingPrimaryCta({ isAuthenticated, hasWorkspaceAccess });
+  const secondaryCta = getMarketingSecondaryCta({ isAuthenticated, hasWorkspaceAccess });
   return (
     <>
       {/* ============ HERO ============ */}
-      <HeroSection isAuthenticated={isAuthenticated} />
+      <HeroSection
+        isAuthenticated={isAuthenticated}
+        hasWorkspaceAccess={hasWorkspaceAccess}
+      />
 
       {/* ============ TRUST STRIP ============ */}
       <section className="border-y border-border/40">
@@ -62,7 +66,7 @@ export default async function LandingPage() {
               Upload your survey data. Download publication-ready tables. It&apos;s that direct.
             </p>
             <div className="flex gap-4 justify-center flex-wrap">
-              {isAuthenticated ? (
+              {hasWorkspaceAccess ? (
                 <Button asChild size="lg" className="text-base px-8 rounded-full bg-foreground text-background hover:bg-foreground/90">
                   <TrackedLink
                     href="/dashboard"
@@ -85,7 +89,7 @@ export default async function LandingPage() {
                       eventName="cta_clicked"
                       eventProperties={{ location: 'bottom_cta', cta_text: primaryCta.label }}
                     >
-                      <Play className="mr-2 h-4 w-4" />
+                      {primaryCta.label === 'Try Demo' && <Play className="mr-2 h-4 w-4" />}
                       {primaryCta.label}
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </TrackedLink>

@@ -36,17 +36,28 @@ export interface PricingPlanUiState {
 export function getPricingPlanUiState({
   planId,
   isAuthenticated,
+  hasWorkspaceAccess,
   canManageBilling,
   hasActiveSubscription,
   currentPlanId,
 }: {
   planId: PlanId;
   isAuthenticated: boolean;
+  hasWorkspaceAccess: boolean;
   canManageBilling: boolean;
   hasActiveSubscription: boolean;
   currentPlanId: PlanId | null;
 }): PricingPlanUiState {
   if (!isAuthenticated) {
+    return {
+      action: 'request_access',
+      ctaLabel: 'Request Access',
+      ctaHref: buildRequestAccessPath('pricing'),
+      disabled: false,
+    };
+  }
+
+  if (!hasWorkspaceAccess) {
     return {
       action: 'request_access',
       ctaLabel: 'Request Access',
@@ -92,23 +103,25 @@ export function getPricingPlanUiState({
 
 export function getPricingPagePrimaryCta({
   isAuthenticated,
+  hasWorkspaceAccess,
   canManageBilling,
   hasActiveSubscription,
 }: {
   isAuthenticated: boolean;
+  hasWorkspaceAccess: boolean;
   canManageBilling: boolean;
   hasActiveSubscription: boolean;
 }): { href: string; label: string } {
-  if (isAuthenticated && hasActiveSubscription) {
+  if (hasWorkspaceAccess && hasActiveSubscription) {
     return { href: '/dashboard', label: 'Dashboard' };
   }
 
-  if (isAuthenticated && canManageBilling) {
+  if (hasWorkspaceAccess && canManageBilling) {
     return { href: '#pricing-plans', label: 'Choose a Plan' };
   }
 
   if (isAuthenticated) {
-    return { href: '/dashboard', label: 'View Workspace' };
+    return { href: buildRequestAccessPath('pricing'), label: 'Request Access' };
   }
 
   return { href: buildRequestAccessPath('pricing'), label: 'Request Access' };

@@ -1,4 +1,4 @@
-import { getAuth } from "@/lib/auth";
+import { getAuth, getSessionAuth } from "@/lib/auth";
 import { MarketingHeader } from "@/components/marketing/MarketingHeader";
 import { MarketingThreadLine } from "./_components/marketing-thread-line";
 
@@ -9,12 +9,16 @@ export default async function MarketingLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const auth = await getAuth();
-  const isAuthenticated = !!auth;
+  const [sessionAuth, auth] = await Promise.all([getSessionAuth(), getAuth()]);
+  const isAuthenticated = !!sessionAuth;
+  const hasWorkspaceAccess = !!auth;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <MarketingHeader isAuthenticated={isAuthenticated} />
+      <MarketingHeader
+        isAuthenticated={isAuthenticated}
+        hasWorkspaceAccess={hasWorkspaceAccess}
+      />
       <MarketingThreadLine />
       <main>{children}</main>
     </div>

@@ -15,12 +15,14 @@ import { getMarketingPrimaryCta, getMarketingSecondaryCta } from "@/lib/navigati
 
 export function MarketingHeader({
   isAuthenticated,
+  hasWorkspaceAccess,
 }: {
   isAuthenticated: boolean;
+  hasWorkspaceAccess: boolean;
 }) {
   const [scrolled, setScrolled] = useState(false);
-  const primaryCta = getMarketingPrimaryCta(isAuthenticated);
-  const secondaryCta = getMarketingSecondaryCta(isAuthenticated);
+  const primaryCta = getMarketingPrimaryCta({ isAuthenticated, hasWorkspaceAccess });
+  const secondaryCta = getMarketingSecondaryCta({ isAuthenticated, hasWorkspaceAccess });
   const signInHref = buildSignInPath('/dashboard');
 
   useEffect(() => {
