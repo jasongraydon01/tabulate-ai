@@ -61,6 +61,7 @@ export function MarketingHeader({
               { href: "/#how-it-works", label: "How It Works" },
               { href: "/#features", label: "Features" },
               { href: "/pricing", label: "Pricing" },
+              { href: "/contact", label: "Contact" },
               { href: "/data-privacy", label: "Security" },
             ].map((link) => (
               <Link
@@ -134,6 +135,14 @@ export function MarketingHeader({
                       className="text-base text-muted-foreground hover:text-foreground transition-colors"
                     >
                       Pricing
+                    </Link>
+                  </SheetClose>
+                  <SheetClose asChild>
+                    <Link
+                      href="/contact"
+                      className="text-base text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Contact
                     </Link>
                   </SheetClose>
                   <SheetClose asChild>

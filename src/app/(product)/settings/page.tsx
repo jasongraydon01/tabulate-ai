@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { useQuery } from 'convex/react';
 import posthog from 'posthog-js';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,6 +17,7 @@ import { BillingSection } from '@/components/settings/BillingSection';
 import { useAuthContext } from '@/providers/auth-provider';
 import { canPerform } from '@/lib/permissions';
 import { useSoundPreference } from '@/hooks/useSoundPreference';
+import { buildContactPath } from '@/lib/contact';
 import { api } from '../../../../convex/_generated/api';
 import type { Id } from '../../../../convex/_generated/dataModel';
 
@@ -227,6 +229,50 @@ export default function SettingsPage() {
             {canManageWinCrossProfiles && convexOrgId && (
               <WinCrossProfiles orgId={convexOrgId as Id<'organizations'>} />
             )}
+
+            {!canManageWinCrossProfiles && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">WinCross Profiles</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    WinCross profile uploads are managed by your workspace administrator.
+                    Ask them to upload or update the org default profile when a client-specific
+                    export style is needed.
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    If your team needs help preparing a profile,{' '}
+                    <Link
+                      href={buildContactPath({ topic: 'wincross' })}
+                      className="text-foreground underline underline-offset-4"
+                    >
+                      contact TabulateAI
+                    </Link>
+                    .
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Need Help?</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Questions about workspace setup, billing, exports, or anything else?
+                  {' '}
+                  <Link
+                    href={buildContactPath()}
+                    className="text-foreground underline underline-offset-4"
+                  >
+                    Contact TabulateAI
+                  </Link>
+                  .
+                </p>
+              </CardContent>
+            </Card>
 
             {/* Members */}
             <Card>

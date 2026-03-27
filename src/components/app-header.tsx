@@ -15,7 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ExternalLink, Inbox, LogOut, Settings } from "lucide-react";
+import { ExternalLink, Inbox, LifeBuoy, LogOut, Settings } from "lucide-react";
 import Link from "next/link";
 import { canPerform } from "@/lib/permissions";
 
@@ -96,6 +96,12 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               <Link href="/" className="cursor-pointer">
                 <ExternalLink className="mr-2 h-4 w-4" />
                 TabulateAI Home
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/contact" className="cursor-pointer">
+                <LifeBuoy className="mr-2 h-4 w-4" />
+                Contact TabulateAI
               </Link>
             </DropdownMenuItem>
             {canPerform(role, 'view_settings') && (

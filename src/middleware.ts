@@ -8,6 +8,7 @@ const workosMiddleware = authkitMiddleware({
     unauthenticatedPaths: [
       "/",
       "/pricing",
+      "/contact",
       "/demo",
       "/demo/status",
       "/request-access",
@@ -22,6 +23,7 @@ const workosMiddleware = authkitMiddleware({
       "/api/demo/verify",
       "/api/demo/validate-data",
       "/api/access-requests",
+      "/api/contact",
     ],
   },
 });

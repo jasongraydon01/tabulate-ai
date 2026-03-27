@@ -10,6 +10,16 @@ import { ScrollReveal } from '@/components/ui/scroll-reveal';
 
 const FAQ_ITEMS = [
   {
+    question: 'How do I get started?',
+    answer:
+      'Start with the demo to see how TabulateAI handles your survey workflow. If you want workspace access for your team, submit a request access form. We then provision the initial workspace, domain mapping, and first admin before you begin billing inside the product.',
+  },
+  {
+    question: 'Can I subscribe before my workspace is set up?',
+    answer:
+      'Not yet. Pricing is public so you can evaluate the plans, but billing starts after your workspace exists and the right admin is in place. That keeps organization setup, permissions, and billing ownership aligned from the start.',
+  },
+  {
     question: 'What counts as a project?',
     answer:
       'One dataset (.sav file) and all associated activity: initial runs, re-runs, additional banner cuts, and human-in-the-loop review cycles. There are no caps within a project. You pay once per dataset, not per run.',

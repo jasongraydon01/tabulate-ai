@@ -12,4 +12,16 @@ describe('middleware config', () => {
       '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml)$).*)',
     );
   });
+
+  it('keeps the contact page and contact API public', async () => {
+    const { middleware } = await import('@/middleware');
+    expect(middleware).toBeTypeOf('function');
+
+    const source = await import('node:fs').then((fs) =>
+      fs.readFileSync(`${process.cwd()}/src/middleware.ts`, 'utf8'),
+    );
+
+    expect(source).toContain('"/contact"');
+    expect(source).toContain('"/api/contact"');
+  });
 });
