@@ -4,7 +4,9 @@ import { v3PipelineStageValidator } from "../src/schemas/pipelineStageSchema";
 import { configValidator } from "./projectConfigValidators";
 import {
   executionPayloadValidator,
+  recoveryManifestValidator,
 } from "./runExecutionValidators";
+import { getStaleWorkerRecoveryAction } from "../src/lib/worker/recovery";
 
 /** Statuses that represent an actively-running pipeline (heartbeat expected). */
 const ACTIVE_STATUSES = ["in_progress", "resuming"] as const;
@@ -23,6 +25,7 @@ function patchForStatusTransition(
       workerId: undefined,
       claimedAt: undefined,
       heartbeatAt: undefined,
+      resumeFromStage: undefined,
     };
   }
 
@@ -33,6 +36,7 @@ function patchForStatusTransition(
       claimedAt: undefined,
       heartbeatAt: undefined,
       lastHeartbeat: now,
+      resumeFromStage: undefined,
     };
   }
 
@@ -69,6 +73,7 @@ interface StaleWorkerRunRecord {
   heartbeatAt?: number;
   lastHeartbeat?: number;
   claimedAt?: number;
+  recoveryManifest?: unknown;
 }
 
 async function requeueStaleWorkerRunRecords(
@@ -80,10 +85,15 @@ async function requeueStaleWorkerRunRecords(
   let requeuedCount = 0;
 
   for (const run of runs) {
-    const lastAlive = run.heartbeatAt ?? run.lastHeartbeat ?? run.claimedAt ?? run._creationTime;
-    if (now - lastAlive <= staleBeforeMs) continue;
+    const recoveryAction = getStaleWorkerRecoveryAction({
+      run: run as Parameters<typeof getStaleWorkerRecoveryAction>[0]["run"],
+      staleBeforeMs,
+      now,
+    });
 
-    if (run.cancelRequested) {
+    if (recoveryAction.action === "skip") continue;
+
+    if (recoveryAction.action === "cancel") {
       await patchRun(run._id, {
         status: "cancelled",
         executionState: "cancelled",
@@ -95,14 +105,30 @@ async function requeueStaleWorkerRunRecords(
       continue;
     }
 
+    if (recoveryAction.action === "fail") {
+      await patchRun(run._id, {
+        status: "error",
+        executionState: "error",
+        stage: "error",
+        error: recoveryAction.message,
+        message: recoveryAction.message,
+        workerId: undefined,
+        claimedAt: undefined,
+        heartbeatAt: undefined,
+        recoveryStatus: "recovery_failed",
+      });
+      continue;
+    }
+
     await patchRun(run._id, {
-      status: "in_progress",
+      status: recoveryAction.resumeFromStage ? "resuming" : "in_progress",
       executionState: "queued",
-      message: "Run requeued after stale worker lease.",
+      message: recoveryAction.message,
       workerId: undefined,
       claimedAt: undefined,
       heartbeatAt: undefined,
-      recoveryStatus: "queued_recovery",
+      resumeFromStage: recoveryAction.resumeFromStage,
+      recoveryStatus: recoveryAction.resumeFromStage ? "queued_recovery" : "none",
     });
     requeuedCount++;
   }
@@ -193,6 +219,84 @@ export const enqueueForWorker = internalMutation({
       heartbeatAt: undefined,
       lastHeartbeat: Date.now(),
       attemptCount: run.attemptCount ?? 0,
+      resumeFromStage: undefined,
+      recoveryStatus: "none",
+      recoveryManifest: undefined,
+    });
+  },
+});
+
+export const enqueueReviewResume = internalMutation({
+  args: {
+    runId: v.id("runs"),
+    resumeFromStage: v.optional(v3PipelineStageValidator),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run) throw new Error("Run not found");
+
+    if (!run.executionPayload) {
+      await ctx.db.patch(args.runId, {
+        status: "error",
+        executionState: "error",
+        stage: "error",
+        error: "Review resume is missing execution payload.",
+        message: "Review resume is missing execution payload.",
+      });
+      return;
+    }
+
+    if (run.cancelRequested) {
+      await ctx.db.patch(args.runId, {
+        status: "cancelled",
+        executionState: "cancelled",
+        message: "Pipeline cancelled by user",
+        workerId: undefined,
+        claimedAt: undefined,
+        heartbeatAt: undefined,
+      });
+      return;
+    }
+
+    await ctx.db.patch(args.runId, {
+      status: "resuming",
+      stage: args.resumeFromStage ?? "applying_review",
+      progress: 55,
+      message: "Queued for worker resume...",
+      executionState: "queued",
+      workerId: undefined,
+      claimedAt: undefined,
+      heartbeatAt: undefined,
+      lastHeartbeat: Date.now(),
+      resumeFromStage: args.resumeFromStage ?? "applying_review",
+      recoveryStatus: "none",
+    });
+  },
+});
+
+export const updateRecoveryManifest = internalMutation({
+  args: {
+    runId: v.id("runs"),
+    recoveryManifest: recoveryManifestValidator,
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run) throw new Error("Run not found");
+
+    const existingResult = (run.result ?? {}) as Record<string, unknown>;
+    await ctx.db.patch(args.runId, {
+      recoveryManifest: args.recoveryManifest,
+      lastDurableCheckpointAt: args.recoveryManifest.createdAt,
+      lastDurableCheckpointStage: args.recoveryManifest.resumeStage,
+      recoveryStatus: "none",
+      resumeFromStage: undefined,
+      result: {
+        ...existingResult,
+        formatVersion: 3,
+        pipelineId: args.recoveryManifest.pipelineContext.pipelineId,
+        outputDir: args.recoveryManifest.pipelineContext.outputDir,
+        dataset: args.recoveryManifest.pipelineContext.datasetName,
+      },
     });
   },
 });
@@ -546,7 +650,10 @@ export const claimNextQueuedRun = internalMutation({
         heartbeatAt: now,
         lastHeartbeat: now,
         attemptCount,
-        message: "Worker claimed run.",
+        status: run.resumeFromStage ? "resuming" : run.status,
+        message: run.resumeFromStage
+          ? `Worker claimed run for recovery from ${run.resumeFromStage}.`
+          : "Worker claimed run.",
       });
 
       return {
@@ -557,6 +664,7 @@ export const claimNextQueuedRun = internalMutation({
         attemptCount,
         config: run.config,
         executionPayload: run.executionPayload,
+        recoveryManifest: run.recoveryManifest,
         resumeFromStage: run.resumeFromStage,
       };
     }
@@ -603,6 +711,7 @@ export const releaseRun = internalMutation({
       patch.stage = "error";
       patch.error = args.message ?? "Worker released run after an unrecoverable failure.";
       patch.message = args.message ?? "Worker released run after an unrecoverable failure.";
+      patch.recoveryStatus = run.resumeFromStage ? "recovery_failed" : run.recoveryStatus;
     } else if (args.reason === "cancelled") {
       patch.executionState = "cancelled";
       patch.status = "cancelled";

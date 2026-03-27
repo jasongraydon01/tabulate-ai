@@ -11,6 +11,7 @@ import type { PipelineDecisions } from '@/lib/v3/runtime/pipelineDecisions';
 import type { RegroupDecisionReport } from '@/lib/v3/runtime/questionId/groupingAdapter';
 import type { MaxDiffPolicy } from '@/lib/maxdiff/policy';
 import type { V3PipelineCheckpoint } from '@/lib/v3/runtime/contracts';
+import type { GroupHint } from '@/schemas/crosstabDecisionSchema';
 
 export type PipelineStatus = 'in_progress' | 'pending_review' | 'resuming' | 'success' | 'partial' | 'error' | 'cancelled';
 
@@ -230,6 +231,7 @@ export interface CrosstabReviewState {
     hint?: string;
     editedExpression?: string;
   }>;
+  groupHints?: GroupHint[];
 }
 
 export interface ParsedUploadFiles {

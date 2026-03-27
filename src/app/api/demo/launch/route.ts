@@ -23,7 +23,11 @@ import { getDemoActor } from '@/lib/demo/demoOrg';
 import { generateVerificationToken } from '@/lib/demo/verificationToken';
 import { sendDemoVerificationEmail } from '@/lib/demo/sendDemoEmails';
 import { uploadRunInputFiles } from '@/lib/r2/R2FileManager';
-import { buildWorkerExecutionPayload, normalizeWizardWorkerInputRefs } from '@/lib/worker/buildExecutionPayload';
+import {
+  buildWorkerExecutionPayload,
+  buildWorkerPipelineContext,
+  normalizeWizardWorkerInputRefs,
+} from '@/lib/worker/buildExecutionPayload';
 
 
 export const maxDuration = 300; // 5 minutes
@@ -217,6 +221,9 @@ export async function POST(request: NextRequest) {
 
     const executionPayload = buildWorkerExecutionPayload({
       sessionId,
+      pipelineContext: buildWorkerPipelineContext({
+        dataFileName: parsed.dataFile.name,
+      }),
       fileNames: {
         dataMap: parsed.dataFile.name,
         bannerPlan: parsed.bannerPlanFile?.name ?? '',

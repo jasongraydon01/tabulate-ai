@@ -30,6 +30,7 @@ async function claimNextRun(): Promise<ClaimedWorkerRun | null> {
     attemptCount: claimed.attemptCount,
     config: claimed.config as Record<string, unknown>,
     executionPayload: claimed.executionPayload,
+    recoveryManifest: claimed.recoveryManifest,
     resumeFromStage: claimed.resumeFromStage,
   };
 }

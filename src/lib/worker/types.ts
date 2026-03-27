@@ -1,3 +1,10 @@
+import type { V3PipelineStage } from '@/schemas/pipelineStageSchema';
+
+import type {
+  WorkerPipelineContext,
+  WorkerRecoveryManifest,
+} from './recovery';
+
 export type WorkerExecutionState =
   | 'queued'
   | 'claimed'
@@ -27,6 +34,7 @@ export interface WorkerInputRefs {
 
 export interface WorkerExecutionPayload {
   sessionId: string;
+  pipelineContext: WorkerPipelineContext;
   fileNames: WorkerFileNames;
   inputRefs: WorkerInputRefs;
   loopStatTestingMode?: 'suppress' | 'complement';
@@ -40,5 +48,6 @@ export interface ClaimedWorkerRun {
   attemptCount: number;
   config: Record<string, unknown>;
   executionPayload: WorkerExecutionPayload;
-  resumeFromStage?: string;
+  recoveryManifest?: WorkerRecoveryManifest;
+  resumeFromStage?: V3PipelineStage;
 }

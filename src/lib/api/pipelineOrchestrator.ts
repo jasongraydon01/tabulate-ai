@@ -23,7 +23,6 @@ import { cleanupAbort } from '@/lib/abortStore';
 import { cleanupSession } from '@/lib/storage';
 import {
   uploadPipelineOutputs,
-  uploadReviewFile,
   uploadRunOutputArtifact,
   type R2FileManifest,
   type ReviewR2Keys,
@@ -64,7 +63,7 @@ import {
   createPipelineCheckpoint,
   type V3PipelineCheckpoint,
 } from '@/lib/v3/runtime/contracts';
-import { writeCheckpoint } from '@/lib/v3/runtime/persistence';
+import { loadCheckpoint, writeCheckpoint } from '@/lib/v3/runtime/persistence';
 
 // Loop semantics
 import { runLoopSemanticsPolicyAgent, buildEnrichedLoopSummary } from '@/agents/LoopSemanticsPolicyAgent';
@@ -109,6 +108,8 @@ import { deriveMethodologyFromLegacy, type ProjectConfig } from '@/schemas/proje
 import type { V3PipelineStage } from '@/schemas/pipelineStageSchema';
 import type { RunResultShape } from '@/schemas/runResultSchema';
 import type { LoopGroupMapping } from '@/lib/validation/LoopCollapser';
+import type { WorkerPipelineContext } from '@/lib/worker/recovery';
+import { persistDurableRecoveryBoundary } from '@/lib/worker/recoveryPersistence';
 
 import { promises as fs } from 'fs';
 import * as path from 'path';
@@ -417,6 +418,7 @@ export interface PipelineRunParams {
   convexOrgId?: string;
   convexProjectId?: string;
   launchedBy?: string;
+  pipelineContext?: WorkerPipelineContext;
   fileNames: {
     dataMap: string;
     bannerPlan: string;
@@ -443,6 +445,7 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
     convexOrgId,
     convexProjectId,
     launchedBy,
+    pipelineContext,
     fileNames,
     savedPaths,
     abortSignal,
@@ -455,10 +458,16 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
   const processingStartTime = Date.now();
 
   // Create output folder path
-  const datasetName = sanitizeDatasetName(fileNames.dataFile);
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const pipelineId = `pipeline-${timestamp}`;
-  const outputDir = path.join(process.cwd(), 'outputs', datasetName, pipelineId);
+  const datasetName = pipelineContext?.datasetName ?? sanitizeDatasetName(fileNames.dataFile);
+  const pipelineId = pipelineContext?.pipelineId
+    ?? `pipeline-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+  const outputDir = pipelineContext?.outputDir
+    ?? path.join(process.cwd(), 'outputs', datasetName, pipelineId);
+  const durablePipelineContext: WorkerPipelineContext = {
+    pipelineId,
+    datasetName,
+    outputDir,
+  };
 
   return runWithPipelineContext(
     {
@@ -485,6 +494,7 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
 
   // Create output directory
   await fs.mkdir(outputDir, { recursive: true });
+  const recoveredCheckpoint = await loadCheckpoint(outputDir);
 
   // Fetch project name for console capture context
   let projectName = 'Pipeline';
@@ -538,6 +548,29 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
       } catch (err) {
         if (isAbortError(err)) throw err;
         // If cancellation probe fails, do not fail the pipeline.
+      }
+    };
+    const persistRecoveryBoundary = async (
+      boundary: 'question_id' | 'fork_join' | 'review_checkpoint' | 'compute',
+      artifactRefOverrides?: Parameters<typeof persistDurableRecoveryBoundary>[0]['artifactRefOverrides'],
+    ) => {
+      if (!convexOrgId || !convexProjectId) return null;
+      try {
+        return await persistDurableRecoveryBoundary({
+          runId,
+          orgId: convexOrgId,
+          projectId: convexProjectId,
+          outputDir,
+          pipelineContext: durablePipelineContext,
+          boundary,
+          artifactRefOverrides,
+        });
+      } catch (error) {
+        console.warn(
+          `[WorkerRecovery] Failed to persist durable ${boundary} checkpoint (non-fatal):`,
+          error,
+        );
+        return null;
       }
     };
 
@@ -640,26 +673,31 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
     wideEvent.recordStage('validation', 'ok', Date.now() - processingStartTime);
     console.log(`[API] Step 1 complete: ${verboseDataMap.length} variables`);
 
-    // Write initial pipeline summary (for sidebar visibility)
-    const initialCheckpoint = createPipelineCheckpoint(pipelineId, datasetName);
-    const initialSummary: PipelineSummary = {
-      pipelineId,
-      dataset: datasetName,
-      timestamp: new Date().toISOString(),
-      source: 'ui',
-      status: 'in_progress',
-      currentStage: 'v3_enrichment',
-      options: { loopStatTestingMode },
-      inputs: {
-        datamap: fileNames.dataMap,
-        banner: fileNames.bannerPlan,
-        spss: fileNames.dataFile,
-        survey: fileNames.survey,
-      },
-      v3Checkpoint: initialCheckpoint,
-    };
-    await writePipelineSummary(outputDir, initialSummary);
-    console.log('Initial pipeline summary written');
+    // Write initial pipeline summary only once per stable pipeline context.
+    const initialCheckpoint = recoveredCheckpoint ?? createPipelineCheckpoint(pipelineId, datasetName);
+    try {
+      await fs.access(path.join(outputDir, 'pipeline-summary.json'));
+      console.log('Existing pipeline summary found - preserving prior summary state');
+    } catch {
+      const initialSummary: PipelineSummary = {
+        pipelineId,
+        dataset: datasetName,
+        timestamp: new Date().toISOString(),
+        source: 'ui',
+        status: 'in_progress',
+        currentStage: 'v3_enrichment',
+        options: { loopStatTestingMode },
+        inputs: {
+          datamap: fileNames.dataMap,
+          banner: fileNames.bannerPlan,
+          spss: fileNames.dataFile,
+          survey: fileNames.survey,
+        },
+        v3Checkpoint: initialCheckpoint,
+      };
+      await writePipelineSummary(outputDir, initialSummary);
+      console.log('Initial pipeline summary written');
+    }
 
     // Resolve stat testing config
     const resolvedStatConfig = wizardConfig?.statTesting
@@ -707,6 +745,7 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
     const v3QidDuration = Date.now() - v3QidStart;
     wideEvent.recordStage('v3_enrichment', 'ok', v3QidDuration);
     console.log(`[V3] Enrichment complete: ${v3QuestionIdResult.entries.length} entries in ${v3QidDuration}ms`);
+    await persistRecoveryBoundary('question_id');
 
     await assertNotCancelled();
 
@@ -821,6 +860,7 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
         planningResult.checkpoint,
       );
       await writeCheckpoint(outputDir, mergedCheckpoint);
+      await persistRecoveryBoundary('fork_join');
 
       const forkDuration = Date.now() - forkStart;
       wideEvent.recordStage('v3_fork_join', 'ok', forkDuration);
@@ -864,46 +904,25 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
       await writeReviewStateFile(outputDir, reviewState);
       console.log('Review state saved to crosstab-review-state.json');
 
-      // Upload review files to R2 for resilience against container restarts
       let reviewR2Keys: ReviewR2Keys | undefined;
-      if (convexOrgId && convexProjectId) {
-        try {
-          const reviewStateKey = await uploadReviewFile(
-            convexOrgId, convexProjectId, runId, path.join(outputDir, 'crosstab-review-state.json'), 'crosstab-review-state.json'
-          );
-          const summaryKey = await uploadReviewFile(
-            convexOrgId, convexProjectId, runId, path.join(outputDir, 'pipeline-summary.json'), 'pipeline-summary.json'
-          );
+      try {
+        const reviewRecoveryManifest = await persistRecoveryBoundary('review_checkpoint');
+        if (reviewRecoveryManifest) {
           reviewR2Keys = {
-            reviewState: reviewStateKey,
-            pipelineSummary: summaryKey,
+            reviewState: reviewRecoveryManifest.artifactRefs.reviewState,
+            pipelineSummary: reviewRecoveryManifest.artifactRefs.pipelineSummary,
             spssInput: savedPaths.r2Keys?.spss,
+            v3QuestionIdFinal: reviewRecoveryManifest.artifactRefs.questionIdFinal,
+            v3CrosstabPlan: reviewRecoveryManifest.artifactRefs.crosstabPlan,
+            v3TableEnriched: reviewRecoveryManifest.artifactRefs.tableEnriched,
+            v3TableJson: reviewRecoveryManifest.artifactRefs.tableCanonical,
+            v3Checkpoint: reviewRecoveryManifest.artifactRefs.checkpoint,
+            dataFileSav: reviewRecoveryManifest.artifactRefs.dataFileSav,
           };
-
-          // Upload V3 artifacts needed for post-review compute (container restart recovery)
-          // All artifacts are guaranteed available since canonical is fully complete.
-          const v3ArtifactUploads: Array<{ field: keyof ReviewR2Keys; localPath: string; filename: string }> = [
-            { field: 'v3QuestionIdFinal', localPath: path.join(outputDir, 'enrichment', '12-questionid-final.json'), filename: 'enrichment/12-questionid-final.json' },
-            { field: 'v3CrosstabPlan', localPath: path.join(outputDir, 'planning', '21-crosstab-plan.json'), filename: 'planning/21-crosstab-plan.json' },
-            { field: 'v3TableEnriched', localPath: path.join(outputDir, 'tables', '13e-table-enriched.json'), filename: 'tables/13e-table-enriched.json' },
-            { field: 'v3TableJson', localPath: path.join(outputDir, 'tables', '13d-table-canonical.json'), filename: 'tables/13d-table-canonical.json' },
-            { field: 'v3Checkpoint', localPath: path.join(outputDir, 'checkpoint.json'), filename: 'checkpoint.json' },
-            { field: 'dataFileSav', localPath: path.join(outputDir, 'dataFile.sav'), filename: 'dataFile.sav' },
-          ];
-          for (const { field, localPath, filename } of v3ArtifactUploads) {
-            try {
-              await fs.access(localPath);
-              const key = await uploadReviewFile(convexOrgId, convexProjectId, runId, localPath, filename);
-              (reviewR2Keys as Record<string, string | undefined>)[field] = key;
-            } catch {
-              console.warn(`[R2] V3 artifact not available for upload: ${filename} (non-fatal)`);
-            }
-          }
-
-          console.log('Review state files + V3 artifacts uploaded to R2');
-        } catch (r2Err) {
-          console.warn('Failed to upload review state to R2 (non-fatal):', r2Err);
+          console.log('Review recovery checkpoint persisted to R2');
         }
+      } catch (r2Err) {
+        console.warn('Failed to persist review recovery checkpoint (non-fatal):', r2Err);
       }
 
       const reviewUrl = convexProjectId
@@ -970,6 +989,7 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
       planningResult.checkpoint,
     );
     await writeCheckpoint(outputDir, mergedCheckpoint);
+    await persistRecoveryBoundary('fork_join');
 
     const forkDuration = Date.now() - forkStart;
     wideEvent.recordStage('v3_fork_join', 'ok', forkDuration);
@@ -1132,6 +1152,7 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
 
     mergedCheckpoint = computeResult.checkpoint;
     await writeCheckpoint(outputDir, mergedCheckpoint);
+    await persistRecoveryBoundary('compute');
 
     console.log(`[V3] Compute chain complete. Cuts: ${computeResult.rScriptInput.cuts.length}`);
     wideEvent.recordStage('v3_compute', 'ok', Date.now() - computeStart);

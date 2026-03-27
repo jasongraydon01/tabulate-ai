@@ -8,6 +8,11 @@ describe('buildHydratedSavedPaths', () => {
       sessionDir: '/tmp/tabulate-ai/session-1',
       payload: {
         sessionId: 'session-1',
+        pipelineContext: {
+          pipelineId: 'pipeline-1',
+          datasetName: 'dataset',
+          outputDir: '/tmp/tabulate-ai/outputs/dataset/pipeline-1',
+        },
         fileNames: {
           dataMap: 'dataset.sav',
           bannerPlan: '',
@@ -42,6 +47,11 @@ describe('buildHydratedSavedPaths', () => {
       sessionDir: '/tmp/tabulate-ai/session-2',
       payload: {
         sessionId: 'session-2',
+        pipelineContext: {
+          pipelineId: 'pipeline-2',
+          datasetName: 'dataset',
+          outputDir: '/tmp/tabulate-ai/outputs/dataset/pipeline-2',
+        },
         fileNames: {
           dataMap: 'datamap.xlsx',
           bannerPlan: 'banner.docx',

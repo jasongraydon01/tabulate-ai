@@ -3,9 +3,11 @@ import { internal } from '../../../convex/_generated/api';
 import type { Id } from '../../../convex/_generated/dataModel';
 import { createAbortController } from '@/lib/abortStore';
 import { runPipelineFromUpload, type PipelineRunParams } from '@/lib/api/pipelineOrchestrator';
+import { runQueuedReviewResume } from '@/lib/api/reviewCompletion';
 import type { ProjectConfig } from '@/schemas/projectConfigSchema';
 
 import { hydrateRunInputsToSession } from './hydrateRunInputs';
+import { restoreDurableRecoveryWorkspace } from './recoveryPersistence';
 import type { ClaimedWorkerRun } from './types';
 
 export async function runClaimedWorkerRun(
@@ -15,6 +17,29 @@ export async function runClaimedWorkerRun(
   const abortSignal = createAbortController(claimedRun.runId);
 
   try {
+    if (claimedRun.recoveryManifest && !claimedRun.recoveryManifest.isComplete) {
+      throw new Error(
+        `Run ${claimedRun.runId} cannot resume: durable recovery checkpoint is incomplete.`,
+      );
+    }
+
+    if (claimedRun.recoveryManifest?.isComplete) {
+      await restoreDurableRecoveryWorkspace(claimedRun.recoveryManifest);
+    }
+
+    if (claimedRun.recoveryManifest?.boundary === 'review_checkpoint') {
+      await runQueuedReviewResume({
+        runId: claimedRun.runId,
+        workerId,
+        outputDir: claimedRun.executionPayload.pipelineContext.outputDir,
+        pipelineId: claimedRun.executionPayload.pipelineContext.pipelineId,
+        projectId: claimedRun.projectId,
+        orgId: claimedRun.orgId,
+        abortSignal,
+      });
+      return;
+    }
+
     const { savedPaths } = await hydrateRunInputsToSession(claimedRun.executionPayload);
     const pipelineParams: PipelineRunParams = {
       runId: claimedRun.runId,
@@ -23,6 +48,7 @@ export async function runClaimedWorkerRun(
       convexOrgId: claimedRun.orgId,
       convexProjectId: claimedRun.projectId,
       launchedBy: claimedRun.launchedBy,
+      pipelineContext: claimedRun.executionPayload.pipelineContext,
       fileNames: {
         dataMap: claimedRun.executionPayload.fileNames.dataMap,
         bannerPlan: claimedRun.executionPayload.fileNames.bannerPlan,

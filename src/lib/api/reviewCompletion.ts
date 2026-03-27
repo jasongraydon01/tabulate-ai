@@ -9,6 +9,7 @@
  *   Derive loop mappings → Loop semantics → Compute chain (22-14) →
  *   PostV3Processing (R script → R execution → Excel)
  */
+import * as Sentry from '@sentry/nextjs';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import { sanitizeRExpression } from '@/lib/r/sanitizeRExpression';
@@ -32,6 +33,7 @@ import {
   buildExportArtifactRefs,
   buildPhase1Manifest,
   ensureWideSavFallback,
+  finalizeExportMetadataWithR2Refs,
   type ExportArtifactRefs,
   persistPhase0Artifacts,
 } from '@/lib/exportData';
@@ -58,12 +60,21 @@ import { loadCheckpoint, loadArtifact } from '@/lib/v3/runtime/persistence';
 import { deriveLoopMappings } from '@/lib/v3/runtime/loopMappingsFromQuestionId';
 import type { CanonicalTableOutput, CanonicalTable, TablePlanOutput } from '@/lib/v3/runtime/canonical/types';
 import type { QuestionIdEntry, WrappedQuestionIdOutput } from '@/lib/v3/runtime/questionId/types';
+import {
+  deleteReviewFiles,
+  type ReviewR2Keys,
+  uploadPipelineOutputs,
+  uploadRunOutputArtifact,
+} from '@/lib/r2/R2FileManager';
+import { sendPipelineNotification } from '@/lib/notifications/email';
+import { evaluateAndPersistRunQuality } from '@/lib/evaluation/runEvaluationService';
+import { parseRunResult, type RunResultShape } from '@/schemas/runResultSchema';
 
 // -------------------------------------------------------------------------
 // Types
 // -------------------------------------------------------------------------
 
-import type { CrosstabDecision } from '@/schemas/crosstabDecisionSchema';
+import type { CrosstabDecision, GroupHint } from '@/schemas/crosstabDecisionSchema';
 export type { CrosstabDecision };
 
 /**
@@ -832,9 +843,10 @@ export async function completePipeline(
   decisions: CrosstabDecision[],
   runId?: string,
   abortSignal?: AbortSignal,
-  groupHints?: Array<{ groupName: string; hint: string }>,
+  groupHints?: GroupHint[],
   projectId?: string,
   orgId?: string,
+  workerId?: string,
 ): Promise<CompletePipelineResult> {
   return runWithPipelineContext(
     {
@@ -884,7 +896,7 @@ export async function completePipeline(
 
   console.log(`[V3] Loaded stage checkpoint (last completed: ${v3Checkpoint.lastCompletedStage ?? 'none'})`);
 
-  const stopHeartbeat = runId ? startHeartbeatInterval(runId) : () => {};
+  const stopHeartbeat = runId ? startHeartbeatInterval(runId, 30_000, workerId) : () => {};
   try {
     await assertRunNotCancelled(runId, abortSignal, orgId);
 
@@ -1420,6 +1432,231 @@ export async function completePipeline(
   );
 }
 
+export function getApprovedReviewSubmission(reviewState: CrosstabReviewState): {
+  decisions: CrosstabDecision[];
+  groupHints: GroupHint[];
+} {
+  if (reviewState.status !== 'approved') {
+    throw new Error(`Review resume requires approved state, got ${reviewState.status}`);
+  }
+
+  if (!Array.isArray(reviewState.decisions) || reviewState.decisions.length === 0) {
+    throw new Error('Review resume is missing persisted reviewer decisions.');
+  }
+
+  return {
+    decisions: reviewState.decisions as CrosstabDecision[],
+    groupHints: Array.isArray(reviewState.groupHints) ? reviewState.groupHints : [],
+  };
+}
+
+export async function runQueuedReviewResume(params: {
+  runId: string;
+  workerId: string;
+  outputDir: string;
+  pipelineId: string;
+  projectId: string;
+  orgId: string;
+  abortSignal?: AbortSignal;
+}): Promise<CompletePipelineResult> {
+  const run = await getConvexClient().query(api.runs.get, {
+    runId: params.runId as Id<'runs'>,
+    orgId: params.orgId as Id<'organizations'>,
+  });
+
+  if (!run) {
+    throw new Error(`Run ${params.runId} not found for queued review resume.`);
+  }
+
+  const runResult = parseRunResult(run.result);
+  const reviewR2Keys = runResult?.reviewR2Keys as ReviewR2Keys | undefined;
+  const reviewState = JSON.parse(
+    await fs.readFile(path.join(params.outputDir, 'crosstab-review-state.json'), 'utf-8'),
+  ) as CrosstabReviewState;
+  const { decisions, groupHints } = getApprovedReviewSubmission(reviewState);
+
+  const result = await completePipeline(
+    params.outputDir,
+    params.pipelineId,
+    reviewState.crosstabResult,
+    null,
+    reviewState,
+    decisions,
+    params.runId,
+    params.abortSignal,
+    groupHints,
+    params.projectId,
+    params.orgId,
+    params.workerId,
+  );
+
+  await updateReviewRunStatus(params.runId, {
+    status: 'resuming',
+    stage: 'r2_finalize',
+    progress: 90,
+    message: 'Finalizing run artifacts...',
+  });
+
+  let r2Outputs: Record<string, string> | undefined;
+  let r2UploadFailed = false;
+  try {
+    const manifest = await uploadPipelineOutputs(
+      params.orgId,
+      params.projectId,
+      params.runId,
+      params.outputDir,
+    );
+    r2Outputs = manifest.outputs;
+    r2UploadFailed = manifest.uploadReport.failed.length > 0;
+    if (r2UploadFailed) {
+      Sentry.captureMessage('R2 artifact upload partially failed after retries (review worker path)', {
+        level: 'warning',
+        tags: { run_id: params.runId, pipeline_id: params.pipelineId },
+        extra: {
+          failedCount: manifest.uploadReport.failed.length,
+          failedArtifacts: manifest.uploadReport.failed.map((entry) => entry.relativePath),
+          successCount: Object.keys(r2Outputs).length,
+        },
+      });
+    }
+  } catch (r2Error) {
+    r2UploadFailed = true;
+    Sentry.captureException(r2Error, {
+      tags: { run_id: params.runId, pipeline_id: params.pipelineId },
+      extra: { context: 'R2 pipeline output upload failed completely after retries (review worker path)' },
+    });
+  }
+
+  if (reviewR2Keys) {
+    try {
+      await deleteReviewFiles(reviewR2Keys);
+    } catch (cleanupErr) {
+      console.warn('[ReviewCompletion] R2 review file cleanup failed (non-fatal):', cleanupErr);
+    }
+  }
+
+  const terminalStatus = result.status === 'success' && r2UploadFailed ? 'partial' : result.status;
+  const terminalMessage = result.status === 'success' && r2UploadFailed
+    ? `Generated ${result.tableCount ?? 0} tables but file upload failed — contact support.`
+    : result.message;
+
+  let exportArtifacts = result.exportArtifacts;
+  let exportReadiness = result.exportReadiness;
+  const exportErrors = [...(result.exportErrors ?? [])];
+
+  if (r2Outputs) {
+    try {
+      const metadataPath = path.join(params.outputDir, 'export', 'export-metadata.json');
+      try {
+        await fs.access(metadataPath);
+        await finalizeExportMetadataWithR2Refs(params.outputDir, r2Outputs);
+        const refreshedManifest = await buildPhase1Manifest(params.outputDir);
+        const refreshedMetadataBuffer = await fs.readFile(metadataPath);
+        r2Outputs['export/export-metadata.json'] = await uploadRunOutputArtifact({
+          orgId: params.orgId,
+          projectId: params.projectId,
+          runId: params.runId,
+          relativePath: 'export/export-metadata.json',
+          body: refreshedMetadataBuffer,
+          contentType: 'application/json',
+          existingOutputs: r2Outputs,
+        });
+        exportArtifacts = buildExportArtifactRefs(refreshedManifest.metadata);
+        exportReadiness = refreshedManifest.metadata.readiness;
+      } catch {
+        // export metadata is optional here
+      }
+    } catch (exportFinalizeErr) {
+      exportErrors.push({
+        format: 'shared',
+        stage: 'contract_build',
+        message: exportFinalizeErr instanceof Error ? exportFinalizeErr.message : String(exportFinalizeErr),
+        retryable: true,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  const qualityEval = await evaluateAndPersistRunQuality({
+    runId: params.runId,
+    outputDir: params.outputDir,
+    orgId: params.orgId,
+    projectId: params.projectId,
+  });
+  const finalCheckpoint = await loadCheckpoint(params.outputDir);
+
+  const terminalResult: RunResultShape = {
+    ...(runResult ?? {}),
+    formatVersion: 3,
+    pipelineId: params.pipelineId,
+    outputDir: params.outputDir,
+    ...(finalCheckpoint ? { v3Checkpoint: finalCheckpoint } : {}),
+    downloadUrl: terminalStatus === 'success'
+      ? `/api/runs/${encodeURIComponent(params.runId)}/download/crosstabs.xlsx`
+      : undefined,
+    r2Files: r2Outputs
+      ? {
+          inputs: runResult?.r2Files?.inputs ?? {},
+          outputs: r2Outputs,
+        }
+      : runResult?.r2Files,
+    reviewState: undefined,
+    summary: {
+      tables: result.tableCount ?? 0,
+      cuts: result.cutCount ?? 0,
+      bannerGroups: result.bannerGroups ?? 0,
+      durationMs: result.durationMs ?? 0,
+    },
+    pipelineDecisions: result.pipelineDecisions,
+    decisionsSummary: result.decisionsSummary,
+    ...(exportArtifacts ? { exportArtifacts: exportArtifacts as unknown as RunResultShape['exportArtifacts'] } : {}),
+    ...(exportReadiness ? { exportReadiness: exportReadiness as unknown as RunResultShape['exportReadiness'] } : {}),
+    ...(exportErrors.length > 0 ? { exportErrors } : {}),
+    quality: qualityEval.quality as RunResultShape['quality'],
+  };
+
+  await updateReviewRunStatus(params.runId, {
+    status: terminalStatus,
+    stage: 'complete',
+    progress: 100,
+    message: terminalMessage,
+    result: terminalResult,
+    ...(terminalStatus === 'error' ? { error: terminalMessage } : {}),
+  });
+
+  if (terminalStatus === 'success' || terminalStatus === 'partial') {
+    try {
+      const { recordProjectUsage } = await import('@/lib/billing/recordProjectUsage');
+      await recordProjectUsage({
+        projectId: params.projectId,
+        orgId: params.orgId,
+      });
+    } catch (err) {
+      console.warn('[ReviewCompletion] Billing usage recording failed (non-blocking):', err);
+    }
+  }
+
+  sendPipelineNotification({
+    runId: params.runId,
+    status: terminalStatus as 'success' | 'partial' | 'error',
+    launchedBy: (run as Record<string, unknown>).launchedBy as string | undefined,
+    convexProjectId: params.projectId,
+    convexOrgId: params.orgId,
+    tableCount: result.tableCount,
+    durationFormatted: result.durationMs ? formatDuration(result.durationMs) : undefined,
+    errorMessage: terminalStatus === 'error' ? terminalMessage : undefined,
+  }).catch(() => { /* fire-and-forget */ });
+
+  return {
+    ...result,
+    status: terminalStatus,
+    message: terminalMessage,
+    ...(exportArtifacts ? { exportArtifacts } : {}),
+    ...(exportReadiness ? { exportReadiness } : {}),
+    ...(exportErrors.length > 0 ? { exportErrors } : {}),
+  };
+}
+
 /**
  * Wait for background chains and then finish the pipeline.
  *
@@ -1436,7 +1673,7 @@ export async function waitAndCompletePipeline(
   decisions: CrosstabDecision[],
   runId?: string,
   abortSignal?: AbortSignal,
-  groupHints?: Array<{ groupName: string; hint: string }>,
+  groupHints?: GroupHint[],
   projectId?: string,
 ): Promise<CompletePipelineResult> {
   // V3: both chains complete before review, call completePipeline directly

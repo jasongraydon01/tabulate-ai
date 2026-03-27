@@ -5,6 +5,7 @@ import { configValidator, intakeValidator } from "./projectConfigValidators";
 import {
   executionPayloadValidator,
   executionStateValidator,
+  recoveryManifestValidator,
   recoveryStatusValidator,
 } from "./runExecutionValidators";
 
@@ -187,6 +188,7 @@ export default defineSchema({
     lastDurableCheckpointAt: v.optional(v.number()),
     lastDurableCheckpointStage: v.optional(v3PipelineStageValidator),
     recoveryStatus: v.optional(recoveryStatusValidator),
+    recoveryManifest: v.optional(recoveryManifestValidator),
     executionPayload: v.optional(executionPayloadValidator),
     // result is deeply polymorphic — accumulates pipelineId, outputDir, downloadUrl,
     // reviewState, feedback, r2Files, costSummary across pipeline stages.
