@@ -390,6 +390,7 @@ function parseReviewR2Keys(value: unknown): RunResultReviewR2Keys | undefined {
     pipelineSummary: asString(record.pipelineSummary),
     spssInput: asString(record.spssInput),
     v3QuestionIdFinal: asString(record.v3QuestionIdFinal),
+    v3CrosstabPlan: asString(record.v3CrosstabPlan),
     v3TableEnriched: asString(record.v3TableEnriched),
     v3TableJson: asString(record.v3TableJson),
     v3Checkpoint: asString(record.v3Checkpoint),
@@ -480,6 +481,7 @@ export interface RunResultReviewR2Keys {
   pipelineSummary?: string;
   spssInput?: string;
   v3QuestionIdFinal?: string;
+  v3CrosstabPlan?: string;
   v3TableEnriched?: string;
   v3TableJson?: string;
   v3Checkpoint?: string;

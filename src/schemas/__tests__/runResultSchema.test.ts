@@ -224,4 +224,24 @@ describe('parseRunResult', () => {
     expect(withCheckpoint?.v3Checkpoint?.lastCompletedStage).toBe('21');
     expect(withoutCheckpoint?.v3Checkpoint).toBeUndefined();
   });
+
+  it('preserves review recovery keys needed for post-review resume', () => {
+    const parsed = parseRunResult({
+      formatVersion: 3,
+      pipelineId: 'pipeline-review-r2',
+      reviewR2Keys: {
+        reviewState: 'r2/review-state',
+        v3QuestionIdFinal: 'r2/questionid',
+        v3CrosstabPlan: 'r2/crosstab-plan',
+        v3TableEnriched: 'r2/table-enriched',
+        v3Checkpoint: 'r2/checkpoint',
+      },
+    });
+
+    expect(parsed?.reviewR2Keys?.reviewState).toBe('r2/review-state');
+    expect(parsed?.reviewR2Keys?.v3QuestionIdFinal).toBe('r2/questionid');
+    expect(parsed?.reviewR2Keys?.v3CrosstabPlan).toBe('r2/crosstab-plan');
+    expect(parsed?.reviewR2Keys?.v3TableEnriched).toBe('r2/table-enriched');
+    expect(parsed?.reviewR2Keys?.v3Checkpoint).toBe('r2/checkpoint');
+  });
 });
