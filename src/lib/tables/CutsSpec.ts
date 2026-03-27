@@ -33,6 +33,14 @@ export type CutsSpec = {
   totalCut: CutDefinition | null;  // Reference to Total column
 };
 
+function normalizeDisplayText(input: string): string {
+  return input
+    .replace(/\s+/g, ' ')
+    .replace(/(?<=\S)\s+\/(?=\S)/g, '/')
+    .replace(/(?<=\S)\/\s+(?=\S)/g, '/')
+    .trim();
+}
+
 function slugify(input: string): string {
   return input
     .toLowerCase()
@@ -157,22 +165,24 @@ export function buildCutsSpec(validation: ValidationResultType): CutsSpec {
   groups.push({ groupName: 'Total', cuts: [totalCut] });
 
   for (const group of validation.bannerCuts) {
+    const normalizedGroupName = normalizeDisplayText(group.groupName);
     const groupCuts: CutDefinition[] = [];
 
     for (let i = 0; i < group.columns.length; i++) {
       const col = group.columns[i];
+      const normalizedColumnName = normalizeDisplayText(col.name);
 
       // Skip columns with zero confidence (failed to process)
       if (col.confidence === 0) {
-        console.log(`[CutsSpec] Skipping column "${col.name}" in group "${group.groupName}" (confidence: 0)`);
+        console.log(`[CutsSpec] Skipping column "${normalizedColumnName}" in group "${normalizedGroupName}" (confidence: 0)`);
         skippedCount++;
         continue;
       }
 
-      const id = `${slugify(group.groupName)}.${slugify(col.name)}`;
+      const id = `${slugify(normalizedGroupName)}.${slugify(normalizedColumnName)}`;
 
       // Skip Total from banner agent output (we already added it above)
-      const isTotal = col.name === 'Total' || group.groupName === 'Total';
+      const isTotal = normalizedColumnName === 'Total' || normalizedGroupName === 'Total';
       if (isTotal) {
         continue;
       }
@@ -186,10 +196,10 @@ export function buildCutsSpec(validation: ValidationResultType): CutsSpec {
 
       const cut: CutDefinition = {
         id,
-        name: col.name,
+        name: normalizedColumnName,
         rExpression: col.adjusted,
         statLetter,
-        groupName: group.groupName,
+        groupName: normalizedGroupName,
         groupIndex: i,
         reviewAction: (colAny.reviewAction as string) || 'ai_original',
         reviewHint: (colAny.reviewHint as string) || '',
@@ -202,7 +212,7 @@ export function buildCutsSpec(validation: ValidationResultType): CutsSpec {
 
     // Only add group if it has valid cuts
     if (groupCuts.length > 0) {
-      groups.push({ groupName: group.groupName, cuts: groupCuts });
+      groups.push({ groupName: normalizedGroupName, cuts: groupCuts });
     }
   }
 

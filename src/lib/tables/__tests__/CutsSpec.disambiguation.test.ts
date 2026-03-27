@@ -247,4 +247,29 @@ describe('CutsSpec cut name disambiguation', () => {
     ]);
     expect(new Set(statLetters).size).toBe(statLetters.length);
   });
+
+  it('normalizes multiline banner group and cut names before building cuts', () => {
+    const validation: ValidationResultType = {
+      bannerCuts: [
+        {
+          groupName: 'Role/\nTitle',
+          columns: [
+            makeColumn('Physician', 'S5a == 1'),
+            makeColumn('Nurse Practitioner + Physician’s\nAssistant', 'S5a %in% c(2,3)'),
+          ],
+        },
+      ],
+    };
+
+    const spec = buildCutsSpec(validation);
+
+    expect(spec.groups.map(group => group.groupName)).toEqual(['Total', 'Role/Title']);
+    expect(spec.cuts.map(cut => cut.name)).toEqual([
+      'Total',
+      'Physician',
+      'Nurse Practitioner + Physician’s Assistant',
+    ]);
+    expect(spec.cuts[2]?.id).toBe('role-title.nurse-practitioner-physician-s-assistant');
+    expect(spec.cuts[2]?.groupName).toBe('Role/Title');
+  });
 });

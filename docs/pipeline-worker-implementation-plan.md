@@ -28,14 +28,37 @@ This plan does not cover:
 - arbitrary retry of every sub-step
 - advanced autoscaling strategies beyond safe basic claiming
 
-## Current State
-Today, the web app starts long-running pipeline work directly from the launch route. For example:
+## Current Status
+Implementation status as of 2026-03-27:
+
+- Phase 1 is complete: fresh launches are worker-owned
+- Phase 2 is complete: durable stage-boundary recovery manifests persist to R2
+- Phase 3 is complete: stale claimed/running runs are requeued and resume coarsely from the last durable boundary
+- Phase 4 is complete: review submission is control-plane only and post-review continuation is worker-owned
+- web/API is now the control plane, and the worker owns long-running execution
+
+Implemented durable boundaries:
+
+- after question-id chain
+- after fork/join
+- after review checkpoint creation
+- after compute package creation
+
+Important behavioral notes:
+
+- web redeploys should not interrupt active runs because the web process no longer owns execution
+- worker redeploys recover after the stale-lease threshold and resume from the last durable boundary when the recovery set is complete
+- worker redeploys before the first durable boundary may restart from the top; that is expected under the coarse-resume model
+- incomplete durable recovery sets fail explicitly instead of silently hanging or guessing
+
+## Previous State
+Before this work, the web app started long-running pipeline work directly from the launch route. For example:
 
 - [`src/app/api/projects/launch/route.ts`](/Users/jasongraydon01/tabulate-ai/src/app/api/projects/launch/route.ts) kicks off `runPipelineFromUpload(...)` in-process
 - [`src/lib/api/pipelineOrchestrator.ts`](/Users/jasongraydon01/tabulate-ai/src/lib/api/pipelineOrchestrator.ts) owns the long-running background pipeline path
 - [`src/lib/v3/runtime/persistence.ts`](/Users/jasongraydon01/tabulate-ai/src/lib/v3/runtime/persistence.ts) writes `checkpoint.json` locally inside the run output directory
 
-This means a deploy can terminate the process that owns the run, and local disk alone is not sufficient for robust restart recovery.
+That meant a deploy could terminate the process that owned the run, and local disk alone was not sufficient for robust restart recovery.
 
 ## Target Architecture
 
@@ -159,6 +182,7 @@ Desired deploy behavior:
 ## Implementation Phases
 
 ## Phase 1: Queue and Worker Skeleton
+- Status: complete
 - add execution metadata to `runs`
 - add Convex claim/heartbeat/requeue primitives
 - refactor launch route to enqueue instead of running inline
@@ -172,6 +196,7 @@ Exit criteria:
 - web deploys no longer kill execution because the web app is not executing runs
 
 ## Phase 2: Durable Checkpoint Persistence
+- Status: complete
 - define durable checkpoint manifest schema
 - upload checkpoint and required artifacts to R2 at stage boundaries
 - persist remote artifact refs on run result / execution metadata
@@ -182,6 +207,7 @@ Exit criteria:
 - worker restart can reconstruct pipeline context from durable artifacts
 
 ## Phase 3: Recovery and Resume
+- Status: complete
 - add stale-run scanner on worker startup and on an interval
 - requeue interrupted runs with recovery metadata
 - resume from the last durable stage boundary
@@ -192,6 +218,7 @@ Exit criteria:
 - deploy/restart during an active run no longer forces a full restart from scratch in normal cases
 
 ## Phase 4: Review Path Integration
+- Status: complete
 - convert review submission to queue a resume job
 - worker handles post-review continuation
 - remove remaining inline long-running post-review execution from the request lifecycle
@@ -246,6 +273,12 @@ Exit criteria:
 - review-required run pauses, then review submission queues worker resume
 - cancellation during worker execution marks run cancelled cleanly
 
+### Operational validation status
+- Confirmed: redeploying the web app during an active run does not interrupt the pipeline
+- Confirmed: redeploying the worker causes stale-lease recovery and the run is reclaimed
+- Expected behavior: if the worker is redeployed before the first durable boundary, the run may restart from the top
+- Remaining validation focus: redeploy the worker after review submission while post-review compute/R execution is active, and confirm coarse resume from the review checkpoint / later durable boundary
+
 ### Validation commands
 At minimum during implementation:
 
@@ -260,22 +293,9 @@ At minimum during implementation:
 - keep resume coarse and explicit to reduce complexity
 - do not attempt “resume anywhere” semantics
 
-## Recommended Delivery Strategy
-If the goal is the best balance of effort and robustness:
+## Remaining Work
+Architecture work is complete. What remains before calling this fully validated in practice is narrow operational testing:
 
-1. Phase 1 first
-2. Phase 2 and 3 immediately after
-3. Phase 4 to finish review-path consistency
-
-If the goal is the smallest acceptable version:
-
-- still do worker plus stale-run recovery plus coarse stage-boundary resume
-- do not stop at “worker only” if the actual requirement is deploy safety
-
-## Practical Estimate
-
-- Phase 1 alone: 1-2 focused days
-- Phase 2 and 3: another 3-5 focused days
-- Phase 4: 1-2 more days depending on review-path edge cases
-
-The robust version is roughly a week of focused work. It is not a tiny patch, but it is also not a full rewrite.
+- redeploy the worker after review submission while compute / R execution is in progress
+- confirm the run is reclaimed after the stale threshold and resumes from the latest durable boundary instead of restarting unnecessarily
+- once that is confirmed, deployment behavior can be considered validated for the surfaces that motivated this project
