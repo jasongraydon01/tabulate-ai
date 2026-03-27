@@ -192,7 +192,10 @@ export const recordProjectUsage = internalMutation({
       .unique();
 
     if (!subscription) {
-      throw new Error("No subscription found for organization");
+      // No subscription (e.g. internal-access org) — mark project billed
+      // to prevent repeat attempts, but skip usage counting.
+      await ctx.db.patch(args.projectId, { billingCounted: true });
+      return { counted: false, subscription: null };
     }
 
     const nextProjectsUsed = subscription.projectsUsed + 1;

@@ -23,6 +23,7 @@ import {
   assertSelectableAlternatives,
   InvalidReviewDecisionError,
 } from '@/lib/api/reviewCompletion';
+import { formatDuration } from '@/lib/utils/formatDuration';
 import {
   buildExportArtifactRefs,
   buildPhase1Manifest,
@@ -473,7 +474,7 @@ export async function POST(
         convexProjectId: String(run.projectId),
         convexOrgId: String(auth.convexOrgId),
         tableCount: result.tableCount,
-        durationFormatted: result.durationMs ? `${(result.durationMs / 1000).toFixed(1)}s` : undefined,
+        durationFormatted: result.durationMs ? formatDuration(result.durationMs) : undefined,
         errorMessage: terminalStatus === 'error' ? terminalMessage : undefined,
       }).catch(() => { /* swallowed */ });
 
