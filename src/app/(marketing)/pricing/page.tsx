@@ -24,7 +24,8 @@ import { internal } from '../../../../convex/_generated/api';
 import { canPerform } from '@/lib/permissions';
 import { isInternalAccessUser } from '@/lib/internalOperators';
 
-/** @temporary — remove gate when pricing is production-ready */
+export const dynamic = 'force-dynamic';
+
 export default async function PricingPage({
   searchParams,
 }: {

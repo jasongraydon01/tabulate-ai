@@ -9,6 +9,8 @@ import { HeroSection } from "./_components/hero-section";
 import { HowItWorksSection } from "./_components/how-it-works-section";
 import { FeaturesSection } from "./_components/features-section";
 
+export const dynamic = 'force-dynamic';
+
 export default async function LandingPage() {
   const auth = await getAuth();
   const isAuthenticated = !!auth;

@@ -2,6 +2,8 @@ import { getAuth } from "@/lib/auth";
 import { MarketingHeader } from "@/components/marketing/MarketingHeader";
 import { MarketingThreadLine } from "./_components/marketing-thread-line";
 
+export const dynamic = 'force-dynamic';
+
 export default async function MarketingLayout({
   children,
 }: {
