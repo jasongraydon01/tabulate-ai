@@ -11,10 +11,32 @@ import { getStaleWorkerRecoveryAction } from "../src/lib/worker/recovery";
 /** Statuses that represent an actively-running pipeline (heartbeat expected). */
 const ACTIVE_STATUSES = ["in_progress", "resuming"] as const;
 const ACTIVE_STATUS_SET = new Set<string>(ACTIVE_STATUSES);
-const WORKER_ACTIVE_EXECUTION_STATES = new Set(["claimed", "running"]);
+const WORKER_ACTIVE_EXECUTION_STATES = new Set(["claimed", "running", "resuming"]);
 const TERMINAL_STATUSES = new Set(["success", "partial", "error", "cancelled"]);
 
-function patchForStatusTransition(
+function patchForActiveWorkerStatus(
+  existingExecutionState: string | undefined,
+  now: number,
+): Record<string, unknown> {
+  if (existingExecutionState === "queued") {
+    return {
+      executionState: "queued",
+      lastHeartbeat: now,
+    };
+  }
+
+  if (existingExecutionState && WORKER_ACTIVE_EXECUTION_STATES.has(existingExecutionState)) {
+    return {
+      executionState: "running",
+      lastHeartbeat: now,
+      heartbeatAt: now,
+    };
+  }
+
+  return { lastHeartbeat: now };
+}
+
+export function patchForStatusTransition(
   existingExecutionState: string | undefined,
   nextStatus: "in_progress" | "pending_review" | "resuming" | "success" | "partial" | "error" | "cancelled",
   now: number,
@@ -41,10 +63,7 @@ function patchForStatusTransition(
   }
 
   if (nextStatus === "resuming") {
-    return {
-      executionState: "resuming",
-      lastHeartbeat: now,
-    };
+    return patchForActiveWorkerStatus(existingExecutionState, now);
   }
 
   if (
@@ -52,11 +71,7 @@ function patchForStatusTransition(
     && existingExecutionState
     && (existingExecutionState === "queued" || WORKER_ACTIVE_EXECUTION_STATES.has(existingExecutionState))
   ) {
-    return {
-      executionState: "running",
-      lastHeartbeat: now,
-      heartbeatAt: now,
-    };
+    return patchForActiveWorkerStatus(existingExecutionState, now);
   }
 
   if (ACTIVE_STATUS_SET.has(nextStatus)) {
@@ -741,8 +756,12 @@ export const requeueStaleRuns = internalMutation({
       .query("runs")
       .withIndex("by_execution_state", (q) => q.eq("executionState", "running"))
       .collect();
+    const resumingWorkerRuns = await ctx.db
+      .query("runs")
+      .withIndex("by_execution_state", (q) => q.eq("executionState", "resuming"))
+      .collect();
     return requeueStaleWorkerRunRecords(
-      [...staleWorkerRuns, ...runningWorkerRuns],
+      [...staleWorkerRuns, ...runningWorkerRuns, ...resumingWorkerRuns],
       args.staleBeforeMs,
       (runId, patch) => ctx.db.patch(runId as never, patch),
     );
@@ -900,9 +919,13 @@ export const reconcileStaleRuns = internalMutation({
       .query("runs")
       .withIndex("by_execution_state", (q) => q.eq("executionState", "running"))
       .collect();
+    const resumingExecutionRuns = await ctx.db
+      .query("runs")
+      .withIndex("by_execution_state", (q) => q.eq("executionState", "resuming"))
+      .collect();
 
     reconciledCount += await requeueStaleWorkerRunRecords(
-      [...claimedRuns, ...runningRuns],
+      [...claimedRuns, ...runningRuns, ...resumingExecutionRuns],
       IN_PROGRESS_STALE_MS,
       (runId, patch) => ctx.db.patch(runId as never, patch),
     );
