@@ -47,6 +47,15 @@ type RunStatus = 'in_progress' | 'pending_review' | 'resuming' | 'success' | 'pa
 const MISSING_CHECKPOINT_ERROR =
   'Review checkpoint was lost after a server restart. Please start a new run.';
 
+async function fileExists(absolutePath: string): Promise<boolean> {
+  try {
+    await fs.access(absolutePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function updateReviewRouteRunStatus(runId: string, updates: {
   status: RunStatus;
   stage?: V3PipelineStage;
@@ -374,20 +383,23 @@ export async function POST(
       const exportErrors = [...(result.exportErrors ?? [])];
       if (r2Outputs) {
         try {
-          await finalizeExportMetadataWithR2Refs(activeOutputDir, r2Outputs);
-          const refreshedManifest = await buildPhase1Manifest(activeOutputDir);
-          const refreshedMetadataBuffer = await fs.readFile(path.join(activeOutputDir, 'export/export-metadata.json'));
-          r2Outputs['export/export-metadata.json'] = await uploadRunOutputArtifact({
-            orgId: String(run.orgId),
-            projectId: String(run.projectId),
-            runId,
-            relativePath: 'export/export-metadata.json',
-            body: refreshedMetadataBuffer,
-            contentType: 'application/json',
-            existingOutputs: r2Outputs,
-          });
-          exportArtifacts = buildExportArtifactRefs(refreshedManifest.metadata);
-          exportReadiness = refreshedManifest.metadata.readiness;
+          const metadataPath = path.join(activeOutputDir, 'export', 'export-metadata.json');
+          if (await fileExists(metadataPath)) {
+            await finalizeExportMetadataWithR2Refs(activeOutputDir, r2Outputs);
+            const refreshedManifest = await buildPhase1Manifest(activeOutputDir);
+            const refreshedMetadataBuffer = await fs.readFile(metadataPath);
+            r2Outputs['export/export-metadata.json'] = await uploadRunOutputArtifact({
+              orgId: String(run.orgId),
+              projectId: String(run.projectId),
+              runId,
+              relativePath: 'export/export-metadata.json',
+              body: refreshedMetadataBuffer,
+              contentType: 'application/json',
+              existingOutputs: r2Outputs,
+            });
+            exportArtifacts = buildExportArtifactRefs(refreshedManifest.metadata);
+            exportReadiness = refreshedManifest.metadata.readiness;
+          }
         } catch (exportFinalizeErr) {
           exportErrors.push({
             format: 'shared',

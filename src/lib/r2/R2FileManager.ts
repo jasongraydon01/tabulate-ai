@@ -606,6 +606,7 @@ export interface ReviewR2Keys {
   spssInput?: string;        // original SPSS file (already in R2 from upload)
   // V3 artifacts required for post-review compute (container restart recovery)
   v3QuestionIdFinal?: string;  // enrichment/12-questionid-final.json (stage 12)
+  v3CrosstabPlan?: string;     // planning/21-crosstab-plan.json (stage 21)
   v3TableEnriched?: string;    // tables/13e-table-enriched.json (stage 13e)
   v3TableJson?: string;        // tables/13d-table-canonical.json (stage 13d, backward compatibility)
   v3Checkpoint?: string;       // checkpoint.json (root of outputDir)
@@ -652,6 +653,7 @@ export async function downloadReviewFiles(
     { key: 'pathCResult', filename: 'stages/path-c-result.json' },
     // V3 artifacts needed for post-review compute (new paths + legacy fallback)
     { key: 'v3QuestionIdFinal', filename: 'enrichment/12-questionid-final.json', legacyFilename: 'stages/questionid-final.json' },
+    { key: 'v3CrosstabPlan', filename: 'planning/21-crosstab-plan.json', legacyFilename: 'crosstab/crosstab-output-raw.json' },
     { key: 'v3TableEnriched', filename: 'tables/13e-table-enriched.json', legacyFilename: 'tables/13d-table-canonical.json' },
     { key: 'v3TableJson', filename: 'tables/13d-table-canonical.json', legacyFilename: 'stages/table.json' },
     { key: 'v3Checkpoint', filename: 'checkpoint.json', legacyFilename: 'stages/v3-checkpoint.json' },

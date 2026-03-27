@@ -884,6 +884,7 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
           // All artifacts are guaranteed available since canonical is fully complete.
           const v3ArtifactUploads: Array<{ field: keyof ReviewR2Keys; localPath: string; filename: string }> = [
             { field: 'v3QuestionIdFinal', localPath: path.join(outputDir, 'enrichment', '12-questionid-final.json'), filename: 'enrichment/12-questionid-final.json' },
+            { field: 'v3CrosstabPlan', localPath: path.join(outputDir, 'planning', '21-crosstab-plan.json'), filename: 'planning/21-crosstab-plan.json' },
             { field: 'v3TableEnriched', localPath: path.join(outputDir, 'tables', '13e-table-enriched.json'), filename: 'tables/13e-table-enriched.json' },
             { field: 'v3TableJson', localPath: path.join(outputDir, 'tables', '13d-table-canonical.json'), filename: 'tables/13d-table-canonical.json' },
             { field: 'v3Checkpoint', localPath: path.join(outputDir, 'checkpoint.json'), filename: 'checkpoint.json' },

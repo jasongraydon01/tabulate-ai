@@ -25,6 +25,7 @@ import {
   buildExportPackageBasePath,
   buildRunArtifactBasePath,
   buildRunArtifactKey,
+  downloadReviewFiles,
   uploadPipelineOutputs,
   uploadReviewFile,
 } from '@/lib/r2/R2FileManager';
@@ -102,5 +103,20 @@ describe('R2FileManager', () => {
     });
     expect(manifest.uploadReport.missingOptional).toContain('results/crosstabs-weighted.xlsx');
     expect(manifest.uploadReport.failed.some((entry) => entry.relativePath === 'results/crosstabs-weighted.xlsx')).toBe(false);
+  });
+
+  it('restores the stage 21 crosstab plan during review recovery', async () => {
+    mocks.downloadFile.mockResolvedValue(Buffer.from('{"ok":true}', 'utf8'));
+
+    const downloaded = await downloadReviewFiles(
+      {
+        v3CrosstabPlan: 'org-1/project-1/runs/run-1/review/planning/21-crosstab-plan.json',
+      },
+      tempDir,
+    );
+
+    const restoredPath = path.join(tempDir, 'planning', '21-crosstab-plan.json');
+    expect(downloaded.v3CrosstabPlan).toBe(restoredPath);
+    await expect(fs.readFile(restoredPath, 'utf8')).resolves.toBe('{"ok":true}');
   });
 });
