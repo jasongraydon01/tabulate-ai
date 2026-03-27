@@ -13,24 +13,21 @@ import { generateSessionId } from '@/lib/storage';
 import { validateEnvironment } from '@/lib/env';
 import {
   parseWizardFormData,
-  saveWizardFilesToStorage,
   FileSizeLimitError,
 } from '@/lib/api/fileHandler';
-import { runPipelineFromUpload, type PipelineRunParams } from '@/lib/api/pipelineOrchestrator';
-import pLimit from 'p-limit';
 import { mutateInternal, queryInternal } from '@/lib/convex';
 import { internal } from '../../../../../convex/_generated/api';
-import { createAbortController } from '@/lib/abortStore';
 import { ProjectConfigSchema } from '@/schemas/projectConfigSchema';
 import { applyRateLimit } from '@/lib/withRateLimit';
 import { getDemoActor } from '@/lib/demo/demoOrg';
 import { generateVerificationToken } from '@/lib/demo/verificationToken';
 import { sendDemoVerificationEmail } from '@/lib/demo/sendDemoEmails';
+import { uploadRunInputFiles } from '@/lib/r2/R2FileManager';
+import { buildWorkerExecutionPayload, normalizeWizardWorkerInputRefs } from '@/lib/worker/buildExecutionPayload';
 
 
 export const maxDuration = 300; // 5 minutes
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100 MB
-const pipelineLimit = pLimit(3);
 
 const ALLOWED_DATA_EXTENSIONS = ['.sav'];
 const ALLOWED_DOCUMENT_EXTENSIONS = ['.pdf', '.docx', '.doc'];
@@ -177,12 +174,6 @@ export async function POST(request: NextRequest) {
       createdBy: demoUserId,
     });
 
-    // Save files to temp storage
-    const savedPaths = await saveWizardFilesToStorage(parsed, sessionId, {
-      orgId: String(demoOrgId),
-      projectId: String(projectId),
-    });
-
     // Create Convex run
     const runId = await mutateInternal(internal.runs.create, {
       projectId,
@@ -191,7 +182,6 @@ export async function POST(request: NextRequest) {
     });
 
     const runIdStr = String(runId);
-    const abortSignal = createAbortController(runIdStr);
 
     // Create demo run record
     const demoRunId = await mutateInternal(internal.demoRuns.create, {
@@ -214,47 +204,33 @@ export async function POST(request: NextRequest) {
       verificationToken,
     }).catch(err => console.error('[Demo] Failed to send verification email:', err));
 
-    // Build pipeline params
-    const pipelineParams: PipelineRunParams = {
+    const inputRefs = await uploadRunInputFiles({
+      orgId: String(demoOrgId),
+      projectId: String(projectId),
       runId: runIdStr,
+      files: {
+        dataFile: parsed.dataFile,
+        surveyFile: parsed.surveyFile,
+        bannerPlanFile: parsed.bannerPlanFile,
+      },
+    });
+
+    const executionPayload = buildWorkerExecutionPayload({
       sessionId,
-      convexOrgId: String(demoOrgId),
-      convexProjectId: String(projectId),
       fileNames: {
         dataMap: parsed.dataFile.name,
         bannerPlan: parsed.bannerPlanFile?.name ?? '',
         dataFile: parsed.dataFile.name,
         survey: parsed.surveyFile.name,
+        messageList: null,
       },
-      savedPaths: {
-        dataMapPath: savedPaths.spssPath,
-        bannerPlanPath: savedPaths.bannerPlanPath ?? '',
-        spssPath: savedPaths.spssPath,
-        surveyPath: savedPaths.surveyPath,
-      },
-      abortSignal,
+      inputRefs: normalizeWizardWorkerInputRefs(inputRefs),
       loopStatTestingMode: config.loopStatTestingMode,
-      config,
-    };
+    });
 
-    // Kick off pipeline (concurrency-limited)
-    pipelineLimit(async () => {
-      await mutateInternal(internal.demoRuns.updatePipelineStatus, {
-        demoRunId,
-        pipelineStatus: 'in_progress',
-      });
-      await runPipelineFromUpload(pipelineParams);
-    }).catch(async (error) => {
-      console.error('[Demo] Pipeline error:', error);
-      try {
-        await mutateInternal(internal.demoRuns.updatePipelineStatus, {
-          demoRunId,
-          pipelineStatus: 'error',
-          completedAt: Date.now(),
-        });
-      } catch (statusError) {
-        console.error('[Demo] Failed to persist demo pipeline error status:', statusError);
-      }
+    await mutateInternal(internal.runs.enqueueForWorker, {
+      runId,
+      executionPayload,
     });
 
     return NextResponse.json({

@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { InfoTooltip } from '@/components/ui/info-tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 export interface ExportAction {
@@ -17,6 +18,7 @@ export interface ExportAction {
   variant?: 'default' | 'outline';
   disabled?: boolean;
   loading?: boolean;
+  tooltip?: string;
 }
 
 interface ExportCardProps {
@@ -68,35 +70,46 @@ export function ExportCard({
       </CardHeader>
       <CardContent className="space-y-3">
         {actions.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {actions.map((action) => {
-              const variant = action.variant ?? 'default';
-              const disabled = action.disabled || action.loading;
-              const label = action.loading ? `${action.label}...` : action.label;
+          <TooltipProvider>
+            <div className="flex flex-wrap gap-2">
+              {actions.map((action) => {
+                const variant = action.variant ?? 'default';
+                const disabled = action.disabled || action.loading;
+                const label = action.loading ? `${action.label}...` : action.label;
 
-              if (action.href) {
-                return (
+                const button = action.href ? (
                   <a key={action.key} href={action.href} download>
                     <Button variant={variant} size="sm" disabled={disabled}>
                       {label}
                     </Button>
                   </a>
+                ) : (
+                  <Button
+                    key={action.key}
+                    variant={variant}
+                    size="sm"
+                    onClick={action.onClick}
+                    disabled={disabled}
+                  >
+                    {label}
+                  </Button>
                 );
-              }
 
-              return (
-                <Button
-                  key={action.key}
-                  variant={variant}
-                  size="sm"
-                  onClick={action.onClick}
-                  disabled={disabled}
-                >
-                  {label}
-                </Button>
-              );
-            })}
-          </div>
+                if (!action.tooltip) return button;
+
+                return (
+                  <Tooltip key={action.key}>
+                    <TooltipTrigger asChild>
+                      {button}
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-60">
+                      {action.tooltip}
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </div>
+          </TooltipProvider>
         )}
         {children}
       </CardContent>

@@ -296,19 +296,21 @@ export function ExportSection({
 
   const qActions: ExportAction[] = qPackage
     ? [
-      {
-        key: 'download-qscript',
-        label: 'Download QScript',
-        href: toDownloadHref(runId, qPackage.primaryDownloadPath ?? 'q/setup-project.QScript'),
-      },
       ...(qPackage.archivePath
         ? [{
           key: 'download-q-zip',
           label: 'Download ZIP',
           href: toDownloadHref(runId, qPackage.archivePath),
-          variant: 'outline' as const,
+          tooltip: 'Complete package — QScript, data files, and setup instructions',
         }]
         : []),
+      {
+        key: 'download-qscript',
+        label: 'Download QScript',
+        href: toDownloadHref(runId, qPackage.primaryDownloadPath ?? 'q/setup-project.QScript'),
+        variant: 'outline',
+        tooltip: 'QScript file only — for importing directly into Q',
+      },
       {
         key: 'regenerate-q',
         label: 'Regenerate',
@@ -333,12 +335,14 @@ const winCrossActions: ExportAction[] = wincrossPackage
         key: 'download-wincross-zip',
         label: 'Download ZIP',
         href: toDownloadHref(runId, wincrossPackage.archivePath ?? wincrossPackage.primaryDownloadPath ?? 'wincross/export.zip'),
+        tooltip: 'Complete package — .job file, data, and all supporting files',
       },
       {
         key: 'download-wincross-job',
         label: 'Download .job',
         href: toDownloadHref(runId, wincrossPackage.entrypointPath ?? 'wincross/export.job'),
         variant: 'outline',
+        tooltip: '.job file only — for importing directly into WinCross',
       },
       {
         key: 'regenerate-wincross',
