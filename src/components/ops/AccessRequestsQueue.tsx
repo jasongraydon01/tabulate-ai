@@ -185,7 +185,7 @@ export function AccessRequestsQueue({ initialRequests }: { initialRequests: Acce
                           onClick={() => void updateStatus(request._id, 'approved')}
                           disabled={pendingRequestId !== null}
                         >
-                          {pendingRequestId === request._id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Approve'}
+                          {pendingRequestId === request._id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Approve & Email'}
                         </Button>
                         <Button
                           variant="outline"

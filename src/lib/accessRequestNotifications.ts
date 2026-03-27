@@ -1,9 +1,11 @@
 import { Resend } from 'resend';
 import type { AccessRequestSource } from '@/lib/accessRequests';
 import {
+  buildAccessRequestApprovedEmail,
   buildAccessRequestConfirmationEmail,
   buildAccessRequestInternalEmail,
 } from '@/lib/notifications/accessRequestEmails';
+import { buildSignInPath } from '@/lib/navigation';
 
 function getResend(): Resend | null {
   const apiKey = process.env.RESEND_API_KEY;
@@ -100,6 +102,38 @@ export async function sendAccessRequestInternalNotification(params: {
     return true;
   } catch (error) {
     console.error('[Access Requests] Internal notification error:', error);
+    return false;
+  }
+}
+
+export async function sendAccessRequestApprovedEmail(params: {
+  to: string[];
+  company: string;
+}): Promise<boolean> {
+  const resend = getResend();
+  if (!resend || params.to.length === 0) return false;
+
+  const { subject, html } = buildAccessRequestApprovedEmail({
+    company: params.company,
+    signInUrl: `${getAppUrl()}${buildSignInPath('/dashboard')}`,
+  });
+
+  try {
+    const { error } = await resend.emails.send({
+      from: getFromAddress(),
+      to: params.to,
+      subject,
+      html,
+    });
+
+    if (error) {
+      console.error('[Access Requests] Approval email failed:', error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('[Access Requests] Approval email error:', error);
     return false;
   }
 }

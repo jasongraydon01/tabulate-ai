@@ -6,6 +6,8 @@ import { TrackedLink } from "@/components/TrackedLink";
 import { TextRevealLine } from "@/components/ui/text-reveal";
 import { FloatingData } from "@/components/ui/floating-data";
 import dynamic from "next/dynamic";
+import { buildRequestAccessPath } from "@/lib/accessRequests";
+import { buildSignInPath } from "@/lib/navigation";
 import { getMarketingPrimaryCta, getMarketingSecondaryCta } from "@/lib/navigation";
 
 const CrystallizationHero = dynamic(
@@ -23,6 +25,7 @@ interface HeroSectionProps {
 export function HeroSection({ isAuthenticated }: HeroSectionProps) {
   const primaryCta = getMarketingPrimaryCta(isAuthenticated);
   const secondaryCta = getMarketingSecondaryCta(isAuthenticated);
+  const signInHref = buildSignInPath('/dashboard');
 
   return (
     <section className="relative min-h-screen flex items-end lg:items-center overflow-hidden">
@@ -136,20 +139,39 @@ export function HeroSection({ isAuthenticated }: HeroSectionProps) {
                       asChild
                     >
                       <TrackedLink
-                        href={secondaryCta.href}
+                        href={signInHref}
                         eventName="cta_clicked"
                         eventProperties={{
                           location: "hero",
-                          cta_text: secondaryCta.label,
+                          cta_text: "Sign In",
                         }}
                       >
-                        {secondaryCta.label}
+                        Sign In
                       </TrackedLink>
                     </Button>
                   )}
                 </>
               )}
             </div>
+            {!isAuthenticated && secondaryCta && (
+              <p
+                className="animate-fade-up mt-4 text-sm text-muted-foreground"
+                style={{ animationDelay: "1.2s" }}
+              >
+                Need a workspace?{" "}
+                <TrackedLink
+                  href={buildRequestAccessPath('marketing')}
+                  eventName="cta_clicked"
+                  eventProperties={{
+                    location: "hero_supporting_copy",
+                    cta_text: secondaryCta.label,
+                  }}
+                  className="text-foreground underline underline-offset-4"
+                >
+                  {secondaryCta.label}
+                </TrackedLink>
+              </p>
+            )}
           </div>
 
           {/* Right — Crystallization Animation */}

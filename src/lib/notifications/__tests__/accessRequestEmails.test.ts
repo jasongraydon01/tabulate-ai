@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildAccessRequestApprovedEmail,
   buildAccessRequestConfirmationEmail,
   buildAccessRequestInternalEmail,
 } from '@/lib/notifications/accessRequestEmails';
@@ -43,5 +44,16 @@ describe('access request emails', () => {
 
     expect(html).toContain('Request Access');
     expect(html).toContain('https://tabulate-ai.com/request-access?source=demo_email');
+  });
+
+  it('renders the approval email with a sign-in call to action', () => {
+    const { html } = buildAccessRequestApprovedEmail({
+      company: 'Example Co',
+      signInUrl: 'https://tabulate-ai.com/auth/sign-in?returnTo=%2Fdashboard',
+    });
+
+    expect(html).toContain('Workspace ready');
+    expect(html).toContain('Sign In');
+    expect(html).toContain('https://tabulate-ai.com/auth/sign-in?returnTo=%2Fdashboard');
   });
 });

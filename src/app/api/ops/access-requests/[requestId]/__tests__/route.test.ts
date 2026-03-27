@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   requireInternalOperator: vi.fn(),
   applyRateLimit: vi.fn(),
   mutateInternal: vi.fn(),
+  queryInternal: vi.fn(),
+  sendApprovedEmail: vi.fn(),
 }));
 
 class MockAuthenticationError extends Error {}
@@ -19,10 +21,15 @@ vi.mock('@/lib/withRateLimit', () => ({
 
 vi.mock('@/lib/convex', () => ({
   mutateInternal: mocks.mutateInternal,
+  queryInternal: mocks.queryInternal,
 }));
 
 vi.mock('@/lib/auth', () => ({
   AuthenticationError: MockAuthenticationError,
+}));
+
+vi.mock('@/lib/accessRequestNotifications', () => ({
+  sendAccessRequestApprovedEmail: mocks.sendApprovedEmail,
 }));
 
 describe('PATCH /api/ops/access-requests/[requestId]', () => {
@@ -30,6 +37,13 @@ describe('PATCH /api/ops/access-requests/[requestId]', () => {
     vi.clearAllMocks();
     mocks.requireInternalOperator.mockResolvedValue({ email: 'ops@tabulate-ai.com' });
     mocks.applyRateLimit.mockReturnValue(null);
+    mocks.queryInternal.mockResolvedValue({
+      _id: 'req_1',
+      email: 'owner@example.com',
+      company: 'Example Co',
+      initialAdminEmail: 'admin@example.com',
+    });
+    mocks.sendApprovedEmail.mockResolvedValue(true);
   });
 
   it('updates request status and review notes for allowlisted operators', async () => {
@@ -58,6 +72,10 @@ describe('PATCH /api/ops/access-requests/[requestId]', () => {
         reviewNotes: 'Provisioned in WorkOS',
       }),
     );
+    expect(mocks.sendApprovedEmail).toHaveBeenCalledWith({
+      to: ['owner@example.com', 'admin@example.com'],
+      company: 'Example Co',
+    });
   });
 
   it('rejects invalid statuses before mutating data', async () => {
@@ -73,5 +91,6 @@ describe('PATCH /api/ops/access-requests/[requestId]', () => {
 
     expect(response.status).toBe(400);
     expect(mocks.mutateInternal).not.toHaveBeenCalled();
+    expect(mocks.sendApprovedEmail).not.toHaveBeenCalled();
   });
 });

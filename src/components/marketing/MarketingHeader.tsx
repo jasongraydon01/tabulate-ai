@@ -10,6 +10,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { useEffect, useState } from "react";
+import { buildSignInPath } from "@/lib/navigation";
 import { getMarketingPrimaryCta, getMarketingSecondaryCta } from "@/lib/navigation";
 
 export function MarketingHeader({
@@ -20,6 +21,7 @@ export function MarketingHeader({
   const [scrolled, setScrolled] = useState(false);
   const primaryCta = getMarketingPrimaryCta(isAuthenticated);
   const secondaryCta = getMarketingSecondaryCta(isAuthenticated);
+  const signInHref = buildSignInPath('/dashboard');
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -78,6 +80,14 @@ export function MarketingHeader({
                 className="hidden md:inline text-[13px] font-medium text-primary hover:text-primary/80 transition-colors duration-200"
               >
                 {secondaryCta.label}
+              </Link>
+            )}
+            {!isAuthenticated && (
+              <Link
+                href={signInHref}
+                className="hidden md:inline text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors duration-200"
+              >
+                Sign In
               </Link>
             )}
             <Link
@@ -139,6 +149,16 @@ export function MarketingHeader({
                         className="text-base font-medium text-primary"
                       >
                         {secondaryCta.label}
+                      </Link>
+                    </SheetClose>
+                  )}
+                  {!isAuthenticated && (
+                    <SheetClose asChild>
+                      <Link
+                        href={signInHref}
+                        className="text-base font-medium text-muted-foreground"
+                      >
+                        Sign In
                       </Link>
                     </SheetClose>
                   )}

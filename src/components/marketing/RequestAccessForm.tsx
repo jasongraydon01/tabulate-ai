@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import type { AccessRequestSource } from '@/lib/accessRequests';
+import { buildSignInPath } from '@/lib/navigation';
 
 interface RequestAccessFormProps {
   source: AccessRequestSource;
@@ -74,6 +75,16 @@ export function RequestAccessForm({
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
           Pricing and billing happen after that workspace setup step, so you won&apos;t hit a dead end
           trying to subscribe first.
+        </p>
+        <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+          If your workspace has already been approved, you can{" "}
+          <a
+            href={buildSignInPath('/dashboard')}
+            className="text-foreground underline underline-offset-4"
+          >
+            sign in here
+          </a>
+          .
         </p>
       </div>
     );

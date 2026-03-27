@@ -16,6 +16,11 @@ interface InternalNotificationParams {
   queueUrl: string;
 }
 
+interface ApprovalEmailParams {
+  company: string;
+  signInUrl: string;
+}
+
 const SOURCE_LABELS: Record<AccessRequestSource, string> = {
   demo_status: 'Demo status page',
   demo_email: 'Demo results email',
@@ -80,6 +85,30 @@ export function buildAccessRequestInternalEmail(
       </td></tr>
       <tr><td style="padding:24px 32px;">
         <a href="${params.queueUrl}" style="display:inline-block;padding:10px 24px;background-color:#18181b;color:#fafafa;font-size:14px;font-weight:600;text-decoration:none;border-radius:6px;">Open request queue</a>
+      </td></tr>
+    `),
+  };
+}
+
+export function buildAccessRequestApprovedEmail(
+  params: ApprovalEmailParams,
+): { subject: string; html: string } {
+  return {
+    subject: `Your TabulateAI workspace is ready`,
+    html: wrapEmail(`
+      <tr><td style="padding:16px 32px 0 32px;">
+        <h1 style="margin:0;font-size:22px;font-weight:600;color:#18181b;">Workspace ready</h1>
+      </td></tr>
+      <tr><td style="padding:16px 32px 0 32px;">
+        <p style="margin:0 0 8px 0;font-size:14px;color:#52525b;line-height:1.6;">
+          Your TabulateAI workspace for <strong style="color:#18181b;">${escapeHtml(params.company)}</strong> has been set up.
+        </p>
+        <p style="margin:0 0 8px 0;font-size:14px;color:#52525b;line-height:1.6;">
+          Use the button below to sign in. If your team set a different first admin, ask them to invite the rest of the workspace after they land in the app.
+        </p>
+      </td></tr>
+      <tr><td style="padding:24px 32px;">
+        <a href="${params.signInUrl}" style="display:inline-block;padding:10px 24px;background-color:#18181b;color:#fafafa;font-size:14px;font-weight:600;text-decoration:none;border-radius:6px;">Sign In</a>
       </td></tr>
     `),
   };
