@@ -365,11 +365,6 @@ export async function POST(
         }
       }
 
-      // Clean up recovered directory (non-fatal, ephemeral disk handles this on redeploy)
-      if (recoveredFromR2 && recoveredOutputDir !== outputDir) {
-        fs.rm(recoveredOutputDir, { recursive: true }).catch(() => { /* best-effort */ });
-      }
-
       // Keep heartbeat alive while R2 work completes (heartbeat stopped when completePipeline returned)
       await sendHeartbeat(runId);
 
@@ -477,6 +472,11 @@ export async function POST(
         durationFormatted: result.durationMs ? formatDuration(result.durationMs) : undefined,
         errorMessage: terminalStatus === 'error' ? terminalMessage : undefined,
       }).catch(() => { /* swallowed */ });
+
+      // Clean up recovered directory only after all export/quality/result work is done.
+      if (recoveredFromR2 && recoveredOutputDir !== outputDir) {
+        fs.rm(recoveredOutputDir, { recursive: true, force: true }).catch(() => { /* best-effort */ });
+      }
 
       return NextResponse.json({
         success: result.success,

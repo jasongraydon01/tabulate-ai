@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "worker": "tsx scripts/worker.ts",
+    "r2:pull-run": "tsx scripts/pull-run-artifacts.ts",
     "lint": "next lint",
     "test:table-generator": "tsx scripts/test-table-generator.ts",
     "pipeline": "tsx scripts/test-pipeline.ts",
