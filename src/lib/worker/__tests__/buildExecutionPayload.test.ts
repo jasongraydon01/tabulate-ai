@@ -1,8 +1,24 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildWorkerExecutionPayload } from '@/lib/worker/buildExecutionPayload';
+import { buildWorkerExecutionPayload, normalizeWizardWorkerInputRefs } from '@/lib/worker/buildExecutionPayload';
 
 describe('buildWorkerExecutionPayload', () => {
+  it('keeps dataMap null for wizard runs that only have a .sav input', () => {
+    expect(normalizeWizardWorkerInputRefs({
+      dataMap: null,
+      bannerPlan: null,
+      spss: 'org/project/runs/run-1/inputs/study.sav',
+      survey: 'org/project/runs/run-1/inputs/survey.pdf',
+      messageList: null,
+    })).toEqual({
+      dataMap: null,
+      bannerPlan: null,
+      spss: 'org/project/runs/run-1/inputs/study.sav',
+      survey: 'org/project/runs/run-1/inputs/survey.pdf',
+      messageList: null,
+    });
+  });
+
   it('preserves durable input refs and optional loop settings', () => {
     const payload = buildWorkerExecutionPayload({
       sessionId: 'session-123',

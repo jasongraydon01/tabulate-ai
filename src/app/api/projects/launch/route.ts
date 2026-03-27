@@ -36,7 +36,7 @@ import { getPostHogClient } from '@/lib/posthog-server';
 import { hasActiveSubscriptionStatus } from '@/lib/billing/subscriptionStatus';
 import { isInternalAccessUser } from '@/lib/internalOperators';
 import { uploadRunInputFiles } from '@/lib/r2/R2FileManager';
-import { buildWorkerExecutionPayload } from '@/lib/worker/buildExecutionPayload';
+import { buildWorkerExecutionPayload, normalizeWizardWorkerInputRefs } from '@/lib/worker/buildExecutionPayload';
 
 // Allow large .sav file uploads and long-running validation
 export const maxDuration = 300; // 5 minutes
@@ -258,13 +258,7 @@ export async function POST(request: NextRequest) {
         survey: parsed.surveyFile.name,
         messageList: parsed.messageListFile?.name ?? null,
       },
-      inputRefs: {
-        dataMap: inputRefs.dataMap ?? inputRefs.spss,
-        bannerPlan: inputRefs.bannerPlan,
-        spss: inputRefs.spss,
-        survey: inputRefs.survey,
-        messageList: inputRefs.messageList,
-      },
+      inputRefs: normalizeWizardWorkerInputRefs(inputRefs),
       loopStatTestingMode: config.loopStatTestingMode,
     });
 
