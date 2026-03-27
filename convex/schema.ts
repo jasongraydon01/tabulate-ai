@@ -2,6 +2,11 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { v3PipelineStageValidator } from "../src/schemas/pipelineStageSchema";
 import { configValidator, intakeValidator } from "./projectConfigValidators";
+import {
+  executionPayloadValidator,
+  executionStateValidator,
+  recoveryStatusValidator,
+} from "./runExecutionValidators";
 
 // ---------------------------------------------------------------------------
 // Typed sub-validators (replaces v.any() where shape is known)
@@ -173,6 +178,16 @@ export default defineSchema({
     progress: v.optional(v.number()),
     message: v.optional(v.string()),
     config: configValidator,
+    executionState: v.optional(executionStateValidator),
+    workerId: v.optional(v.string()),
+    claimedAt: v.optional(v.number()),
+    heartbeatAt: v.optional(v.number()),
+    attemptCount: v.optional(v.number()),
+    resumeFromStage: v.optional(v3PipelineStageValidator),
+    lastDurableCheckpointAt: v.optional(v.number()),
+    lastDurableCheckpointStage: v.optional(v3PipelineStageValidator),
+    recoveryStatus: v.optional(recoveryStatusValidator),
+    executionPayload: v.optional(executionPayloadValidator),
     // result is deeply polymorphic — accumulates pipelineId, outputDir, downloadUrl,
     // reviewState, feedback, r2Files, costSummary across pipeline stages.
     // Risk mitigated by internalMutation conversion (H7).
@@ -183,7 +198,8 @@ export default defineSchema({
   })
     .index("by_project", ["projectId"])
     .index("by_org", ["orgId"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_execution_state", ["executionState"]),
 
   goldenBaselines: defineTable({
     orgId: v.id("organizations"),

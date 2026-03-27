@@ -121,6 +121,14 @@ export interface R2UploadReport {
   failed: R2UploadFailure[];
 }
 
+export interface RunInputArtifactRefs {
+  dataMap: string | null;
+  bannerPlan: string | null;
+  spss: string;
+  survey: string | null;
+  messageList: string | null;
+}
+
 /**
  * Upload an input file to R2.
  * Key pattern: {orgId}/{projectId}/inputs/{filename}
@@ -140,6 +148,67 @@ export async function uploadInputFile(
   const key = buildKey(orgId, projectId, 'inputs', filename);
   await uploadFile(key, fileBuffer, contentType);
   return key;
+}
+
+export async function uploadRunInputArtifact(params: {
+  orgId: string;
+  projectId: string;
+  runId: string;
+  filename: string;
+  body: Buffer | Uint8Array | string;
+  contentType?: string;
+}): Promise<string> {
+  const key = buildRunArtifactKey(params.orgId, params.projectId, params.runId, `inputs/${params.filename}`);
+  await uploadFile(key, params.body, params.contentType ?? getContentType(params.filename));
+  return key;
+}
+
+export async function uploadRunInputFiles(params: {
+  orgId: string;
+  projectId: string;
+  runId: string;
+  files: {
+    dataMapFile?: File | null;
+    bannerPlanFile?: File | null;
+    dataFile: File;
+    surveyFile?: File | null;
+    messageListFile?: File | null;
+  };
+}): Promise<RunInputArtifactRefs> {
+  const uploadOptional = async (file: File | null | undefined): Promise<string | null> => {
+    if (!file) return null;
+    return uploadRunInputArtifact({
+      orgId: params.orgId,
+      projectId: params.projectId,
+      runId: params.runId,
+      filename: file.name,
+      body: Buffer.from(await file.arrayBuffer()),
+      contentType: file.type || undefined,
+    });
+  };
+
+  const [dataMap, bannerPlan, spss, survey, messageList] = await Promise.all([
+    uploadOptional(params.files.dataMapFile),
+    uploadOptional(params.files.bannerPlanFile),
+    uploadRunInputArtifact({
+      orgId: params.orgId,
+      projectId: params.projectId,
+      runId: params.runId,
+      filename: params.files.dataFile.name,
+      body: Buffer.from(await params.files.dataFile.arrayBuffer()),
+      contentType: params.files.dataFile.type || undefined,
+    }),
+    uploadOptional(params.files.surveyFile),
+    uploadOptional(params.files.messageListFile),
+  ]);
+
+  return {
+    dataMap,
+    bannerPlan,
+    spss,
+    survey,
+    messageList,
+  };
 }
 
 /**

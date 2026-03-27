@@ -8,7 +8,6 @@
  * Replaces /api/process-crosstab for the wizard flow.
  */
 
-import * as Sentry from '@sentry/nextjs';
 import { NextRequest, NextResponse } from 'next/server';
 import { generateSessionId } from '@/lib/storage';
 import { validateEnvironment } from '@/lib/env';
@@ -17,13 +16,11 @@ import {
   saveWizardFilesToStorage,
   FileSizeLimitError,
 } from '@/lib/api/fileHandler';
-import { runPipelineFromUpload, type PipelineRunParams } from '@/lib/api/pipelineOrchestrator';
-import pLimit from 'p-limit';
 import { requireConvexAuth, AuthenticationError } from '@/lib/requireConvexAuth';
 import { canPerform } from '@/lib/permissions';
 import { getConvexClient, mutateInternal, queryInternal } from '@/lib/convex';
 import { api, internal } from '../../../../../convex/_generated/api';
-import { createAbortController } from '@/lib/abortStore';
+import type { Id } from '../../../../../convex/_generated/dataModel';
 import {
   deriveLegacyProjectSubType,
   deriveMethodologyFromLegacy,
@@ -38,14 +35,12 @@ import { getApiErrorDetails } from '@/lib/api/errorDetails';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { hasActiveSubscriptionStatus } from '@/lib/billing/subscriptionStatus';
 import { isInternalAccessUser } from '@/lib/internalOperators';
+import { uploadRunInputFiles } from '@/lib/r2/R2FileManager';
+import { buildWorkerExecutionPayload } from '@/lib/worker/buildExecutionPayload';
 
 // Allow large .sav file uploads and long-running validation
 export const maxDuration = 300; // 5 minutes
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100 MB
-
-// Limit concurrent pipeline runs to prevent resource starvation.
-// Each run spawns an R process that uses significant CPU/memory.
-const pipelineLimit = pLimit(3);
 
 const ALLOWED_DATA_EXTENSIONS = ['.sav'];
 const ALLOWED_DOCUMENT_EXTENSIONS = ['.pdf', '.docx', '.doc'];
@@ -55,6 +50,7 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
   const sessionId = generateSessionId();
   let authUserId: string | null = null;
+  let createdRunId: string | null = null;
 
   try {
     // Authenticate and get Convex IDs
@@ -197,12 +193,13 @@ export async function POST(request: NextRequest) {
     });
 
     // Save files to temporary storage (no longer uploading inputs to R2)
-    const savedPaths = await saveWizardFilesToStorage(parsed, sessionId, {
+    await saveWizardFilesToStorage(parsed, sessionId, {
       orgId: String(auth.convexOrgId),
       projectId: String(projectId),
     });
 
-    // Create Convex run with full config
+    // Create Convex run with full config. The worker payload is attached only
+    // after all worker-accessible inputs have been persisted.
     const runId = await mutateInternal(internal.runs.create, {
       projectId,
       orgId: auth.convexOrgId,
@@ -211,9 +208,7 @@ export async function POST(request: NextRequest) {
     });
 
     const runIdStr = String(runId);
-
-    // Create AbortController for this run
-    const abortSignal = createAbortController(runIdStr);
+    createdRunId = runIdStr;
 
     console.log(`[Launch] Project ${String(projectId)} run ${runIdStr} created in ${Date.now() - startTime}ms`);
 
@@ -242,47 +237,40 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Build PipelineRunParams — synthesize the legacy SavedFilePaths shape.
-    // dataMapPath === spssPath since .sav IS the datamap in wizard flow.
-    // bannerPlanPath is the real path or empty string (orchestrator guards empty paths).
-    const pipelineParams: PipelineRunParams = {
+    const inputRefs = await uploadRunInputFiles({
+      orgId: String(auth.convexOrgId),
+      projectId: String(projectId),
       runId: runIdStr,
+      files: {
+        dataFile: parsed.dataFile,
+        surveyFile: parsed.surveyFile,
+        bannerPlanFile: parsed.bannerPlanFile,
+        messageListFile: parsed.messageListFile,
+      },
+    });
+
+    const executionPayload = buildWorkerExecutionPayload({
       sessionId,
-      convexOrgId: String(auth.convexOrgId),
-      convexProjectId: String(projectId),
-      launchedBy: String(auth.convexUserId),
       fileNames: {
-        dataMap: parsed.dataFile.name, // .sav acts as datamap
+        dataMap: parsed.dataFile.name,
         bannerPlan: parsed.bannerPlanFile?.name ?? '',
         dataFile: parsed.dataFile.name,
         survey: parsed.surveyFile.name,
+        messageList: parsed.messageListFile?.name ?? null,
       },
-      savedPaths: {
-        dataMapPath: savedPaths.spssPath, // .sav IS the datamap
-        bannerPlanPath: savedPaths.bannerPlanPath ?? '',
-        spssPath: savedPaths.spssPath,
-        surveyPath: savedPaths.surveyPath,
-        messageListPath: savedPaths.messageListPath ?? undefined,
-        r2Keys: savedPaths.r2Keys ? {
-          dataMap: savedPaths.r2Keys.spss,
-          bannerPlan: savedPaths.r2Keys.bannerPlan ?? '',
-          spss: savedPaths.r2Keys.spss,
-          survey: savedPaths.r2Keys.survey ?? null,
-        } : undefined,
+      inputRefs: {
+        dataMap: inputRefs.dataMap ?? inputRefs.spss,
+        bannerPlan: inputRefs.bannerPlan,
+        spss: inputRefs.spss,
+        survey: inputRefs.survey,
+        messageList: inputRefs.messageList,
       },
-      abortSignal,
       loopStatTestingMode: config.loopStatTestingMode,
-      config,
-    };
+    });
 
-    // Kick off background processing (concurrency-limited to 3 simultaneous runs)
-    pipelineLimit(() => runPipelineFromUpload(pipelineParams)).catch((error) => {
-      console.error('[Launch] Unhandled pipeline error:', error);
-      // Ensure unhandled pipeline errors reach Sentry (the internal try/catch
-      // in pipelineOrchestrator covers most cases, but this is the safety net)
-      Sentry.captureException(error, {
-        tags: { pipeline_id: sessionId, run_id: runIdStr },
-      });
+    await mutateInternal(internal.runs.enqueueForWorker, {
+      runId,
+      executionPayload,
     });
 
     return NextResponse.json({
@@ -293,6 +281,21 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('[Launch] Error:', error);
+
+    if (createdRunId) {
+      try {
+        await mutateInternal(internal.runs.updateStatus, {
+          runId: createdRunId as Id<'runs'>,
+          status: 'error',
+          stage: 'error',
+          progress: 100,
+          message: 'Project launch failed before worker enqueue.',
+          error: error instanceof Error ? error.message : String(error),
+        });
+      } catch (statusError) {
+        console.error('[Launch] Failed to persist launch failure on run:', statusError);
+      }
+    }
 
     // Track launch error (server-side)
     const posthog = getPostHogClient();

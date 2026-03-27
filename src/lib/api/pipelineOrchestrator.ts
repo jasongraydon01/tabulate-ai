@@ -413,6 +413,7 @@ function adaptV3SummaryToLegacy(
 export interface PipelineRunParams {
   runId: string;
   sessionId: string;
+  workerId?: string;
   convexOrgId?: string;
   convexProjectId?: string;
   launchedBy?: string;
@@ -438,6 +439,7 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
   const {
     runId,
     sessionId,
+    workerId,
     convexOrgId,
     convexProjectId,
     launchedBy,
@@ -479,7 +481,7 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
   metricsCollector.bindWideEvent(wideEvent);
 
   return runWithMetricsCollector(metricsCollector, async () => {
-  const stopHeartbeat = startHeartbeatInterval(runId);
+  const stopHeartbeat = startHeartbeatInterval(runId, 30_000, workerId);
 
   // Create output directory
   await fs.mkdir(outputDir, { recursive: true });

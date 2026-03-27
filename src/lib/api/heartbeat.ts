@@ -40,6 +40,28 @@ export async function sendHeartbeat(runId: string): Promise<void> {
   }
 }
 
+export async function sendWorkerHeartbeat(runId: string, workerId: string): Promise<void> {
+  try {
+    await mutateInternal(internal.runs.heartbeat, {
+      runId: runId as Id<"runs">,
+      workerId,
+    });
+    const prev = failureCounts.get(runId);
+    if (prev && prev >= ESCALATE_AFTER) {
+      console.log(`[Heartbeat] Recovered for run ${runId} after ${prev} consecutive failures`);
+    }
+    failureCounts.delete(runId);
+  } catch (err) {
+    const count = (failureCounts.get(runId) ?? 0) + 1;
+    failureCounts.set(runId, count);
+    if (count === ESCALATE_AFTER) {
+      console.error(`[Heartbeat] ${count} consecutive failures for run ${runId} — Convex may be unreachable`);
+    } else if (count < ESCALATE_AFTER) {
+      console.warn('[Heartbeat] Failed to send worker heartbeat:', err);
+    }
+  }
+}
+
 /**
  * Start a periodic heartbeat for a run using recursive setTimeout.
  * Sends an initial heartbeat immediately, then schedules the next tick
@@ -50,20 +72,29 @@ export async function sendHeartbeat(runId: string): Promise<void> {
 export function startHeartbeatInterval(
   runId: string,
   intervalMs = 30_000,
+  workerId?: string,
 ): () => void {
   let stopped = false;
   let timer: ReturnType<typeof setTimeout>;
 
   async function tick() {
     if (stopped) return;
-    await sendHeartbeat(runId);
+    if (workerId) {
+      await sendWorkerHeartbeat(runId, workerId);
+    } else {
+      await sendHeartbeat(runId);
+    }
     if (!stopped) {
       timer = setTimeout(tick, intervalMs);
     }
   }
 
   // Fire initial heartbeat (non-blocking)
-  sendHeartbeat(runId);
+  if (workerId) {
+    void sendWorkerHeartbeat(runId, workerId);
+  } else {
+    void sendHeartbeat(runId);
+  }
   timer = setTimeout(tick, intervalMs);
 
   return () => {

@@ -2,10 +2,113 @@ import { v } from "convex/values";
 import { query, internalMutation } from "./_generated/server";
 import { v3PipelineStageValidator } from "../src/schemas/pipelineStageSchema";
 import { configValidator } from "./projectConfigValidators";
+import {
+  executionPayloadValidator,
+} from "./runExecutionValidators";
 
 /** Statuses that represent an actively-running pipeline (heartbeat expected). */
 const ACTIVE_STATUSES = ["in_progress", "resuming"] as const;
 const ACTIVE_STATUS_SET = new Set<string>(ACTIVE_STATUSES);
+const WORKER_ACTIVE_EXECUTION_STATES = new Set(["claimed", "running"]);
+const TERMINAL_STATUSES = new Set(["success", "partial", "error", "cancelled"]);
+
+function patchForStatusTransition(
+  existingExecutionState: string | undefined,
+  nextStatus: "in_progress" | "pending_review" | "resuming" | "success" | "partial" | "error" | "cancelled",
+  now: number,
+): Record<string, unknown> {
+  if (TERMINAL_STATUSES.has(nextStatus)) {
+    return {
+      executionState: nextStatus,
+      workerId: undefined,
+      claimedAt: undefined,
+      heartbeatAt: undefined,
+    };
+  }
+
+  if (nextStatus === "pending_review") {
+    return {
+      executionState: "pending_review",
+      workerId: undefined,
+      claimedAt: undefined,
+      heartbeatAt: undefined,
+      lastHeartbeat: now,
+    };
+  }
+
+  if (nextStatus === "resuming") {
+    return {
+      executionState: "resuming",
+      lastHeartbeat: now,
+    };
+  }
+
+  if (
+    nextStatus === "in_progress"
+    && existingExecutionState
+    && (existingExecutionState === "queued" || WORKER_ACTIVE_EXECUTION_STATES.has(existingExecutionState))
+  ) {
+    return {
+      executionState: "running",
+      lastHeartbeat: now,
+      heartbeatAt: now,
+    };
+  }
+
+  if (ACTIVE_STATUS_SET.has(nextStatus)) {
+    return { lastHeartbeat: now };
+  }
+
+  return {};
+}
+
+interface StaleWorkerRunRecord {
+  _id: unknown;
+  _creationTime: number;
+  cancelRequested: boolean;
+  heartbeatAt?: number;
+  lastHeartbeat?: number;
+  claimedAt?: number;
+}
+
+async function requeueStaleWorkerRunRecords(
+  runs: StaleWorkerRunRecord[],
+  staleBeforeMs: number,
+  patchRun: (runId: unknown, patch: Record<string, unknown>) => Promise<void>,
+): Promise<number> {
+  const now = Date.now();
+  let requeuedCount = 0;
+
+  for (const run of runs) {
+    const lastAlive = run.heartbeatAt ?? run.lastHeartbeat ?? run.claimedAt ?? run._creationTime;
+    if (now - lastAlive <= staleBeforeMs) continue;
+
+    if (run.cancelRequested) {
+      await patchRun(run._id, {
+        status: "cancelled",
+        executionState: "cancelled",
+        message: "Pipeline cancelled by user",
+        workerId: undefined,
+        claimedAt: undefined,
+        heartbeatAt: undefined,
+      });
+      continue;
+    }
+
+    await patchRun(run._id, {
+      status: "in_progress",
+      executionState: "queued",
+      message: "Run requeued after stale worker lease.",
+      workerId: undefined,
+      claimedAt: undefined,
+      heartbeatAt: undefined,
+      recoveryStatus: "queued_recovery",
+    });
+    requeuedCount++;
+  }
+
+  return requeuedCount;
+}
 
 export const create = internalMutation({
   args: {
@@ -25,6 +128,7 @@ export const create = internalMutation({
       config: args.config,
       cancelRequested: false,
       lastHeartbeat: Date.now(),
+      attemptCount: 0,
       ...(args.launchedBy && { launchedBy: args.launchedBy }),
     });
   },
@@ -50,7 +154,45 @@ export const requestCancel = internalMutation({
     await ctx.db.patch(args.runId, {
       cancelRequested: true,
       status: "cancelled",
+      executionState: "cancelled",
       message: "Pipeline cancelled by user",
+      workerId: undefined,
+      claimedAt: undefined,
+      heartbeatAt: undefined,
+    });
+  },
+});
+
+export const enqueueForWorker = internalMutation({
+  args: {
+    runId: v.id("runs"),
+    executionPayload: executionPayloadValidator,
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run) throw new Error("Run not found");
+
+    if (run.cancelRequested) {
+      await ctx.db.patch(args.runId, {
+        status: "cancelled",
+        executionState: "cancelled",
+        message: "Pipeline cancelled by user",
+      });
+      return;
+    }
+
+    await ctx.db.patch(args.runId, {
+      status: "in_progress",
+      stage: "uploading",
+      progress: 0,
+      message: "Queued for worker pickup...",
+      executionState: "queued",
+      executionPayload: args.executionPayload,
+      workerId: undefined,
+      claimedAt: undefined,
+      heartbeatAt: undefined,
+      lastHeartbeat: Date.now(),
+      attemptCount: run.attemptCount ?? 0,
     });
   },
 });
@@ -110,11 +252,15 @@ export const updateStatus = internalMutation({
         throw new Error("result.pipelineId must be a string");
       }
     }
+    const run = await ctx.db.get(args.runId);
+    if (!run) throw new Error("Run not found");
+
     const { runId, ...fields } = args;
-    // Auto-refresh heartbeat on active statuses (belt-and-suspenders)
-    const patch = ACTIVE_STATUS_SET.has(args.status)
-      ? { ...fields, lastHeartbeat: Date.now() }
-      : fields;
+    const now = Date.now();
+    const patch = {
+      ...fields,
+      ...patchForStatusTransition(run.executionState, args.status, now),
+    };
     await ctx.db.patch(runId, patch);
   },
 });
@@ -327,6 +473,7 @@ export const addFeedbackEntry = internalMutation({
 export const heartbeat = internalMutation({
   args: {
     runId: v.id("runs"),
+    workerId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId);
@@ -334,7 +481,162 @@ export const heartbeat = internalMutation({
 
     if (!ACTIVE_STATUS_SET.has(run.status)) return;
 
-    await ctx.db.patch(args.runId, { lastHeartbeat: Date.now() });
+    const now = Date.now();
+
+    if (args.workerId) {
+      if (run.workerId !== args.workerId || !run.executionState || !WORKER_ACTIVE_EXECUTION_STATES.has(run.executionState)) {
+        return;
+      }
+      await ctx.db.patch(args.runId, {
+        lastHeartbeat: now,
+        heartbeatAt: now,
+        executionState: "running",
+      });
+      return;
+    }
+
+    await ctx.db.patch(args.runId, { lastHeartbeat: now });
+  },
+});
+
+export const claimNextQueuedRun = internalMutation({
+  args: {
+    workerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const queuedRuns = await ctx.db
+      .query("runs")
+      .withIndex("by_execution_state", (q) => q.eq("executionState", "queued"))
+      .order("asc")
+      .collect();
+
+    for (const run of queuedRuns) {
+      if (run.cancelRequested) {
+        await ctx.db.patch(run._id, {
+          status: "cancelled",
+          executionState: "cancelled",
+          workerId: undefined,
+          claimedAt: undefined,
+          heartbeatAt: undefined,
+          message: "Pipeline cancelled by user",
+        });
+        continue;
+      }
+
+      if (!run.executionPayload) {
+        await ctx.db.patch(run._id, {
+          status: "error",
+          executionState: "error",
+          error: "Queued run is missing execution payload.",
+          stage: "error",
+          message: "Queued run is missing execution payload.",
+          workerId: undefined,
+          claimedAt: undefined,
+          heartbeatAt: undefined,
+        });
+        continue;
+      }
+
+      const now = Date.now();
+      const attemptCount = (run.attemptCount ?? 0) + 1;
+      await ctx.db.patch(run._id, {
+        executionState: "claimed",
+        workerId: args.workerId,
+        claimedAt: now,
+        heartbeatAt: now,
+        lastHeartbeat: now,
+        attemptCount,
+        message: "Worker claimed run.",
+      });
+
+      return {
+        runId: run._id,
+        orgId: run.orgId,
+        projectId: run.projectId,
+        launchedBy: run.launchedBy,
+        attemptCount,
+        config: run.config,
+        executionPayload: run.executionPayload,
+        resumeFromStage: run.resumeFromStage,
+      };
+    }
+
+    return null;
+  },
+});
+
+export const releaseRun = internalMutation({
+  args: {
+    runId: v.id("runs"),
+    workerId: v.string(),
+    reason: v.union(
+      v.literal("requeue"),
+      v.literal("failed"),
+      v.literal("cancelled"),
+      v.literal("completed")
+    ),
+    message: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run) return;
+    if (run.workerId !== args.workerId) return;
+
+    const patch: Record<string, unknown> = {
+      workerId: undefined,
+      claimedAt: undefined,
+      heartbeatAt: undefined,
+    };
+
+    if (args.reason === "requeue") {
+      patch.executionState = run.cancelRequested ? "cancelled" : "queued";
+      if (run.cancelRequested) {
+        patch.status = "cancelled";
+        patch.message = "Pipeline cancelled by user";
+      } else {
+        patch.status = "in_progress";
+        patch.message = args.message ?? "Run requeued after worker interruption.";
+      }
+    } else if (args.reason === "failed") {
+      patch.executionState = "error";
+      patch.status = "error";
+      patch.stage = "error";
+      patch.error = args.message ?? "Worker released run after an unrecoverable failure.";
+      patch.message = args.message ?? "Worker released run after an unrecoverable failure.";
+    } else if (args.reason === "cancelled") {
+      patch.executionState = "cancelled";
+      patch.status = "cancelled";
+      patch.message = args.message ?? "Pipeline cancelled by user";
+    } else if (!TERMINAL_STATUSES.has(run.status)) {
+      patch.executionState = "error";
+      patch.status = "error";
+      patch.stage = "error";
+      patch.error = args.message ?? "Worker released run without a terminal status.";
+      patch.message = args.message ?? "Worker released run without a terminal status.";
+    }
+
+    await ctx.db.patch(args.runId, patch);
+  },
+});
+
+export const requeueStaleRuns = internalMutation({
+  args: {
+    staleBeforeMs: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const staleWorkerRuns = await ctx.db
+      .query("runs")
+      .withIndex("by_execution_state", (q) => q.eq("executionState", "claimed"))
+      .collect();
+    const runningWorkerRuns = await ctx.db
+      .query("runs")
+      .withIndex("by_execution_state", (q) => q.eq("executionState", "running"))
+      .collect();
+    return requeueStaleWorkerRunRecords(
+      [...staleWorkerRuns, ...runningWorkerRuns],
+      args.staleBeforeMs,
+      (runId, patch) => ctx.db.patch(runId as never, patch),
+    );
   },
 });
 
@@ -481,6 +783,21 @@ export const reconcileStaleRuns = internalMutation({
 
     let reconciledCount = 0;
 
+    const claimedRuns = await ctx.db
+      .query("runs")
+      .withIndex("by_execution_state", (q) => q.eq("executionState", "claimed"))
+      .collect();
+    const runningRuns = await ctx.db
+      .query("runs")
+      .withIndex("by_execution_state", (q) => q.eq("executionState", "running"))
+      .collect();
+
+    reconciledCount += await requeueStaleWorkerRunRecords(
+      [...claimedRuns, ...runningRuns],
+      IN_PROGRESS_STALE_MS,
+      (runId, patch) => ctx.db.patch(runId as never, patch),
+    );
+
     // Check resuming runs
     const resumingRuns = await ctx.db
       .query("runs")
@@ -488,6 +805,7 @@ export const reconcileStaleRuns = internalMutation({
       .collect();
 
     for (const run of resumingRuns) {
+      if (run.workerId) continue;
       const lastAlive = run.lastHeartbeat ?? run._creationTime;
       if (now - lastAlive > RESUMING_STALE_MS) {
         const staleMins = Math.round((now - lastAlive) / 60_000);
@@ -511,6 +829,9 @@ export const reconcileStaleRuns = internalMutation({
       .collect();
 
     for (const run of inProgressRuns) {
+      if (run.executionState === "queued" || WORKER_ACTIVE_EXECUTION_STATES.has(run.executionState ?? "")) {
+        continue;
+      }
       const lastAlive = run.lastHeartbeat ?? run._creationTime;
       if (now - lastAlive > IN_PROGRESS_STALE_MS) {
         const staleMins = Math.round((now - lastAlive) / 60_000);

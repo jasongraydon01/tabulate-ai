@@ -9,6 +9,7 @@
     "dev:all": "npx convex dev & next dev --turbopack",
     "build": "next build",
     "start": "next start",
+    "worker": "tsx scripts/worker.ts",
     "lint": "next lint",
     "test:table-generator": "tsx scripts/test-table-generator.ts",
     "pipeline": "tsx scripts/test-pipeline.ts",

@@ -17,6 +17,7 @@ import type * as organizations from "../organizations.js";
 import type * as projectConfigValidators from "../projectConfigValidators.js";
 import type * as projects from "../projects.js";
 import type * as runEvaluations from "../runEvaluations.js";
+import type * as runExecutionValidators from "../runExecutionValidators.js";
 import type * as runs from "../runs.js";
 import type * as subscriptions from "../subscriptions.js";
 import type * as tableRegenerations from "../tableRegenerations.js";
@@ -39,6 +40,7 @@ declare const fullApi: ApiFromModules<{
   projectConfigValidators: typeof projectConfigValidators;
   projects: typeof projects;
   runEvaluations: typeof runEvaluations;
+  runExecutionValidators: typeof runExecutionValidators;
   runs: typeof runs;
   subscriptions: typeof subscriptions;
   tableRegenerations: typeof tableRegenerations;
