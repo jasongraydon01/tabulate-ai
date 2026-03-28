@@ -301,9 +301,13 @@ export async function runPipeline(
 
   // Pre-flight health check
   if (process.env.SKIP_HEALTH_CHECK !== 'true') {
-    const providerLabel = (process.env.AI_PROVIDER || 'azure').toLowerCase() === 'openai' ? 'OpenAI' : 'Azure';
+    const {
+      formatHealthCheckFailure,
+      getHealthCheckProviderLabel,
+      runHealthCheck,
+    } = await import('./HealthCheck');
+    const providerLabel = getHealthCheckProviderLabel();
     log(`Pre-flight: checking ${providerLabel} deployments...`, 'cyan');
-    const { runHealthCheck } = await import('./HealthCheck');
     const health = await runHealthCheck(pipelineSignal);
     if (health.success) {
       log(`  ${health.deployments.length} deployment(s) healthy (${health.durationMs}ms)`, 'green');
@@ -317,18 +321,19 @@ export async function runPipeline(
           outputDir, dataset: datasetNameGuess, pipelineId,
           stageNumber: 0, stageName: 'HealthCheck',
           severity: 'fatal', actionTaken: 'failed_pipeline',
-          error: new Error('Azure health check failed'),
+          error: new Error(`${providerLabel} health check failed: ${formatHealthCheckFailure(health)}`),
           meta: { deployments: health.deployments },
         });
       } catch { /* ignore */ }
-      eventBus.emitPipelineFailed(datasetNameGuess, 'Azure health check failed');
-      finishObservability('error', 'Azure health check failed');
+      const healthCheckError = `${providerLabel} health check failed: ${formatHealthCheckFailure(health)}`;
+      eventBus.emitPipelineFailed(datasetNameGuess, healthCheckError);
+      finishObservability('error', healthCheckError);
       setActiveCircuitBreaker(null);
       clearPipelineTimeout();
       return {
         success: false, dataset: datasetNameGuess, outputDir,
         durationMs: Date.now() - startTime, tableCount: 0, totalCostUsd: 0,
-        error: `Azure health check failed: ${failed.map(d => `${d.name}: ${d.error}`).join('; ')}`,
+        error: healthCheckError,
       };
     }
     log('', 'reset');

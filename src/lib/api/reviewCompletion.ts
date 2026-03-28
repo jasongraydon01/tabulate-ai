@@ -880,6 +880,26 @@ export async function completePipeline(
   });
 
   return consoleCapture.run(() => runWithMetricsCollector(metricsCollector, async () => {
+  if (process.env.SKIP_HEALTH_CHECK !== 'true') {
+    await updateReviewRunStatus(runId, {
+      status: 'resuming',
+      progress: 53,
+      message: 'Checking AI provider health...',
+    });
+    const {
+      formatHealthCheckFailure,
+      getHealthCheckProviderLabel,
+      runHealthCheck,
+    } = await import('@/lib/pipeline/HealthCheck');
+    const providerLabel = getHealthCheckProviderLabel();
+    console.log(`[ReviewCompletion] Pre-flight: checking ${providerLabel} deployments...`);
+    const health = await runHealthCheck(abortSignal);
+    if (!health.success) {
+      throw new Error(`${providerLabel} health check failed: ${formatHealthCheckFailure(health)}`);
+    }
+    console.log(`[ReviewCompletion] Pre-flight: ${health.deployments.length} deployment(s) healthy (${health.durationMs}ms)`);
+  }
+
   // -------------------------------------------------------------------------
   // V3 Checkpoint — Load from disk
   // -------------------------------------------------------------------------

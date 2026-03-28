@@ -532,6 +532,26 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
       console.log(`[API] Project sub-type: ${projectSubType}`);
     }
 
+    if (process.env.SKIP_HEALTH_CHECK !== 'true') {
+      await updateRunStatus(runId, {
+        status: 'in_progress',
+        progress: 1,
+        message: 'Checking AI provider health...',
+      });
+      const {
+        formatHealthCheckFailure,
+        getHealthCheckProviderLabel,
+        runHealthCheck,
+      } = await import('@/lib/pipeline/HealthCheck');
+      const providerLabel = getHealthCheckProviderLabel();
+      console.log(`[API] Pre-flight: checking ${providerLabel} deployments...`);
+      const health = await runHealthCheck(abortSignal);
+      if (!health.success) {
+        throw new Error(`${providerLabel} health check failed: ${formatHealthCheckFailure(health)}`);
+      }
+      console.log(`[API] Pre-flight: ${health.deployments.length} deployment(s) healthy (${health.durationMs}ms)`);
+    }
+
     const { dataMapPath, bannerPlanPath, spssPath, surveyPath, messageListPath } = savedPaths;
     const assertNotCancelled: CancelCheck = async () => {
       if (abortSignal?.aborted) {

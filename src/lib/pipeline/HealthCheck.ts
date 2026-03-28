@@ -26,6 +26,27 @@ export interface HealthCheckResult {
   durationMs: number;
 }
 
+export function getHealthCheckProviderLabel(): string {
+  try {
+    return getEnvironmentConfig().aiProvider === 'openai' ? 'OpenAI' : 'Azure';
+  } catch {
+    return (process.env.AI_PROVIDER || 'openai').toLowerCase() === 'azure' ? 'Azure' : 'OpenAI';
+  }
+}
+
+export function formatHealthCheckFailure(health: HealthCheckResult): string {
+  const failed = health.deployments.filter(deployment => !deployment.ok);
+  if (failed.length === 0) {
+    return 'Unknown AI health check failure';
+  }
+
+  return failed
+    .map((deployment) => (
+      `${deployment.name} (${deployment.agents.join(', ')}): ${deployment.error || 'Unknown error'}`
+    ))
+    .join('; ');
+}
+
 export async function runHealthCheck(abortSignal?: AbortSignal): Promise<HealthCheckResult> {
   const startTime = Date.now();
 
