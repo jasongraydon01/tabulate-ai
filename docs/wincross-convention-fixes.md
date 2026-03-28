@@ -15,8 +15,8 @@ The point is to avoid over-calling every delta a "WinCross bug" while also keepi
 
 ### Current read
 - Our `.job` is usable as a starting point, but it is not yet a straight-through vendor-grade export.
-- The biggest concern is not cosmetics. It is summary-table base logic. That changes the reported percentages.
-- The next most actionable class of concern is fidelity: wrong scale anchor text, noisy stub labels, title wrapping pipes, Unicode normalization, and preferred rating-scale order.
+- Bucket 1 has now been addressed: summary-table denominator semantics are no longer emitted as a universal `TN^1`, and scale-label reconciliation now guards against code/anchor mismatches.
+- The next most actionable class of concern is fidelity: noisy stub labels, title wrapping pipes, Unicode normalization, and preferred rating-scale order.
 - OE theme duplication is real, but it is currently lower urgency than the items above because it is a low-risk extra row pattern and we do not yet have a clean dataset-general fix.
 
 ### Practical implication
@@ -29,6 +29,12 @@ The point is to avoid over-calling every delta a "WinCross bug" while also keepi
 
 These are the items to treat as true export defects.
 
+### Status
+- **Addressed**
+  - WinCross denominator behavior is now resolved per table rather than emitted from a single global default.
+  - Stage-12 reconciliation now rejects survey-derived scale labels whose explicit numeric anchor conflicts with the coded value.
+  - Regression coverage exists for serializer denominator behavior, canonical denominator metadata, and scale-label conflict handling.
+
 ### 1. Summary tables using `Total^TN^1` instead of `Total^TN^0`
 - **Observed**:
   - Our export uses `Total^TN^1` everywhere.
@@ -38,6 +44,10 @@ These are the items to treat as true export defects.
   - Summary percentages can become self-referential if the base only includes respondents who selected the summarized codes.
 - **Classification**: Export contract / correctness bug.
 - **Likely fix owner**: WinCross serializer.
+- **Implemented fix**:
+  - Canonical tables now carry WinCross denominator metadata.
+  - The serializer resolves `answering_base | sample_base | qualified_respondents | filtered_sample | response_level` per table.
+  - Summary/derived table families now emit `TN^0`, `PO(...) + TN^1`, or `Total^<filter>^0` as appropriate instead of inheriting the profile default blindly.
 
 ### 2. Scale anchor / factor-code mismatch
 - **Observed**:
@@ -48,6 +58,10 @@ These are the items to treat as true export defects.
   - A human can misread the table even if WinCross technically runs it.
 - **Classification**: Data-labeling bug.
 - **Likely fix owner**: Canonical row-label generation or scale-label mapping.
+- **Implemented fix**:
+  - Reconciliation now treats the coded value as authoritative for anchor consistency.
+  - Survey-derived labels can still replace current labels when they are cleaner, but not when they explicitly claim the wrong numeric anchor.
+  - On conflict, we keep the current non-conflicting label, or restore `savLabel` when the current label is already corrupted and `savLabel` is the best anchored match.
 
 ---
 
@@ -188,13 +202,14 @@ Goal: make the exported `.job` reliable enough that we can defend "good starting
 
 #### 1. Summary-table base logic
 - **Work**:
-  - Detect summary/derived tables and emit `Total^TN^0` instead of `Total^TN^1`.
+  - Detect summary/derived tables and emit the correct table-level denominator syntax instead of relying on a universal `TN^1`.
   - Preserve support for explicit filtered totals like `Total^VariableName (codes)^0` where needed.
 - **Owner**: WinCross serializer.
 - **Why first**: This is the most important correctness issue.
 - **Acceptance**:
   - Top 2 Box, Bottom Box, Middle Box, and Mean Summary tables export with the intended total-line behavior.
   - Summary percentages align with corresponding detail tables.
+- **Status**: Done.
 
 #### 2. Numeric stat-table durability
 - **Work**:
@@ -215,6 +230,7 @@ Goal: make the exported `.job` reliable enough that we can defend "good starting
 - **Acceptance**:
   - `(7)` never receives a `1-...` label.
   - High and low anchors consistently match their coded values.
+- **Status**: Done.
 
 #### 4. Stub-label cleanup for OE/message summaries
 - **Work**:

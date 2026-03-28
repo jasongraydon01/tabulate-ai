@@ -163,6 +163,12 @@ export interface ItemActivitySummary {
   activePct: number;
 }
 
+export interface ReconciliationDiagnostic {
+  code: string;
+  field: string;
+  detail: string;
+}
+
 // =============================================================================
 // Sum Constraint
 // =============================================================================
@@ -305,6 +311,7 @@ export interface QuestionIdEntry {
     reconciledAt: string;
     changesApplied: number;
     fields: string[];
+    diagnostics?: ReconciliationDiagnostic[];
   } | null;
 
   // Allow additional fields from downstream stages

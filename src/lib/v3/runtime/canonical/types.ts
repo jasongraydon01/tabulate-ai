@@ -557,6 +557,13 @@ export interface StatTestSpec {
   confidenceLevel: number;
 }
 
+export type WinCrossDenominatorSemantic =
+  | 'answering_base'
+  | 'sample_base'
+  | 'qualified_respondents'
+  | 'filtered_sample'
+  | 'response_level';
+
 export interface CanonicalRow {
   variable: string;
   label: string;
@@ -601,6 +608,9 @@ export interface CanonicalTable {
   statsSpec: StatsSpec | null;
   derivationHint: DerivationHint | null;
   statTestSpec: StatTestSpec | null;
+  wincrossDenominatorSemantic?: WinCrossDenominatorSemantic;
+  wincrossQualifiedCodes?: string[];
+  wincrossFilteredTotalExpr?: string | null;
 
   // Base and context
   basePolicy: string;

@@ -27,6 +27,7 @@ import type {
   QuestionItem,
   CanonicalBaseDisclosure,
   CanonicalBaseNoteToken,
+  WinCrossDenominatorSemantic,
 } from './types';
 import type { TablePresentationConfig, TableLabelVocabulary } from '@/lib/tablePresentation/labelVocabulary';
 import type { LoopGroupMapping } from '@/lib/validation/LoopCollapser';
@@ -249,6 +250,7 @@ function buildCanonicalTable(
   const baseDisclosure = planned.baseDisclosure ?? buildBaseDisclosure(planned, entry);
   const displayQuestionId = entry?.displayQuestionId ?? planned.sourceQuestionId ?? '';
   const displayQuestionText = buildDisplayQuestionText(entry);
+  const wincrossDenominator = resolveWinCrossDenominatorConfig(planned, items);
 
   return {
     // Identity and lineage
@@ -272,6 +274,9 @@ function buildCanonicalTable(
     statsSpec,
     derivationHint: null,
     statTestSpec: null,
+    wincrossDenominatorSemantic: wincrossDenominator.semantic,
+    wincrossQualifiedCodes: wincrossDenominator.qualifiedCodes,
+    wincrossFilteredTotalExpr: null,
 
     // Base and context
     basePolicy: planned.basePolicy,
@@ -313,6 +318,94 @@ function buildCanonicalTable(
     // Notes
     notes,
   };
+}
+
+function resolveWinCrossDenominatorConfig(
+  planned: PlannedTable,
+  items: QuestionItem[],
+): {
+  semantic: WinCrossDenominatorSemantic;
+  qualifiedCodes?: string[];
+} {
+  const summaryKinds = new Set<TableKind>([
+    'scale_overview_rollup_t2b',
+    'scale_overview_rollup_middle',
+    'scale_overview_rollup_b2b',
+    'scale_overview_rollup_nps',
+    'scale_overview_rollup_combined',
+    'scale_overview_rollup_mean',
+    'numeric_overview_mean',
+    'ranking_overview_rank',
+    'ranking_overview_topk',
+    'allocation_overview',
+    'scale_dimension_compare',
+    'maxdiff_api',
+    'maxdiff_ap',
+    'maxdiff_sharpref',
+  ]);
+
+  const answeringBaseKinds = new Set<TableKind>([
+    'standard_overview',
+    'standard_item_detail',
+    'standard_cluster_detail',
+    'grid_row_detail',
+    'grid_col_detail',
+    'numeric_item_detail',
+    'numeric_per_value_detail',
+    'numeric_optimized_bin_detail',
+    'scale_overview_full',
+    'scale_item_detail_full',
+    'allocation_item_detail',
+    'ranking_item_rank',
+  ]);
+
+  if (summaryKinds.has(planned.tableKind)) {
+    const qualifiedCodes = resolveQualifiedResponseCodes(planned, items);
+    if (qualifiedCodes.length > 0) {
+      return {
+        semantic: 'qualified_respondents',
+        qualifiedCodes,
+      };
+    }
+    return { semantic: 'sample_base' };
+  }
+
+  if (answeringBaseKinds.has(planned.tableKind)) {
+    return { semantic: 'answering_base' };
+  }
+
+  return { semantic: 'answering_base' };
+}
+
+function resolveQualifiedResponseCodes(
+  planned: PlannedTable,
+  items: QuestionItem[],
+): string[] {
+  if (planned.baseContract.policy.rebasePolicy !== 'exclude_non_substantive_tail') {
+    return [];
+  }
+
+  const scaleEligibleKinds = new Set<TableKind>([
+    'scale_overview_rollup_t2b',
+    'scale_overview_rollup_middle',
+    'scale_overview_rollup_b2b',
+    'scale_overview_rollup_nps',
+    'scale_overview_rollup_combined',
+    'scale_overview_rollup_mean',
+    'scale_dimension_compare',
+  ]);
+
+  if (!scaleEligibleKinds.has(planned.tableKind)) {
+    return [];
+  }
+
+  const scaleLabels = getScaleLabels(items);
+  const substantiveCodes = scaleLabels
+    .filter((sl) => !isNonSubstantiveTail(sl.label))
+    .map((sl) => String(sl.value).trim())
+    .filter((value) => value.length > 0);
+
+  return Array.from(new Set(substantiveCodes));
 }
 
 // =============================================================================

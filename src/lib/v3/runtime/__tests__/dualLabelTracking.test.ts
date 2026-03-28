@@ -381,6 +381,174 @@ describe('Stage 12 — savLabel preservation on re-reconciliation', () => {
       expect(scaleLabels[1].savLabel).toBe('Sat');
     }
   });
+
+  it('allows matching anchored survey labels on scale values', () => {
+    const surveyQuestionsWithScale: ParsedSurveyQuestion[] = [
+      {
+        questionId: 'Q7',
+        rawText: 'Q7. Rate this concept',
+        questionText: 'Rate this concept',
+        instructionText: null,
+        answerOptions: [
+          { code: 7, text: '7-Extremely Positive', isOther: false, anchor: false, routing: null, progNote: null },
+        ],
+        scaleLabels: null,
+        questionType: 'single_select',
+        format: 'numbered_list',
+        progNotes: [],
+        strikethroughSegments: [],
+        sectionHeader: null,
+      },
+    ];
+
+    const entry = makeEntry({
+      questionId: 'Q7',
+      analyticalSubtype: 'scale',
+      items: [makeItem({
+        column: 'Q7',
+        label: 'Concept rating',
+        scaleLabels: [
+          { value: 7, label: 'Extremely Positive', savLabel: '7-Extremely Positive' },
+        ],
+      })],
+      _aiGateReview: makeCorrectedReview('surveyMatch'),
+    });
+
+    const result = runReconcile({
+      entries: [entry],
+      metadata: testMetadata,
+      surveyParsed: surveyQuestionsWithScale,
+    });
+
+    expect(result.entries[0].items[0].scaleLabels?.[0].label).toBe('7-Extremely Positive');
+    expect(result.entries[0]._reconciliation?.diagnostics).toBeUndefined();
+  });
+
+  it('allows unanchored cleaner survey labels on scale values', () => {
+    const surveyQuestionsWithScale: ParsedSurveyQuestion[] = [
+      {
+        questionId: 'Q8',
+        rawText: 'Q8. Rate this concept',
+        questionText: 'Rate this concept',
+        instructionText: null,
+        answerOptions: [
+          { code: 7, text: 'Extremely Positive overall', isOther: false, anchor: false, routing: null, progNote: null },
+        ],
+        scaleLabels: null,
+        questionType: 'single_select',
+        format: 'numbered_list',
+        progNotes: [],
+        strikethroughSegments: [],
+        sectionHeader: null,
+      },
+    ];
+
+    const entry = makeEntry({
+      questionId: 'Q8',
+      analyticalSubtype: 'scale',
+      items: [makeItem({
+        column: 'Q8',
+        label: 'Concept rating',
+        scaleLabels: [
+          { value: 7, label: 'Positive', savLabel: 'Positive' },
+        ],
+      })],
+      _aiGateReview: makeCorrectedReview('surveyMatch'),
+    });
+
+    const result = runReconcile({
+      entries: [entry],
+      metadata: testMetadata,
+      surveyParsed: surveyQuestionsWithScale,
+    });
+
+    expect(result.entries[0].items[0].scaleLabels?.[0].label).toBe('Extremely Positive overall');
+    expect(result.entries[0]._reconciliation?.diagnostics).toBeUndefined();
+  });
+
+  it('rejects conflicting anchored survey labels and records a diagnostic', () => {
+    const surveyQuestionsWithScale: ParsedSurveyQuestion[] = [
+      {
+        questionId: 'Q9',
+        rawText: 'Q9. Rate this concept',
+        questionText: 'Rate this concept',
+        instructionText: null,
+        answerOptions: [
+          { code: 7, text: '1-Extremely Positive', isOther: false, anchor: false, routing: null, progNote: null },
+        ],
+        scaleLabels: null,
+        questionType: 'single_select',
+        format: 'numbered_list',
+        progNotes: [],
+        strikethroughSegments: [],
+        sectionHeader: null,
+      },
+    ];
+
+    const entry = makeEntry({
+      questionId: 'Q9',
+      analyticalSubtype: 'scale',
+      items: [makeItem({
+        column: 'Q9',
+        label: 'Concept rating',
+        scaleLabels: [
+          { value: 7, label: '7-Extremely Positive', savLabel: '7-Extremely Positive' },
+        ],
+      })],
+      _aiGateReview: makeCorrectedReview('surveyMatch'),
+    });
+
+    const result = runReconcile({
+      entries: [entry],
+      metadata: testMetadata,
+      surveyParsed: surveyQuestionsWithScale,
+    });
+
+    expect(result.entries[0].items[0].scaleLabels?.[0].label).toBe('7-Extremely Positive');
+    expect(result.entries[0]._reconciliation?.diagnostics?.[0]?.code).toBe('scale_anchor_conflict');
+  });
+
+  it('restores savLabel when the current scale label is corrupted and survey text conflicts', () => {
+    const surveyQuestionsWithScale: ParsedSurveyQuestion[] = [
+      {
+        questionId: 'Q10',
+        rawText: 'Q10. Rate this concept',
+        questionText: 'Rate this concept',
+        instructionText: null,
+        answerOptions: [
+          { code: 7, text: '1-Extremely Positive', isOther: false, anchor: false, routing: null, progNote: null },
+        ],
+        scaleLabels: null,
+        questionType: 'single_select',
+        format: 'numbered_list',
+        progNotes: [],
+        strikethroughSegments: [],
+        sectionHeader: null,
+      },
+    ];
+
+    const entry = makeEntry({
+      questionId: 'Q10',
+      analyticalSubtype: 'scale',
+      items: [makeItem({
+        column: 'Q10',
+        label: 'Concept rating',
+        scaleLabels: [
+          { value: 7, label: '1-Extremely Positive', savLabel: '7-Extremely Positive' },
+        ],
+      })],
+      _aiGateReview: makeCorrectedReview('surveyMatch'),
+    });
+
+    const result = runReconcile({
+      entries: [entry],
+      metadata: testMetadata,
+      surveyParsed: surveyQuestionsWithScale,
+    });
+
+    expect(result.entries[0].items[0].scaleLabels?.[0].label).toBe('7-Extremely Positive');
+    expect(result.entries[0]._reconciliation?.diagnostics?.[0]?.code).toBe('scale_anchor_conflict');
+  });
 });
 
 describe('08a -> 12 full flow', () => {

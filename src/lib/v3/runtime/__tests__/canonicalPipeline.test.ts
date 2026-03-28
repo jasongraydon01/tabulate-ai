@@ -2753,6 +2753,73 @@ describe('Canonical assembly (13d)', () => {
     expect(result.tables.find(t => t.tableId === 'plain')?.isDerived).toBe(false);
   });
 
+  it('attaches WinCross denominator semantics for rollup and detail tables', () => {
+    const rollupBaseContract = projectTableBaseContract(makeEmptyBaseContract(), {
+      basePolicy: 'question_base_shared',
+      questionBase: 150,
+      itemBase: null,
+    });
+    rollupBaseContract.policy.rebasePolicy = 'exclude_non_substantive_tail';
+
+    const plans = [
+      makePlannedTable({
+        tableKind: 'scale_overview_rollup_t2b',
+        tableIdCandidate: 'scale_rollup',
+        analyticalSubtype: 'scale',
+        baseContract: rollupBaseContract,
+      }),
+      makePlannedTable({
+        tableKind: 'scale_overview_full',
+        tableIdCandidate: 'scale_full',
+        analyticalSubtype: 'scale',
+      }),
+    ];
+    const entry = makeEntry({
+      analyticalSubtype: 'scale',
+      items: [
+        {
+          column: 'Q1_1',
+          label: 'Message A',
+          normalizedType: 'categorical_select',
+          itemBase: 100,
+          scaleLabels: [
+            { value: 1, label: '1 - Very negative' },
+            { value: 2, label: '2' },
+            { value: 3, label: '3' },
+            { value: 4, label: '4' },
+            { value: 5, label: '5' },
+            { value: 6, label: '6' },
+            { value: 7, label: '7 - Extremely positive' },
+            { value: 98, label: 'Don\'t know' },
+          ],
+          messageCode: null,
+          messageText: null,
+          altCode: null,
+          altText: null,
+          matchMethod: null,
+          matchConfidence: 0,
+        },
+      ],
+    });
+    const metadata = makeMetadata();
+
+    const result = runCanonicalAssembly({
+      validatedPlan: {
+        metadata: {},
+        plannedTables: plans,
+        subtypeReviews: [],
+        blockConfidence: [],
+      },
+      entries: [entry],
+      metadata,
+      dataset: 'test',
+    });
+
+    expect(result.tables.find(t => t.tableId === 'scale_rollup')?.wincrossDenominatorSemantic).toBe('qualified_respondents');
+    expect(result.tables.find(t => t.tableId === 'scale_rollup')?.wincrossQualifiedCodes).toEqual(['1', '2', '3', '4', '5', '6', '7']);
+    expect(result.tables.find(t => t.tableId === 'scale_full')?.wincrossDenominatorSemantic).toBe('answering_base');
+  });
+
   it('builds scale full NET rows in T2B -> Middle -> B2B order for 7-point scales', () => {
     const scaleEntry = makeScaleEntry(7, [
       { value: 1, label: 'Strongly disagree' },

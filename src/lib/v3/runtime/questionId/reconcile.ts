@@ -27,6 +27,7 @@ import type {
   RankingDetail,
   ParsedSurveyQuestion,
   ItemActivitySummary,
+  ReconciliationDiagnostic,
 } from './types';
 import { buildEntryBaseContract } from '../baseContract';
 
@@ -365,6 +366,97 @@ type ReconcileItem = {
   scaleLabels?: ReconcileScaleLabel[];
 } & Record<string, unknown>;
 
+function appendReconciliationDiagnostic(
+  entry: Record<string, unknown>,
+  diagnostic: ReconciliationDiagnostic,
+): void {
+  const existing = entry._reconciliation as QuestionIdEntry['_reconciliation'];
+  if (!existing) {
+    entry._reconciliation = {
+      reconciledAt: new Date().toISOString(),
+      changesApplied: 0,
+      fields: [],
+      diagnostics: [diagnostic],
+    };
+    return;
+  }
+
+  const diagnostics = existing.diagnostics ?? [];
+  if (diagnostics.some(item => item.code === diagnostic.code && item.field === diagnostic.field && item.detail === diagnostic.detail)) {
+    existing.diagnostics = diagnostics;
+    return;
+  }
+  diagnostics.push(diagnostic);
+  existing.diagnostics = diagnostics;
+}
+
+function extractExplicitNumericAnchor(text: string | undefined): number | null {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return null;
+
+  const match = trimmed.match(/^\(?\s*(-?\d+(?:\.\d+)?)\s*\)?(?:\s*[-–—.:)]\s*|\s+)/);
+  if (!match) return null;
+
+  const parsed = Number.parseFloat(match[1]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function anchorMatchesValue(anchor: number | null, value: number | string): boolean {
+  if (anchor === null) return false;
+  const numericValue = typeof value === 'number' ? value : Number.parseFloat(String(value));
+  if (Number.isFinite(numericValue)) {
+    return numericValue === anchor;
+  }
+  return String(value).trim() === String(anchor);
+}
+
+function labelHasAnchorConflict(label: string | undefined, value: number | string): boolean {
+  const anchor = extractExplicitNumericAnchor(label);
+  if (anchor === null) return false;
+  return !anchorMatchesValue(anchor, value);
+}
+
+function labelHasMatchingExplicitAnchor(label: string | undefined, value: number | string): boolean {
+  const anchor = extractExplicitNumericAnchor(label);
+  if (anchor === null) return false;
+  return anchorMatchesValue(anchor, value);
+}
+
+function resolveScaleLabelSelection(params: {
+  entry: Record<string, unknown>;
+  field: string;
+  value: number | string;
+  currentLabel: string;
+  savLabel?: string;
+  surveyLabel: string;
+}): { label: string } {
+  const { entry, field, value, currentLabel, savLabel, surveyLabel } = params;
+  const candidateAnchor = extractExplicitNumericAnchor(surveyLabel);
+
+  if (candidateAnchor === null || anchorMatchesValue(candidateAnchor, value)) {
+    return {
+      label: shouldPreferSurveyText(currentLabel, surveyLabel) ? surveyLabel : currentLabel,
+    };
+  }
+
+  const currentConflict = labelHasAnchorConflict(currentLabel, value);
+  const savMatches = savLabel ? labelHasMatchingExplicitAnchor(savLabel, value) : false;
+  const resolvedLabel = currentConflict && savMatches && savLabel
+    ? savLabel
+    : currentLabel;
+
+  const diagnostic: ReconciliationDiagnostic = {
+    code: 'scale_anchor_conflict',
+    field,
+    detail: `Rejected survey label "${surveyLabel}" for value ${String(value)} because its explicit numeric anchor conflicts with the code. Retained "${resolvedLabel}".`,
+  };
+  appendReconciliationDiagnostic(entry, diagnostic);
+
+  return {
+    label: resolvedLabel,
+  };
+}
+
 function reconcileLabelsFromSurvey(
   entry: Record<string, unknown>,
   surveyQuestions: ParsedSurveyQuestion[],
@@ -416,9 +508,19 @@ function reconcileLabelsFromSurvey(
       const newScaleLabels = scaleLabels.map(sl => {
         const savLabelVal = sl.savLabel ?? sl.label;
         const surveyLabel = optionMap.get(String(sl.value));
-        if (surveyLabel && surveyLabel !== sl.label && surveyLabel.length > sl.label.length) {
-          updated = true;
-          return { ...sl, label: surveyLabel, savLabel: savLabelVal, surveyLabel };
+        if (surveyLabel) {
+          const resolved = resolveScaleLabelSelection({
+            entry,
+            field: `items[${itemIndex}].scaleLabels[${String(sl.value)}].label`,
+            value: sl.value,
+            currentLabel: sl.label,
+            savLabel: typeof savLabelVal === 'string' ? savLabelVal : undefined,
+            surveyLabel,
+          });
+          if (resolved.label !== sl.label) {
+            updated = true;
+          }
+          return { ...sl, label: resolved.label, savLabel: savLabelVal, surveyLabel };
         }
         return { ...sl, savLabel: savLabelVal };
       });
@@ -688,10 +790,12 @@ function reconcileEntry(
 
   // 4. Provenance
   if (changes.length > 0) {
+    const existingDiagnostics = (entry._reconciliation as QuestionIdEntry['_reconciliation'])?.diagnostics;
     entry._reconciliation = {
       reconciledAt: new Date().toISOString(),
       changesApplied: changes.length,
       fields: changes.map(c => c.field),
+      diagnostics: existingDiagnostics && existingDiagnostics.length > 0 ? existingDiagnostics : undefined,
     };
   }
 
@@ -875,16 +979,22 @@ function refreshSurveyLabelsFromCleanedParse(
 
       // Refresh scale-level surveyLabels
       if (item.scaleLabels) {
-        for (const sl of item.scaleLabels) {
+        for (const [scaleIndex, sl] of item.scaleLabels.entries()) {
           const cleanedScale = scaleMap.get(String(sl.value)) ?? optionMap.get(String(sl.value));
           if (cleanedScale) {
             if (!sl.savLabel) {
               sl.savLabel = sl.label;
             }
             sl.surveyLabel = cleanedScale;
-            if (shouldPreferSurveyText(sl.label, cleanedScale)) {
-              sl.label = cleanedScale;
-            }
+            const resolved = resolveScaleLabelSelection({
+              entry,
+              field: `items[].scaleLabels[${scaleIndex}].label`,
+              value: sl.value,
+              currentLabel: sl.label,
+              savLabel: sl.savLabel,
+              surveyLabel: cleanedScale,
+            });
+            sl.label = resolved.label;
           } else if (sl.surveyLabel) {
             sl.surveyLabel = cleanQuestionText(sl.surveyLabel);
           }

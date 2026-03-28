@@ -208,6 +208,104 @@ describe('WinCross serializer', () => {
     expect(result.contentUtf8).toContain('[TABLES]\r\nT1^1\r\n OS,OR,OV,OI2,O%\r\n Q1 - Question 1\r\nSBase: Total respondents\r\n Total^TN^1\r\n A^Q1r1 (1)');
   });
 
+  it('emits semantic total lines for detail, summary, and filtered tables', () => {
+    const artifacts = createArtifacts({
+      tables: [
+        {
+          tableId: 't1',
+          questionId: 'SCALE_FULL',
+          questionText: 'Full scale table',
+          tableKind: 'scale_overview_full',
+          tableType: 'frequency',
+          additionalFilter: '',
+          rows: [
+            { variable: 'S1', label: '1', filterValue: '1', rowKind: 'value', isNet: false, netComponents: [] },
+            { variable: 'S1', label: '7', filterValue: '7', rowKind: 'value', isNet: false, netComponents: [] },
+          ],
+        },
+        {
+          tableId: 't2',
+          questionId: 'RANK_SUMMARY',
+          questionText: 'Ranking summary',
+          tableKind: 'ranking_overview_rank',
+          tableType: 'frequency',
+          additionalFilter: '',
+          rows: [
+            { variable: 'R1_1', label: 'Message A', filterValue: '1', rowKind: 'rank', isNet: false, netComponents: [] },
+          ],
+        },
+        {
+          tableId: 't3',
+          questionId: 'FILTERED_SUMMARY',
+          questionText: 'Filtered summary',
+          tableKind: 'numeric_overview_mean',
+          tableType: 'mean_rows',
+          additionalFilter: 'SEG == 1',
+          rows: [
+            { variable: 'N1', label: 'Segment A', filterValue: '', rowKind: 'value', isNet: false, netComponents: [] },
+          ],
+        },
+      ],
+    });
+    const profile = buildDefaultWinCrossPreferenceProfile();
+
+    const result = serializeWinCrossJob(artifacts, profile);
+
+    expect(result.contentUtf8).toContain('SCALE_FULL - Full scale table\r\nSBase: SBase\r\n Total^TN^1');
+    expect(result.contentUtf8).toContain('RANK_SUMMARY - Ranking summary\r\nSBase: SBase\r\n Total^TN^0');
+    expect(result.contentUtf8).toContain('FILTERED_SUMMARY - Filtered|summary\r\nSBase: SBase\r\n Total^SEG == 1^0');
+    expect(result.contentUtf8).toContain('AF=SEG == 1');
+  });
+
+  it('appends PO(...) for qualified scale rollups when qualified codes are present', () => {
+    const artifacts = createArtifacts({
+      tables: [
+        {
+          tableId: 't1',
+          questionId: 'SCALE_ROLLUP',
+          questionText: 'Top 2 Box summary',
+          tableKind: 'scale_overview_rollup_t2b',
+          tableType: 'frequency',
+          wincrossDenominatorSemantic: 'qualified_respondents',
+          wincrossQualifiedCodes: ['1', '2', '3', '4', '5', '6', '7'],
+          additionalFilter: '',
+          rows: [
+            { variable: 'S1_1', label: 'Message A', filterValue: '6,7', rowKind: 'rollup', isNet: false, netComponents: [] },
+          ],
+        },
+      ],
+    });
+    const profile = buildDefaultWinCrossPreferenceProfile();
+
+    const result = serializeWinCrossJob(artifacts, profile);
+
+    expect(result.contentUtf8).toContain(' OS,OR,OV,OI2,O%,PO(1-7)');
+    expect(result.contentUtf8).toContain(' Total^TN^1');
+  });
+
+  it('falls back to the profile default total line for unknown table kinds', () => {
+    const artifacts = createArtifacts({
+      tables: [
+        {
+          tableId: 't1',
+          questionId: 'Q1',
+          questionText: 'Unknown table kind',
+          tableType: 'frequency',
+          additionalFilter: '',
+          rows: [
+            { variable: 'Q1r1', label: 'A', filterValue: '1', rowKind: 'value', isNet: false, netComponents: [] },
+          ],
+        },
+      ],
+    });
+    const profile = buildDefaultWinCrossPreferenceProfile();
+    profile.defaultTotalLine = 'Total^TN^2';
+
+    const result = serializeWinCrossJob(artifacts, profile);
+
+    expect(result.contentUtf8).toContain(' Total^TN^2');
+  });
+
   it('serializes long table titles within the WinCross line budget', () => {
     const artifacts = createArtifacts({
       tables: [

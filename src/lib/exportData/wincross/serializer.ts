@@ -170,6 +170,21 @@ interface SerializeWinCrossOptions {
   questionTitleHintsById?: Record<string, WinCrossQuestionTitleHint>;
 }
 
+type WinCrossDenominatorSemantic =
+  | 'answering_base'
+  | 'sample_base'
+  | 'qualified_respondents'
+  | 'filtered_sample'
+  | 'response_level';
+
+interface ResolvedWinCrossTableSemantics {
+  semantic: WinCrossDenominatorSemantic | null;
+  optionSignature: string;
+  totalLine: string;
+  qualifiedCodes: string[];
+  filteredTotalExpr: string | null;
+}
+
 export function serializeWinCrossJob(
   artifacts: WinCrossResolvedArtifacts,
   profile: WinCrossPreferenceProfile,
@@ -282,6 +297,12 @@ export function serializeWinCrossJob(
     const bodyRows = indexedTable.rows;
     const headerRows = normalizedTable.headerRows;
     const additionalFilter = combineTableFilters(indexedTable.additionalFilter, indexedTable.idxFilter);
+    const resolvedSemantics = resolveWinCrossTableSemantics(
+      table as Record<string, unknown>,
+      defaultOptions,
+      defaultTotalLine,
+      additionalFilter,
+    );
     const tableTemplateKind = classifyTableTemplate(bodyRows);
     const tableDisplayTemplate = classifyTableDisplayTemplate(bodyRows, headerRows);
     const displaySignature = buildTableDisplaySignature(bodyRows, headerRows, profile);
@@ -322,10 +343,10 @@ export function serializeWinCrossJob(
     }
 
     lines.push(tableHeader);
-    lines.push(indentTableContentLine(defaultOptions));
+    lines.push(indentTableContentLine(resolvedSemantics.optionSignature));
     lines.push(indentTableContentLine(titleLayout.line));
     lines.push(`SBase: ${baseText}`);
-    lines.push(indentTableContentLine(defaultTotalLine));
+    lines.push(indentTableContentLine(resolvedSemantics.totalLine));
 
     // Stage A (parity): try USE= with conservative fingerprint including dataFrameRef
     const fingerprint = buildFingerprint(
@@ -334,7 +355,7 @@ export function serializeWinCrossJob(
       headerRows,
       displaySignature,
       tableDisplayTemplate.kind,
-      defaultOptions,
+      resolvedSemantics.optionSignature,
       dataFrameRef,
       additionalFilter,
     );
@@ -353,6 +374,17 @@ export function serializeWinCrossJob(
       `Recognized table template: ${tableTemplateKind}.`,
       `Recognized table display template: ${tableDisplayTemplate.kind}.`,
     ];
+    if (resolvedSemantics.semantic) {
+      tableNotes.push(`Resolved WinCross denominator semantic: ${resolvedSemantics.semantic}.`);
+    } else {
+      tableNotes.push(`Fell back to profile default total line: ${resolvedSemantics.totalLine}.`);
+    }
+    if (resolvedSemantics.qualifiedCodes.length > 0) {
+      tableNotes.push(`Applied table-level PO qualification for codes ${formatQualifiedCodesForPo(resolvedSemantics.qualifiedCodes)}.`);
+    }
+    if (resolvedSemantics.filteredTotalExpr) {
+      tableNotes.push(`Applied filtered total line via ${resolvedSemantics.filteredTotalExpr}.`);
+    }
     tableWarnings.push(...indexedTable.warnings);
     tableNotes.push(...indexedTable.notes);
     if (titleLayout.wrapped) {
@@ -391,7 +423,7 @@ export function serializeWinCrossJob(
         { ...table, rows: bodyRows, headerRows },
         profile,
         variableStatDomains,
-        defaultOptions,
+        resolvedSemantics.optionSignature,
         dataFrameRef,
         additionalFilter,
       );
@@ -408,7 +440,7 @@ export function serializeWinCrossJob(
           ordinal,
           tableType: table.tableType,
           dataFrameRef,
-          optionSignature: defaultOptions,
+          optionSignature: resolvedSemantics.optionSignature,
           additionalFilter,
           displayTemplateKind: tableDisplayTemplate.kind,
           headerRows,
@@ -1668,6 +1700,202 @@ function stableFingerprint(value: TableFingerprint): string {
     rowVariables: value.rowVariables,
     tableType: value.tableType,
   });
+}
+
+function resolveWinCrossTableSemantics(
+  table: Record<string, unknown>,
+  defaultOptions: string,
+  defaultTotalLine: string,
+  additionalFilter: string,
+): ResolvedWinCrossTableSemantics {
+  const explicitSemantic = readWinCrossDenominatorSemantic(table.wincrossDenominatorSemantic);
+  const fallbackSemantic = classifyDenominatorSemanticFromTableKind(
+    typeof table.tableKind === 'string' ? table.tableKind : '',
+  );
+  let semantic = explicitSemantic ?? fallbackSemantic;
+  const qualifiedCodes = readStringArray(table.wincrossQualifiedCodes);
+  const filteredTotalExpr = (
+    typeof table.wincrossFilteredTotalExpr === 'string' && table.wincrossFilteredTotalExpr.trim().length > 0
+      ? table.wincrossFilteredTotalExpr.trim()
+      : (additionalFilter.trim().length > 0 ? additionalFilter.trim() : null)
+  );
+
+  if (filteredTotalExpr) {
+    semantic = 'filtered_sample';
+  } else if (semantic === 'qualified_respondents' && qualifiedCodes.length === 0) {
+    semantic = 'sample_base';
+  }
+
+  const optionSignature = semantic === 'qualified_respondents' && qualifiedCodes.length > 0
+    ? appendPoOption(defaultOptions, qualifiedCodes)
+    : defaultOptions;
+
+  if (semantic === 'sample_base') {
+    return {
+      semantic,
+      optionSignature,
+      totalLine: 'Total^TN^0',
+      qualifiedCodes,
+      filteredTotalExpr: null,
+    };
+  }
+
+  if (semantic === 'answering_base') {
+    return {
+      semantic,
+      optionSignature,
+      totalLine: 'Total^TN^1',
+      qualifiedCodes,
+      filteredTotalExpr: null,
+    };
+  }
+
+  if (semantic === 'response_level') {
+    return {
+      semantic,
+      optionSignature,
+      totalLine: 'Total^TN^2',
+      qualifiedCodes,
+      filteredTotalExpr: null,
+    };
+  }
+
+  if (semantic === 'qualified_respondents' && qualifiedCodes.length > 0) {
+    return {
+      semantic,
+      optionSignature,
+      totalLine: 'Total^TN^1',
+      qualifiedCodes,
+      filteredTotalExpr: null,
+    };
+  }
+
+  if (semantic === 'filtered_sample' && filteredTotalExpr) {
+    return {
+      semantic,
+      optionSignature,
+      totalLine: `Total^${filteredTotalExpr}^0`,
+      qualifiedCodes,
+      filteredTotalExpr,
+    };
+  }
+
+  return {
+    semantic: null,
+    optionSignature: defaultOptions,
+    totalLine: defaultTotalLine,
+    qualifiedCodes: [],
+    filteredTotalExpr: null,
+  };
+}
+
+function readWinCrossDenominatorSemantic(value: unknown): WinCrossDenominatorSemantic | null {
+  switch (value) {
+    case 'answering_base':
+    case 'sample_base':
+    case 'qualified_respondents':
+    case 'filtered_sample':
+    case 'response_level':
+      return value;
+    default:
+      return null;
+  }
+}
+
+function classifyDenominatorSemanticFromTableKind(tableKind: string): WinCrossDenominatorSemantic | null {
+  if (!tableKind) return null;
+
+  if (
+    tableKind === 'scale_overview_rollup_t2b'
+    || tableKind === 'scale_overview_rollup_middle'
+    || tableKind === 'scale_overview_rollup_b2b'
+    || tableKind === 'scale_overview_rollup_nps'
+    || tableKind === 'scale_overview_rollup_combined'
+    || tableKind === 'scale_overview_rollup_mean'
+    || tableKind === 'numeric_overview_mean'
+    || tableKind === 'ranking_overview_rank'
+    || tableKind === 'ranking_overview_topk'
+    || tableKind === 'allocation_overview'
+    || tableKind === 'scale_dimension_compare'
+    || tableKind === 'maxdiff_api'
+    || tableKind === 'maxdiff_ap'
+    || tableKind === 'maxdiff_sharpref'
+  ) {
+    return 'sample_base';
+  }
+
+  if (
+    tableKind === 'standard_overview'
+    || tableKind === 'standard_item_detail'
+    || tableKind === 'standard_cluster_detail'
+    || tableKind === 'grid_row_detail'
+    || tableKind === 'grid_col_detail'
+    || tableKind === 'numeric_item_detail'
+    || tableKind === 'numeric_per_value_detail'
+    || tableKind === 'numeric_optimized_bin_detail'
+    || tableKind === 'scale_overview_full'
+    || tableKind === 'scale_item_detail_full'
+    || tableKind === 'allocation_item_detail'
+    || tableKind === 'ranking_item_rank'
+  ) {
+    return 'answering_base';
+  }
+
+  return null;
+}
+
+function appendPoOption(optionSignature: string, qualifiedCodes: string[]): string {
+  const poToken = `PO(${formatQualifiedCodesForPo(qualifiedCodes)})`;
+  if (!poToken.includes('(') || qualifiedCodes.length === 0) return optionSignature;
+
+  const cleaned = optionSignature
+    .split(',')
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0 && !/^PO\(/i.test(token));
+
+  cleaned.push(poToken);
+  return cleaned.join(',');
+}
+
+function formatQualifiedCodesForPo(codes: string[]): string {
+  const uniqueCodes = Array.from(new Set(codes.map((code) => code.trim()).filter((code) => code.length > 0)));
+  if (uniqueCodes.length === 0) return '';
+
+  const numericCodes = uniqueCodes
+    .map((code) => {
+      const parsed = Number.parseFloat(code);
+      return Number.isFinite(parsed) ? parsed : null;
+    });
+
+  if (numericCodes.some((value) => value === null)) {
+    return uniqueCodes.join(',');
+  }
+
+  const sortedNumeric = (numericCodes as number[]).slice().sort((a, b) => a - b);
+  const ranges: string[] = [];
+  let rangeStart = sortedNumeric[0];
+  let previous = sortedNumeric[0];
+
+  for (let index = 1; index < sortedNumeric.length; index += 1) {
+    const current = sortedNumeric[index];
+    if (current === previous + 1) {
+      previous = current;
+      continue;
+    }
+    ranges.push(rangeStart === previous ? String(rangeStart) : `${rangeStart}-${previous}`);
+    rangeStart = current;
+    previous = current;
+  }
+
+  ranges.push(rangeStart === previous ? String(rangeStart) : `${rangeStart}-${previous}`);
+  return ranges.join(',');
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter((item) => item.length > 0);
 }
 
 function classifyTableTemplate(rows: Array<Record<string, unknown>>): WinCrossTableTemplateKind {
