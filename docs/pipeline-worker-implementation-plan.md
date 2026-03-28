@@ -277,7 +277,7 @@ Exit criteria:
 - Confirmed: redeploying the web app during an active run does not interrupt the pipeline
 - Confirmed: redeploying the worker causes stale-lease recovery and the run is reclaimed
 - Expected behavior: if the worker is redeployed before the first durable boundary, the run may restart from the top
-- Remaining validation focus: redeploy the worker after review submission while post-review compute/R execution is active, and confirm coarse resume from the review checkpoint / later durable boundary
+- Confirmed: redeploying the worker after review submission while post-review compute/R execution is active leads to reclaim, coarse resume, successful R execution, and successful completion
 
 ### Validation commands
 At minimum during implementation:
@@ -294,8 +294,9 @@ At minimum during implementation:
 - do not attempt “resume anywhere” semantics
 
 ## Remaining Work
-Architecture work is complete. What remains before calling this fully validated in practice is narrow operational testing:
+Architecture and targeted deployment validation are complete for this worker milestone.
 
-- redeploy the worker after review submission while compute / R execution is in progress
-- confirm the run is reclaimed after the stale threshold and resumes from the latest durable boundary instead of restarting unnecessarily
-- once that is confirmed, deployment behavior can be considered validated for the surfaces that motivated this project
+Follow-on work should move to the next priority area rather than additional worker-ownership architecture:
+
+- WinCross convention fixes and contract hardening
+- any future worker enhancements should be treated as incremental improvements, not blockers for this milestone
