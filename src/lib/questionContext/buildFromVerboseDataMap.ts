@@ -13,6 +13,10 @@
 import type { VerboseDataMap } from '../processors/DataMapProcessor';
 import type { LoopGroupMapping } from '../validation/LoopCollapser';
 import type { QuestionContext, QuestionContextItem } from '@/schemas/questionContextSchema';
+import {
+  areDeterministicallyEquivalentLabelStems,
+  extractLabelSuffixAfterQuestionStem,
+} from './deterministicLabelCleanup';
 
 const SKIP_TYPES = new Set(['text_open', 'admin', 'weight']);
 
@@ -120,14 +124,15 @@ function extractItemLabel(member: VerboseDataMap, questionText: string): string 
   const desc = (member.description || '').trim();
   if (!desc) return member.column;
 
-  // If description starts with questionText + " - ", extract the item part
-  const prefix = questionText + ' - ';
-  if (desc.startsWith(prefix) && desc.length > prefix.length) {
-    return desc.slice(prefix.length).trim();
+  const stripped = extractLabelSuffixAfterQuestionStem(desc, questionText);
+  if (stripped) {
+    return stripped;
   }
 
   // If the description IS the question text (single-item question), use column
-  if (desc === questionText) return member.column;
+  if (areDeterministicallyEquivalentLabelStems(desc, questionText)) {
+    return member.column;
+  }
 
   return desc;
 }

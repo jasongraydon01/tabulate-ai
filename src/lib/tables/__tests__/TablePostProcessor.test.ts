@@ -283,6 +283,38 @@ describe('TablePostProcessor', () => {
   });
 
   describe('Phase 2/3 deterministic additions', () => {
+    it('strips deterministic question stems from repeated stub labels', () => {
+      const table = makeTable({
+        tableId: 't1',
+        questionText: 'Which of the following messages would MOST prompt you to prescribe?',
+        rows: [
+          makeRow({
+            variable: 'Q1_1',
+            label: 'Helps patients stay adherent - Which of the following messages would MOST prompt you to prescribe',
+          }),
+        ],
+      });
+      const result = normalizePostPass([table]);
+      expect(result.tables[0].rows[0].label).toBe('Helps patients stay adherent');
+      expect(result.actions.some(a => a.rule === 'question_stem_label_stripped')).toBe(true);
+    });
+
+    it('does not strip labels when the question stem match is ambiguous', () => {
+      const table = makeTable({
+        tableId: 't1',
+        questionText: 'How likely are you to recommend this product?',
+        rows: [
+          makeRow({
+            variable: 'Q1_1',
+            label: 'Likely to recommend friends and family',
+          }),
+        ],
+      });
+      const result = normalizePostPass([table]);
+      expect(result.tables[0].rows[0].label).toBe('Likely to recommend friends and family');
+      expect(result.actions.filter(a => a.rule === 'question_stem_label_stripped')).toHaveLength(0);
+    });
+
     it('normalizes all-row NET emphasis for pure T2B comparison tables', () => {
       const table = makeTable({
         tableId: 't1',

@@ -30,6 +30,7 @@ import type {
   WinCrossDenominatorSemantic,
 } from './types';
 import type { TablePresentationConfig, TableLabelVocabulary } from '@/lib/tablePresentation/labelVocabulary';
+import { stripDeterministicQuestionStem } from '@/lib/questionContext/deterministicLabelCleanup';
 import type { LoopGroupMapping } from '@/lib/validation/LoopCollapser';
 import {
   getBottomBoxLabel,
@@ -419,15 +420,6 @@ function resolveQualifiedResponseCodes(
  */
 export const MESSAGE_LABEL_MIN_CONFIDENCE = 0.7;
 
-function normalizeMessageFallbackText(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[''""]/g, "'")
-    .replace(/[—–]/g, '-')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 function stripMessageStemFromLabel(label: string, questionText?: string): string {
   let text = label.trim();
   if (!text) return '';
@@ -436,25 +428,40 @@ function stripMessageStemFromLabel(label: string, questionText?: string): string
   text = text.replace(/^[A-Za-z0-9_]+:\s*/, '');
   text = text.replace(/^Scenario\s+\d+\s+Ranking\s*-\s*/i, '').trim();
 
-  // Prefer a deterministic anchor from the question text when available.
-  const normalizedQuestion = normalizeMessageFallbackText(questionText ?? '');
-  if (normalizedQuestion.length >= 10) {
-    const anchorWords = normalizedQuestion
-      .split(/\s+/)
-      .slice(0, 6)
-      .map(escapeRegExp)
-      .join('\\s+');
-    if (anchorWords.length >= 10) {
-      const anchoredSuffix = new RegExp(`\\s*[-:–—]\\s*${anchorWords}[\\s\\S]*$`, 'i');
-      if (anchoredSuffix.test(text)) {
-        const stripped = text.replace(anchoredSuffix, '').trim();
-        if (stripped) return stripped;
-      }
-    }
+  const deterministic = stripDeterministicQuestionStem(text, questionText ?? '');
+  if (deterministic) {
+    return deterministic;
   }
 
   // Fallback for common stem patterns when no question anchor is available.
   return text.replace(/\s*-\s*(?:Which|For the next|In this|If you|\[res\s).*/i, '').trim();
+}
+
+const FAVORABLE_HIGH_SCALE_PATTERN =
+  /\b(agree|satisfied|positive|favorable|likely|comfortable|appealing|interested|important|effective|good|great|excellent|high|higher|highest|very|extremely|strongly|completely|totally|always|yes)\b/i;
+const UNFAVORABLE_LOW_SCALE_PATTERN =
+  /\b(disagree|dissatisfied|negative|unfavorable|unlikely|uncomfortable|not at all|poor|bad|low|lower|lowest|never|no)\b/i;
+
+function shouldShowTopAnchorFirst(
+  substantiveLabels: Array<{ value: number | string; label: string }>,
+): boolean {
+  if (substantiveLabels.length < 5) return false;
+
+  const firstLabel = substantiveLabels[0]?.label?.trim() ?? '';
+  const lastLabel = substantiveLabels[substantiveLabels.length - 1]?.label?.trim() ?? '';
+  if (!firstLabel || !lastLabel) return false;
+
+  return UNFAVORABLE_LOW_SCALE_PATTERN.test(firstLabel)
+    && FAVORABLE_HIGH_SCALE_PATTERN.test(lastLabel);
+}
+
+function orderTopBoxChildren(
+  labels: Array<{ value: number | string; label: string }>,
+  substantiveLabels: Array<{ value: number | string; label: string }>,
+): Array<{ value: number | string; label: string }> {
+  return shouldShowTopAnchorFirst(substantiveLabels)
+    ? [...labels].reverse()
+    : labels;
 }
 
 /**
@@ -488,10 +495,16 @@ export function resolveItemLabel(
   // If no template match was found, try a deterministic stem-strip fallback
   // from the original .sav label before falling back to the current label.
   if (!messageText && item.matchConfidence === 0) {
-    const savLabel = typeof item.savLabel === 'string' ? item.savLabel.trim() : '';
-    if (savLabel) {
-      const stripped = stripMessageStemFromLabel(savLabel, questionText);
-      if (stripped && stripped.length < savLabel.length) {
+    const candidates = [
+      typeof item.savLabel === 'string' ? item.savLabel.trim() : '',
+      typeof item.surveyLabel === 'string' ? item.surveyLabel.trim() : '',
+      questionText ? item.label.trim() : '',
+    ];
+
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      const stripped = stripMessageStemFromLabel(candidate, questionText);
+      if (stripped && stripped.length < candidate.length) {
         return stripped;
       }
     }
@@ -1303,7 +1316,10 @@ function buildScaleFullRows(
   // Keep row order T2B -> Middle -> B2B per 13d contract.
   if (subCount >= 5) {
     // Top-2 Box
-    const t2bLabels = substantiveLabels.slice(subCount - 2);
+    const t2bLabels = orderTopBoxChildren(
+      substantiveLabels.slice(subCount - 2),
+      substantiveLabels,
+    );
     const t2bValues = t2bLabels.map(sl => String(sl.value));
     rows.push(makeNetRow(variable, getTopBoxLabel(2, vocabulary), t2bValues.join(','), t2bValues));
     for (const sl of t2bLabels) {

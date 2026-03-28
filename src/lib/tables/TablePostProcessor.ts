@@ -13,6 +13,7 @@
  */
 
 import type { ExtendedTableDefinition } from '../../schemas/verificationAgentSchema';
+import { stripDeterministicQuestionStem } from '../questionContext/deterministicLabelCleanup';
 import type { MessageListEntry } from '../maxdiff/MessageListParser';
 import { resolveMaxDiffPolicy, type MaxDiffPolicy } from '../maxdiff/policy';
 
@@ -537,6 +538,34 @@ function resolveMessagePlaceholders(
   return { ...table, rows };
 }
 
+function stripDeterministicQuestionStemLabels(
+  table: ExtendedTableDefinition,
+  actions: PostPassAction[],
+): ExtendedTableDefinition {
+  const questionText = table.questionText?.trim();
+  if (!questionText) return table;
+
+  let modified = false;
+  const rows = table.rows.map((row) => {
+    if (row.variable === '_CAT_' || row.isNet) return row;
+
+    const cleaned = stripDeterministicQuestionStem(row.label || '', questionText);
+    if (!cleaned || cleaned === row.label) return row;
+
+    modified = true;
+    actions.push({
+      tableId: table.tableId,
+      rule: 'question_stem_label_stripped',
+      severity: 'fix',
+      detail: `Row label: "${row.label}" -> "${cleaned}"`,
+    });
+    return { ...row, label: cleaned };
+  });
+
+  if (!modified) return table;
+  return { ...table, rows };
+}
+
 function normalizeMetricLanguage(input: string): string {
   return input
     .replace(/\bTop\s*2\s*Box\b/gi, 'T2B')
@@ -745,6 +774,7 @@ export function normalizePostPass(
     t = sanitizeUnsupportedBaseText(t, actions);
     t = normalizeSourceIdCasing(t, actions);
     t = stripRoutingInstructions(t, actions);
+    t = stripDeterministicQuestionStemLabels(t, actions);
     t = canonicalizeLabelsAndSubtitles(t, actions);
 
     // Phase 3: Structural fixes (depend on clean fields)

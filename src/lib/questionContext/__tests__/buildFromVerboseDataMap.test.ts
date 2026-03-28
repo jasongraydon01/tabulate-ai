@@ -62,4 +62,68 @@ describe('buildQuestionContextFromVerboseDataMap', () => {
       { value: 5, label: 'Very likely' },
     ]);
   });
+
+  it('strips deterministic question stem prefixes from multi-item labels', () => {
+    const verbose: VerboseDataMap[] = [
+      {
+        level: 'parent',
+        parentQuestion: 'Q6',
+        column: 'Q6',
+        description: 'Which statement best describes this message?',
+        valueType: 'Values: 1-5',
+        answerOptions: '1=Not at all,5=Extremely',
+        context: '',
+        normalizedType: 'categorical_select',
+        allowedValues: [1, 2, 3, 4, 5],
+        scaleLabels: [],
+      },
+      {
+        level: 'sub',
+        parentQuestion: 'Q6',
+        column: 'Q6_1',
+        description: 'Which statement best describes this message: Improves convenience',
+        valueType: 'Values: 1-5',
+        answerOptions: '1=Not at all,5=Extremely',
+        context: '',
+        normalizedType: 'categorical_select',
+        allowedValues: [1, 2, 3, 4, 5],
+        scaleLabels: [],
+      },
+    ];
+
+    const result = buildQuestionContextFromVerboseDataMap(verbose);
+    expect(result[0].items[1].label).toBe('Improves convenience');
+  });
+
+  it('treats punctuation-normalized question text as the same stem', () => {
+    const verbose: VerboseDataMap[] = [
+      {
+        level: 'parent',
+        parentQuestion: 'Q9',
+        column: 'Q9',
+        description: 'How appealing is this message?',
+        valueType: 'Values: 1-5',
+        answerOptions: '1=Low,5=High',
+        context: '',
+        normalizedType: 'categorical_select',
+        allowedValues: [1, 2, 3, 4, 5],
+        scaleLabels: [],
+      },
+      {
+        level: 'sub',
+        parentQuestion: 'Q9',
+        column: 'Q9_1',
+        description: 'How appealing is this message',
+        valueType: 'Values: 1-5',
+        answerOptions: '1=Low,5=High',
+        context: '',
+        normalizedType: 'categorical_select',
+        allowedValues: [1, 2, 3, 4, 5],
+        scaleLabels: [],
+      },
+    ];
+
+    const result = buildQuestionContextFromVerboseDataMap(verbose);
+    expect(result[0].items[1].label).toBe('Q9_1');
+  });
 });

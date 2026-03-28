@@ -173,6 +173,10 @@ These are real fidelity gaps, but they are not all serializer problems.
   - Do not hard-code "highest anchor first" across all ordinal tables.
   - Only promote this into reusable behavior if we can detect a stable pattern across many anchored scale tables in uploaded `.job` files, or derive it from a clearer canonical display-order rule.
   - If the signal is mixed, keep the neutral canonical ordering.
+- **Implemented fix**:
+  - Canonical assembly now owns this behavior upstream rather than the WinCross serializer.
+  - For clearly favorable-high anchored scales, Top 2 Box child rows are emitted top-anchor-first.
+  - Bottom-box child rows keep bottom-anchor order, the overall row order stays `T2B -> Middle -> B2B`, and ambiguous scales keep the previous neutral ordering.
 
 ### 7. Stub rows should contain only the attribute text
 - **Observed**:
@@ -185,6 +189,10 @@ These are real fidelity gaps, but they are not all serializer problems.
 - **Decision rule**:
   - If we can deterministically separate question stem from attribute text, we should clean this up across the board.
   - This should live in survey cleanup / canonical labeling, not in a vendor-specific WinCross profile.
+- **Implemented fix**:
+  - Added one shared deterministic stem-stripping helper and applied it in question-context label extraction, canonical item-label fallback, and conservative post-processing cleanup.
+  - The cleanup only fires when the question stem match is explicit after normalization and the remaining suffix is meaningful.
+  - No fuzzy matching or WinCross profile inference was added.
 
 ---
 

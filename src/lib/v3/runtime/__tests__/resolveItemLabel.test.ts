@@ -215,6 +215,37 @@ describe('resolveItemLabel', () => {
     expect(resolveItemLabel(item)).toBe('Concept A is compelling');
   });
 
+  it('uses deterministic question-text stripping on surveyLabel before falling back to item.label', () => {
+    const item = makeItem({
+      label: 'Original label text',
+      surveyLabel: 'Helps patients stay adherent - Which of the following messages would MOST prompt you to prescribe',
+      messageText: null,
+      matchConfidence: 0,
+    });
+
+    expect(
+      resolveItemLabel(
+        item,
+        'Which of the following messages would MOST prompt you to prescribe?',
+      ),
+    ).toBe('Helps patients stay adherent');
+  });
+
+  it('uses deterministic prefix stripping on item.label when no other cleaned source exists', () => {
+    const item = makeItem({
+      label: 'Which statement best describes this message: Improves convenience',
+      messageText: null,
+      matchConfidence: 0,
+    });
+
+    expect(
+      resolveItemLabel(
+        item,
+        'Which statement best describes this message?',
+      ),
+    ).toBe('Improves convenience');
+  });
+
   it('escapes regex metacharacters in questionText when stripping savLabel stems', () => {
     const item = makeItem({
       label: 'PT1: Patient type 1 (prior event or no prior event but high risk)',

@@ -2856,6 +2856,80 @@ describe('Canonical assembly (13d)', () => {
     expect(netLabels).toEqual(['Top 2 Box', 'Middle', 'Bottom 2 Box']);
   });
 
+  it('shows the top anchor first under T2B for clearly favorable-high scales', () => {
+    const scaleEntry = makeScaleEntry(7, [
+      { value: 1, label: 'Strongly disagree' },
+      { value: 2, label: 'Disagree' },
+      { value: 3, label: 'Somewhat disagree' },
+      { value: 4, label: 'Neutral' },
+      { value: 5, label: 'Somewhat agree' },
+      { value: 6, label: 'Agree' },
+      { value: 7, label: 'Strongly agree' },
+    ], { questionId: 'S_ORDER' });
+
+    const planned = makePlannedTable({
+      sourceQuestionId: 'S_ORDER',
+      tableKind: 'scale_overview_full',
+      tableIdCandidate: 's_order__full',
+      analyticalSubtype: 'scale',
+    });
+
+    const result = runCanonicalAssembly({
+      validatedPlan: {
+        metadata: {},
+        plannedTables: [planned],
+        subtypeReviews: [],
+        blockConfidence: [],
+      },
+      entries: [scaleEntry],
+      metadata: makeMetadata(),
+      dataset: 'test',
+    });
+
+    expect(result.tables[0].rows.slice(0, 3).map(r => r.label)).toEqual([
+      'Top 2 Box',
+      'Strongly agree',
+      'Agree',
+    ]);
+  });
+
+  it('preserves existing top-box order when the scale anchors are not clearly favorable-high', () => {
+    const scaleEntry = makeScaleEntry(7, [
+      { value: 1, label: 'Stage 1' },
+      { value: 2, label: 'Stage 2' },
+      { value: 3, label: 'Stage 3' },
+      { value: 4, label: 'Stage 4' },
+      { value: 5, label: 'Stage 5' },
+      { value: 6, label: 'Stage 6' },
+      { value: 7, label: 'Stage 7' },
+    ], { questionId: 'S_AMBIG' });
+
+    const planned = makePlannedTable({
+      sourceQuestionId: 'S_AMBIG',
+      tableKind: 'scale_overview_full',
+      tableIdCandidate: 's_ambig__full',
+      analyticalSubtype: 'scale',
+    });
+
+    const result = runCanonicalAssembly({
+      validatedPlan: {
+        metadata: {},
+        plannedTables: [planned],
+        subtypeReviews: [],
+        blockConfidence: [],
+      },
+      entries: [scaleEntry],
+      metadata: makeMetadata(),
+      dataset: 'test',
+    });
+
+    expect(result.tables[0].rows.slice(0, 3).map(r => r.label)).toEqual([
+      'Top 2 Box',
+      'Stage 6',
+      'Stage 7',
+    ]);
+  });
+
   it('does not add a singleton Middle NET on 5-point scales', () => {
     const scaleEntry = makeScaleEntry(5, [
       { value: 1, label: 'Strongly disagree' },
