@@ -1,4 +1,4 @@
-import type { V3PipelineStage } from '@/schemas/pipelineStageSchema';
+import type { V3PipelineStage } from '../../schemas/pipelineStageSchema';
 
 import type {
   WorkerPipelineContext,
