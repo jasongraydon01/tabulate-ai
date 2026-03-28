@@ -269,12 +269,30 @@ Lightweight trial for prospects who haven't signed up yet. Same pipeline, restri
 
 ### 9e — Launch Outreach
 
-- Early partners: share V3 update, collect feedback, discuss continued engagement
-- Direct outreach to known prospects in the same profile (data processors, MR consultants)
-- LinkedIn presence: product updates, positioning content
-- Leverage trial mode as a low-friction entry point for outreach targets
+**Timeline:** Mar 30 (Mon) → Apr 12 (Sun) — 10 working days.
 
-**Exit:** Product is publicly available at `tabulate-ai.com` with pricing, trial access, branded email notifications, and outreach in progress. Multiple firms can evaluate and subscribe independently.
+**Goal hierarchy:**
+1. **Buyer signal** — at least one firm enters a paid tier (Pay-As-You-Go counts). This is the primary success metric for the sprint.
+2. **Access requests** — prospects who complete the demo and ask for full access.
+3. **Demo completions** — prospects who try the demo flow end-to-end.
+
+**Lead lists (pre-built):**
+- Data Processors (~64 contacts)
+- Research Analysts & Insights Managers (~457 contacts)
+- AI Leads in Market Research (~77 contacts)
+
+**Channels:**
+- **Email outreach** via Skrapp.io (or similar) for high-confidence emails. All outreach sent from TabulateAI email — no more mixing personal/HawkPartners email.
+- **LinkedIn** for low-confidence contacts and warm intros. Consider LinkedIn Premium free trial to reach inboxes directly. Also used for positioning content and product updates.
+- **Reddit** — post in market research subreddits at least once per week where relevant and authentic. Focus on genuine value, not spam.
+- **Direct outreach** to Sago and Testset from TabulateAI email. These are known prospects with established context.
+
+**Approach:**
+- Lead with the demo flow as the low-friction entry point — no account required, immediate value
+- Recognize B2B sales cycles are longer than B2C, but push for signal within the two-week window
+- Messaging should emphasize differentiation: hybrid AI + deterministic compute, professional exports (Q/WinCross), purpose-built for MR
+
+**Exit:** Product is publicly available at `tabulate-ai.com` with pricing, trial access, branded email notifications, and active outreach across all channels. Multiple firms can evaluate and subscribe independently. At least one buyer signal received by Apr 12.
 
 ---
 
@@ -286,10 +304,27 @@ Lightweight trial for prospects who haven't signed up yet. Same pipeline, restri
 
 ---
 
-## Phase 10: Derived Analytical Tables
+## Phase 10: Senior Processor QC + Derived Analytical Tables
 
 **Status:** Not started — contingent on market validation gate.
 **Reference:** `docs/phase10-implementation-plan.md`
+
+This phase adds the final quality layer before output delivery — the judgment a senior data processor would apply after the pipeline runs. It covers two complementary concerns: QC review of the generated table set, and derived analytical tables that go beyond raw tabulation.
+
+### 10a — Senior Processor QC Agent
+
+A post-pipeline QC pass that evaluates the full table set with the judgment of a senior processor. This is not a mechanical validation (the pipeline already handles structural correctness). This is about deliverable quality — the kind of review a senior processor does before sending tabs to a client.
+
+**What it does:**
+- **Table pruning** — identify and flag tables that shouldn't be in the final deliverable (redundant views, tables with no meaningful variation, system-metadata questions that slipped through)
+- **Label cleanup** — catch survey programming language that leaked into user-facing labels (e.g., "Pipe", "Loop", "ROTATE", "RANDOMIZE", screening syntax). The SurveyCleanupAgent (stage 08a) handles initial extraction artifacts, but it doesn't always catch domain-specific programming terms that require judgment to rewrite into natural language.
+- **Presentation judgment** — flag tables where the structure is technically correct but would confuse a reader (e.g., a grid decomposed into 20 single-item tables when a summary view would be clearer, or scale tables with anchors that read awkwardly after cleanup)
+- **Completeness check** — identify gaps a processor would notice: missing NET rows on questions that obviously need them, questions that should be cross-tabbed but aren't, banners that don't include an obvious demographic cut
+
+**Relationship to SurveyCleanupAgent (08a):**
+The SurveyCleanupAgent runs early in the enrichment chain and cleans extraction artifacts from parsed survey text. It should also be updated to avoid propagating survey programming language — terms like "Pipe", "INSERT", "ANCHOR", "ROTATE" that appear in raw survey instruments should be adapted into natural language rather than passed through literally. The Senior Processor QC Agent is the downstream safety net: it catches anything that slipped through earlier stages and evaluates the full table set holistically.
+
+### 10b — Derived Analytical Tables
 
 Automatically generate derived analytical tables that go beyond tabulating raw survey responses. These are the tables a senior analyst builds by hand after receiving initial tabulations — shift analyses, cross-question comparisons, composite switching metrics, category-level rollups.
 
@@ -311,7 +346,7 @@ Seven derived table patterns identified from reference workbooks (WinCross .job 
 
 All patterns (except #4, already handled) require respondent-level R computation — new derived variables created from existing .sav columns, then tabulated through the standard pipeline.
 
-**Exit:** System can detect and generate the most common derived table types. Infrastructure supports both proactive generation and reactive analyst requests.
+**Exit:** Senior Processor QC Agent reviews and cleans the full table set before delivery. System can detect and generate the most common derived table types. Survey programming language is eliminated from all user-facing labels. Infrastructure supports both proactive generation and reactive analyst requests.
 
 ---
 
@@ -379,11 +414,20 @@ Currently, each pipeline run produces a single banner structure. This phase exte
 ## Phase 14: WinCross Export Fidelity
 
 **Status:** Not started
-**Reference:** `docs/references/wincross-style-contract-implementation-plan.md`
+**Reference:** `docs/references/wincross-style-contract-implementation-plan.md`, `docs/wincross-convention-fixes.md`
 
-Phase 7 shipped functional WinCross export with portable style profiling. This phase is continued investment in fidelity — closing the gap between what Crosstab AI produces and what a client's legacy WinCross output looks like.
+Phase 7 shipped functional WinCross export with portable style profiling. This phase is continued investment in fidelity — closing the gap between what TabulateAI produces and what a client's legacy WinCross output looks like.
+
+**Concrete feedback from Antares** (triaged in `docs/wincross-convention-fixes.md`):
+- **Contract-critical:** Summary tables using wrong total-line base (`TN^1` vs `TN^0`), numeric interim tables need native `AF=` stat blocks, scale anchor/factor-code mismatch, OE theme row duplication
+- **High-priority fidelity:** Remove `|` from table titles, Unicode escape cleanup (`<U+2019>`), rating scale ordinal display order, stub rows polluted with question text
+- **Needs confirmation:** `OI2` job-level vs stub-level preference, exact NET row suffix styling (`^SX` vs `^SX,GX`)
+
+The Antares feedback is the first real-world vendor validation of our WinCross output. The correctness items (Bucket 1) should be treated as bugs, not style preferences — they affect reported percentages and deliverable quality. The fidelity items (Bucket 2) are what separate "usable starting point" from "vendor-grade output."
 
 **Scope:**
+- Fix all Bucket 1 (contract-critical) items from the Antares feedback — these are correctness bugs
+- Fix Bucket 2 (high-priority fidelity) items — these close the gap to vendor-grade output
 - Broader desktop validation across more datasets and table families beyond the targeted validation done in Phase 7
 - Additional style convention extraction from uploaded reference `.job` files (spacing, decimal precision, suppression rules, custom stat-test notation)
 - Improved `INDEX` generation for complex multi-banner configurations
@@ -391,10 +435,40 @@ Phase 7 shipped functional WinCross export with portable style profiling. This p
 - Investigate `.jlb` (WinCross library) import for richer preference extraction
 
 **What this phase is not:**
-- This is not about changing the contract — CrosstabAI remains the authority for study logic. This is about making the style layer more faithful.
+- This is not about changing the contract — TabulateAI remains the authority for study logic. This is about making the style layer more faithful.
 - This is not about exact parity. The goal is "materially closer to their house style" with each iteration, not pixel-perfect reproduction.
 
-**Exit:** WinCross exports are demonstrably closer to client reference files across a broader set of datasets and table configurations. Style extraction covers the most commonly used WinCross formatting conventions.
+**Exit:** Antares contract-critical items resolved. WinCross exports are demonstrably closer to client reference files across a broader set of datasets and table configurations. Style extraction covers the most commonly used WinCross formatting conventions.
+
+---
+
+## Phase 15: Conversational Data Analysis ("Chat With Your Data")
+
+**Status:** Not started — contingent on market validation gate.
+
+Add natural-language conversational analysis on top of the crosstab output. Users ask questions of their data in plain English and get answers grounded in the verified artifacts the pipeline has already produced.
+
+**Why this matters:**
+- The competitive reference point is Panoplai, which markets "digital twins" of datasets and lets users ask questions of the data conversationally. This is increasingly table-stakes for non-processor audiences (insights managers, brand teams, agency strategists) who want answers without navigating tab books.
+- TabulateAI has a unique structural advantage: we don't just have raw data — we have **verified crosstab artifacts** (canonical `table.json`, enriched question metadata, computed cross-tabulations with significance testing). The AI can reference these as a ground-truth starting point rather than computing from scratch, which reduces hallucination risk and grounds answers in the same numbers the client sees in their deliverables.
+- This extends the product beyond the data processor segment into the broader research consumer segment — the people who commission tabs but don't want to read 300-page tab books.
+
+**Approach (high-level, not yet designed):**
+- The conversational layer references the pipeline's computed artifacts (tables, metadata, enriched question context) as its knowledge base — not the raw `.sav` directly
+- Simple questions ("What % of respondents are female?") should be answerable from existing cross-tabs without new computation
+- Complex questions ("Is there a significant difference in brand preference between regions?") can reference specific tables and significance test results
+- Out-of-scope questions (anything not covered by the existing table set) should be acknowledged honestly, not hallucinated — with an option to suggest which additional tables would answer the question
+- The UI should make it clear when an answer comes from a verified table vs. when it's an AI interpretation
+
+**What we do NOT want to build:**
+- A generic SQL/dataframe chat agent that queries raw data with no grounding — that's the commodity approach and it hallucinates
+- A replacement for the tab book — conversational analysis is complementary, not a substitute for the full deliverable
+- Premature infrastructure — this phase should be designed after we have real user feedback on what questions people actually ask
+
+**Why it's here now (even though it's post-PMF):**
+This should not be an afterthought bolted onto a product that wasn't designed for it. Architectural decisions made in Phases 10–14 (artifact structure, metadata richness, export formats) should be made with awareness that a conversational layer will eventually sit on top. That doesn't mean building for it now — it means not building against it.
+
+**Exit:** Users can ask natural-language questions about their dataset and receive answers grounded in verified pipeline artifacts. The system clearly distinguishes between answers from computed tables and AI interpretations.
 
 ---
 
