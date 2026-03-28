@@ -20,6 +20,12 @@ export const executionStateValidator = v.union(
   v.literal("cancelled")
 );
 
+export const workerQueueClassValidator = v.union(
+  v.literal("review_resume"),
+  v.literal("project"),
+  v.literal("demo")
+);
+
 export const recoveryStatusValidator = v.union(
   v.literal("none"),
   v.literal("queued_recovery"),
@@ -86,6 +92,7 @@ export const executionPayloadValidator = v.object({
 
 export const enqueueForWorkerArgsValidator = v.object({
   runId: v.id("runs"),
+  queueClass: workerQueueClassValidator,
   executionPayload: executionPayloadValidator,
 });
 

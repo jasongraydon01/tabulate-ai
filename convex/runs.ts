@@ -5,14 +5,24 @@ import { configValidator } from "./projectConfigValidators";
 import {
   executionPayloadValidator,
   recoveryManifestValidator,
+  workerQueueClassValidator,
 } from "./runExecutionValidators";
 import { getStaleWorkerRecoveryAction } from "../src/lib/worker/recovery";
+import {
+  buildClaimCandidateOrder,
+  getWorkerQueueClass,
+  normalizeWorkerQueueCapacity,
+} from "../src/lib/worker/scheduling";
 
 /** Statuses that represent an actively-running pipeline (heartbeat expected). */
 const ACTIVE_STATUSES = ["in_progress", "resuming"] as const;
 const ACTIVE_STATUS_SET = new Set<string>(ACTIVE_STATUSES);
 const WORKER_ACTIVE_EXECUTION_STATES = new Set(["claimed", "running", "resuming"]);
 const TERMINAL_STATUSES = new Set(["success", "partial", "error", "cancelled"]);
+const WORKER_QUEUE_CAPACITY = normalizeWorkerQueueCapacity({
+  maxActiveDemoRuns: Number(process.env.PIPELINE_WORKER_MAX_ACTIVE_DEMO_RUNS ?? 2),
+  maxActiveRunsPerOrg: Number(process.env.PIPELINE_WORKER_MAX_ACTIVE_RUNS_PER_ORG ?? 2),
+});
 
 function patchForActiveWorkerStatus(
   existingExecutionState: string | undefined,
@@ -207,6 +217,7 @@ export const requestCancel = internalMutation({
 export const enqueueForWorker = internalMutation({
   args: {
     runId: v.id("runs"),
+    queueClass: workerQueueClassValidator,
     executionPayload: executionPayloadValidator,
   },
   handler: async (ctx, args) => {
@@ -228,6 +239,7 @@ export const enqueueForWorker = internalMutation({
       progress: 0,
       message: "Queued for worker pickup...",
       executionState: "queued",
+      queueClass: args.queueClass,
       executionPayload: args.executionPayload,
       workerId: undefined,
       claimedAt: undefined,
@@ -279,6 +291,7 @@ export const enqueueReviewResume = internalMutation({
       progress: 55,
       message: "Queued for worker resume...",
       executionState: "queued",
+      queueClass: "review_resume",
       workerId: undefined,
       claimedAt: undefined,
       heartbeatAt: undefined,
@@ -628,12 +641,47 @@ export const claimNextQueuedRun = internalMutation({
       .withIndex("by_execution_state", (q) => q.eq("executionState", "queued"))
       .order("asc")
       .collect();
+    const claimedRuns = await ctx.db
+      .query("runs")
+      .withIndex("by_execution_state", (q) => q.eq("executionState", "claimed"))
+      .collect();
+    const runningRuns = await ctx.db
+      .query("runs")
+      .withIndex("by_execution_state", (q) => q.eq("executionState", "running"))
+      .collect();
+    const resumingRuns = await ctx.db
+      .query("runs")
+      .withIndex("by_execution_state", (q) => q.eq("executionState", "resuming"))
+      .collect();
 
-    for (const run of queuedRuns) {
+    const candidateRuns = buildClaimCandidateOrder(
+      queuedRuns.map((run) => ({
+        ...run,
+        orgId: String(run.orgId),
+        queueClass: getWorkerQueueClass({
+          orgId: String(run.orgId),
+          queueClass: run.queueClass,
+          resumeFromStage: run.resumeFromStage,
+        }),
+      })),
+      [...claimedRuns, ...runningRuns, ...resumingRuns].map((run) => ({
+        orgId: String(run.orgId),
+        queueClass: getWorkerQueueClass({
+          orgId: String(run.orgId),
+          queueClass: run.queueClass,
+          resumeFromStage: run.resumeFromStage,
+        }),
+        resumeFromStage: run.resumeFromStage,
+      })),
+      WORKER_QUEUE_CAPACITY,
+    );
+
+    for (const run of candidateRuns) {
       if (run.cancelRequested) {
         await ctx.db.patch(run._id, {
           status: "cancelled",
           executionState: "cancelled",
+          queueClass: run.queueClass,
           workerId: undefined,
           claimedAt: undefined,
           heartbeatAt: undefined,
@@ -646,6 +694,7 @@ export const claimNextQueuedRun = internalMutation({
         await ctx.db.patch(run._id, {
           status: "error",
           executionState: "error",
+          queueClass: run.queueClass,
           error: "Queued run is missing execution payload.",
           stage: "error",
           message: "Queued run is missing execution payload.",
@@ -660,6 +709,7 @@ export const claimNextQueuedRun = internalMutation({
       const attemptCount = (run.attemptCount ?? 0) + 1;
       await ctx.db.patch(run._id, {
         executionState: "claimed",
+        queueClass: run.queueClass,
         workerId: args.workerId,
         claimedAt: now,
         heartbeatAt: now,

@@ -7,6 +7,7 @@ import {
   executionStateValidator,
   recoveryManifestValidator,
   recoveryStatusValidator,
+  workerQueueClassValidator,
 } from "./runExecutionValidators";
 
 // ---------------------------------------------------------------------------
@@ -180,6 +181,7 @@ export default defineSchema({
     message: v.optional(v.string()),
     config: configValidator,
     executionState: v.optional(executionStateValidator),
+    queueClass: v.optional(workerQueueClassValidator),
     workerId: v.optional(v.string()),
     claimedAt: v.optional(v.number()),
     heartbeatAt: v.optional(v.number()),

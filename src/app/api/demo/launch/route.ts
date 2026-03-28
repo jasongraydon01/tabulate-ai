@@ -237,6 +237,7 @@ export async function POST(request: NextRequest) {
 
     await mutateInternal(internal.runs.enqueueForWorker, {
       runId,
+      queueClass: 'demo',
       executionPayload,
     });
 

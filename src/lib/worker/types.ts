@@ -16,6 +16,11 @@ export type WorkerExecutionState =
   | 'error'
   | 'cancelled';
 
+export type WorkerQueueClass =
+  | 'review_resume'
+  | 'project'
+  | 'demo';
+
 export interface WorkerFileNames {
   dataMap: string;
   bannerPlan: string;
