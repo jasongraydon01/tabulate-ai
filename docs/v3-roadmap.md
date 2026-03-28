@@ -445,6 +445,7 @@ The Antares feedback is the first real-world vendor validation of our WinCross o
 ## Phase 15: Conversational Data Analysis ("Chat With Your Data")
 
 **Status:** Not started — contingent on market validation gate.
+**"Backend" Focus:** /Users/jasongraydon01/.claude/plans/polymorphic-beaming-raven.md
 
 Add natural-language conversational analysis on top of the crosstab output. Users ask questions of their data in plain English and get answers grounded in the verified artifacts the pipeline has already produced.
 
