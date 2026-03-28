@@ -253,7 +253,7 @@ describe('WinCross serializer', () => {
 
     expect(result.contentUtf8).toContain('SCALE_FULL - Full scale table\r\nSBase: SBase\r\n Total^TN^1');
     expect(result.contentUtf8).toContain('RANK_SUMMARY - Ranking summary\r\nSBase: SBase\r\n Total^TN^0');
-    expect(result.contentUtf8).toContain('FILTERED_SUMMARY - Filtered|summary\r\nSBase: SBase\r\n Total^SEG == 1^0');
+    expect(result.contentUtf8).toContain('FILTERED_SUMMARY - Filtered summary\r\nSBase: SBase\r\n Total^SEG == 1^0');
     expect(result.contentUtf8).toContain('AF=SEG == 1');
   });
 
@@ -306,7 +306,7 @@ describe('WinCross serializer', () => {
     expect(result.contentUtf8).toContain(' Total^TN^2');
   });
 
-  it('serializes long table titles within the WinCross line budget', () => {
+  it('serializes long table titles as flat single lines within the WinCross title limit', () => {
     const artifacts = createArtifacts({
       tables: [
         {
@@ -328,7 +328,7 @@ describe('WinCross serializer', () => {
 
     expect(titleLine).toBeDefined();
     expect(titleLine).toContain('ADVERSE EVENTS');
-    expect((titleLine?.match(/\|/g) ?? []).length).toBeLessThanOrEqual(3);
+    expect(titleLine).not.toContain('|');
     expect(titleLine?.trimStart().length).toBeLessThanOrEqual(1000);
   });
 
@@ -358,7 +358,7 @@ describe('WinCross serializer', () => {
     expect(titleLine).toContain('...');
   });
 
-  it('truncates table titles only after exhausting the four-line WinCross title budget', () => {
+  it('truncates table titles without introducing synthetic pipe wrapping', () => {
     const questionText = `Question ${'A '.repeat(2505)}overflow`;
     const artifacts = createArtifacts({
       tables: [
@@ -382,6 +382,7 @@ describe('WinCross serializer', () => {
 
     expect(titleLine).toBeDefined();
     expect(titleLine?.trimStart().length).toBeLessThanOrEqual(1000);
+    expect(titleLine).not.toContain('|');
     expect(titleLine).toContain('...');
   });
 
@@ -471,8 +472,8 @@ describe('WinCross serializer', () => {
 
     expect(titleLine).toBeDefined();
     expect(titleLine).toContain('B500');
+    expect(titleLine).toContain('Ranked 2nd Summary - Set 1');
     expect(titleLine).toContain('Long ranking prompt');
-    expect(titleLine).not.toContain('Ranked 2nd Summary - Set 1');
   });
 
   it('emits counted NET rows instead of explicit NET logic expressions', () => {
@@ -1535,6 +1536,225 @@ describe('WinCross serializer', () => {
     expect(result.contentUtf8).toContain('Std Err^S7 (0-999)^SR');
     expect(result.applicationDiagnostics.tables[0]?.templateKind).toBe('stat_rows_only_single_variable');
     expect(result.applicationDiagnostics.tables[0]?.afStrategy).toBe('native_single_variable_stat');
+  });
+
+  it('collapses eligible mixed interim numeric tables into native AF stat blocks', () => {
+    const artifacts = createArtifacts({
+      tables: [
+        {
+          tableId: 't1',
+          questionId: 'Q1',
+          questionText: 'Interim numeric summary',
+          tableType: 'frequency',
+          additionalFilter: '',
+          rows: [
+            { variable: 'S7', label: 'Zero', filterValue: '0', rowKind: 'value', isNet: false, netComponents: [] },
+            { variable: 'S7', label: 'One', filterValue: '1', rowKind: 'value', isNet: false, netComponents: [] },
+            { variable: 'S7', label: 'Mean', rowKind: 'stat', statType: 'mean', filterValue: '0-1', isNet: false, netComponents: [] },
+            { variable: 'S7', label: 'Median', rowKind: 'stat', statType: 'median', filterValue: '0-1', isNet: false, netComponents: [] },
+          ],
+        },
+      ],
+    });
+    const profile = buildDefaultWinCrossPreferenceProfile();
+
+    const result = serializeWinCrossJob(artifacts, profile);
+
+    expect(result.contentUtf8).toContain('AF=S7^  ^OA');
+    expect(result.contentUtf8).toContain('Mean^S7 (0-1)^SM');
+    expect(result.contentUtf8).toContain('Median^S7 (0-1)^SD');
+    expect(result.contentUtf8).not.toContain('Zero^S7 (0)');
+    expect(result.contentUtf8).not.toContain('One^S7 (1)');
+    expect(result.applicationDiagnostics.tables[0]?.templateKind).toBe('mixed_value_and_stats');
+    expect(result.applicationDiagnostics.tables[0]?.afStrategy).toBe('native_single_variable_stat_with_interim_values');
+    expect(result.applicationDiagnostics.tables[0]?.notes).toContain('Collapsed simple interim value stubs into a native AF stat block for portability.');
+  });
+
+  it('does not collapse analyst-defined bins into native AF stat blocks', () => {
+    const artifacts = createArtifacts({
+      tables: [
+        {
+          tableId: 't1',
+          questionId: 'Q1',
+          questionText: 'Binned numeric summary',
+          tableType: 'frequency',
+          additionalFilter: '',
+          rows: [
+            { variable: 'S7', label: '0 to 10', filterValue: '0-10', rowKind: 'bin', binRange: [0, 10], isNet: false, netComponents: [] },
+            { variable: 'S7', label: 'Mean', rowKind: 'stat', statType: 'mean', filterValue: '0-10', isNet: false, netComponents: [] },
+          ],
+        },
+      ],
+    });
+    const profile = buildDefaultWinCrossPreferenceProfile();
+
+    const result = serializeWinCrossJob(artifacts, profile);
+
+    expect(result.contentUtf8).not.toContain('AF=S7^  ^OA');
+    expect(result.contentUtf8).toContain('0 to 10^S7 (0-10)');
+    expect(result.applicationDiagnostics.tables[0]?.afStrategy).toBe('none');
+    expect(result.applicationDiagnostics.tables[0]?.notes).toContain('Skipped native AF interim collapse because row kind "bin" is not a simple value row.');
+  });
+
+  it('does not collapse mixed-variable interim tables into native AF stat blocks', () => {
+    const artifacts = createArtifacts({
+      tables: [
+        {
+          tableId: 't1',
+          questionId: 'Q1',
+          questionText: 'Mixed-variable numeric summary',
+          tableType: 'frequency',
+          additionalFilter: '',
+          rows: [
+            { variable: 'S7', label: 'Zero', filterValue: '0', rowKind: 'value', isNet: false, netComponents: [] },
+            { variable: 'S8', label: 'Mean', rowKind: 'stat', statType: 'mean', filterValue: '0-10', isNet: false, netComponents: [] },
+          ],
+        },
+      ],
+    });
+    const profile = buildDefaultWinCrossPreferenceProfile();
+
+    const result = serializeWinCrossJob(artifacts, profile);
+
+    expect(result.contentUtf8).not.toContain('AF=S7^  ^OA');
+    expect(result.contentUtf8).not.toContain('AF=S8^  ^OA');
+    expect(result.applicationDiagnostics.tables[0]?.afStrategy).toBe('none');
+    expect(result.applicationDiagnostics.tables[0]?.notes).toContain('Skipped native AF interim collapse because the table mixed multiple variables.');
+  });
+
+  it('does not collapse filtered mixed interim tables into native AF stat blocks', () => {
+    const artifacts = createArtifacts({
+      tables: [
+        {
+          tableId: 't1',
+          questionId: 'Q1',
+          questionText: 'Filtered interim numeric summary',
+          tableType: 'frequency',
+          additionalFilter: 'SEG == 1',
+          rows: [
+            { variable: 'S7', label: 'Zero', filterValue: '0', rowKind: 'value', isNet: false, netComponents: [] },
+            { variable: 'S7', label: 'Mean', rowKind: 'stat', statType: 'mean', filterValue: '0-10', isNet: false, netComponents: [] },
+          ],
+        },
+      ],
+    });
+    const profile = buildDefaultWinCrossPreferenceProfile();
+
+    const result = serializeWinCrossJob(artifacts, profile);
+
+    expect(result.contentUtf8).not.toContain('AF=S7^  ^OA');
+    expect(result.contentUtf8).toContain('AF=SEG == 1');
+    expect(result.contentUtf8).toContain('Zero^S7 (0)');
+    expect(result.applicationDiagnostics.tables[0]?.afStrategy).toBe('raw_additional_filter');
+    expect(result.applicationDiagnostics.tables[0]?.notes).toContain('Skipped native AF interim collapse because the table had an additional filter.');
+  });
+
+  it('does not collapse indexed mixed interim tables into native AF stat blocks', () => {
+    const artifacts = createArtifacts({
+      tables: [
+        {
+          tableId: 't1',
+          questionId: 'Q2',
+          questionText: 'Indexed interim numeric summary',
+          tableType: 'frequency',
+          additionalFilter: '',
+          rows: [
+            { variable: 'Q2_1', label: 'Zero', filterValue: '0', rowKind: 'value', isNet: false, netComponents: [] },
+            { variable: 'Q2_1', label: 'Mean', rowKind: 'stat', statType: 'mean', filterValue: '0-10', isNet: false, netComponents: [] },
+          ],
+        },
+      ],
+      loopSummary: {
+        totalLoopGroups: 1,
+        totalIterationVars: 1,
+        totalBaseVars: 1,
+        groups: [
+          {
+            stackedFrameName: 'stacked_loop1',
+            skeleton: 'Q2_N',
+            iterations: ['1', '2'],
+            variableCount: 1,
+            variables: [
+              {
+                baseName: 'Q2',
+                label: 'Looped Q2',
+                iterationColumns: {
+                  '1': 'Q2_1',
+                  '2': 'Q2_2',
+                },
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const profile = buildDefaultWinCrossPreferenceProfile();
+
+    const result = serializeWinCrossJob(artifacts, profile, {
+      tableRouting: {
+        generatedAt: '2026-03-19T00:00:00.000Z',
+        totalTables: 1,
+        tableToDataFrameRef: { t1: 'stacked_loop1' },
+        countsByDataFrameRef: { stacked_loop1: 1 },
+      },
+      jobRouting: {
+        generatedAt: '2026-03-19T00:00:00.000Z',
+        totalJobs: 1,
+        totalTables: 1,
+        jobs: [
+          {
+            jobId: 'stacked.job',
+            dataFrameRef: 'stacked_loop1',
+            dataFileRelativePath: 'export/data/stacked_loop1.sav',
+            tableIds: ['t1'],
+          },
+        ],
+        tableToJobId: { t1: 'stacked.job' },
+      },
+    });
+
+    expect(result.contentUtf8).not.toContain('AF=IDX(1)^  ^OA');
+    expect(result.contentUtf8).toContain('AF=IDX(1)');
+    expect(result.contentUtf8).toContain('Zero^I1 (0)');
+    expect(result.applicationDiagnostics.tables[0]?.afStrategy).toBe('raw_additional_filter');
+    expect(result.applicationDiagnostics.tables[0]?.notes).toContain('Skipped native AF interim collapse because INDEX filtering was active.');
+  });
+
+  it('decodes escaped Unicode in display text without touching syntax-bearing lines', () => {
+    const artifacts = createArtifacts({
+      tables: [
+        {
+          tableId: 't1',
+          questionId: 'Q1',
+          questionText: 'Why don<U+2019>t you choose this option|today?',
+          tableType: 'frequency',
+          additionalFilter: '',
+          rows: [
+            { variable: 'Q1', label: 'I don<U+2019>t know', filterValue: '1', rowKind: 'value', isNet: false, netComponents: [] },
+          ],
+        },
+      ],
+      bannerCuts: [
+        { groupName: 'Don<U+2019>t Know', columns: [{ name: 'Can<U+2019>t Say', adjusted: '' }] },
+      ],
+    });
+    const profile = buildDefaultWinCrossPreferenceProfile();
+    profile.sigFooterLines = ['Client<U+2019>s note'];
+    profile.titleLines = ['Project<U+2019>s Title'];
+    profile.preferenceLines = ['SM=Don<U+2019>tChange'];
+    profile.passthroughSections.GLOSSARY = ['Literal<U+2019>Glossary'];
+
+    const result = serializeWinCrossJob(artifacts, profile);
+
+    expect(result.contentUtf8).toContain('Q1 - Why don\u2019t you choose this option today?');
+    expect(result.contentUtf8).toContain('I don\u2019t know^Q1 (1)');
+    expect(result.contentUtf8).toContain('Client\u2019s note');
+    expect(result.contentUtf8).toContain('Project\u2019s Title');
+    expect(result.contentUtf8).toContain('Can\u2019t Say');
+    expect(result.contentUtf8).toContain('SM=Don<U+2019>tChange');
+    expect(result.contentUtf8).toContain('Literal<U+2019>Glossary');
+    expect(result.contentUtf8).not.toContain('Why don<U+2019>t you choose this option|today?');
+    expect(result.contentUtf8).not.toContain('I don<U+2019>t know');
   });
 
   it('derives missing stat labels from portable stat vocabulary', () => {

@@ -705,6 +705,7 @@ export type WinCrossTableUseStrategy = z.infer<typeof WinCrossTableUseStrategySc
 export const WinCrossTableAfStrategySchema = z.enum([
   'none',
   'native_single_variable_stat',
+  'native_single_variable_stat_with_interim_values',
   'raw_additional_filter',
 ]);
 

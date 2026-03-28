@@ -14,14 +14,46 @@ The point is to avoid over-calling every delta a "WinCross bug" while also keepi
 ## Bottom Line
 
 ### Current read
-- Our `.job` is usable as a starting point, but it is not yet a straight-through vendor-grade export.
+- Our `.job` is usable as a starting point, and the major serializer-owned durability / hygiene gaps from Buckets 1 and 2 are now addressed.
 - Bucket 1 has now been addressed: summary-table denominator semantics are no longer emitted as a universal `TN^1`, and scale-label reconciliation now guards against code/anchor mismatches.
-- The next most actionable class of concern is fidelity: noisy stub labels, title wrapping pipes, Unicode normalization, and preferred rating-scale order.
+- Bucket 2 has now been addressed: eligible interim numeric tables use native `AF=` stat blocks, serializer-generated title pipes are gone, and escaped Unicode is normalized in final emitted display text.
+- The next most actionable class of concern is fidelity: noisy stub labels, preferred rating-scale order, and the remaining Bucket 4 clarification items.
 - OE theme duplication is real, but it is currently lower urgency than the items above because it is a low-risk extra row pattern and we do not yet have a clean dataset-general fix.
 
 ### Practical implication
 - I would not frame the current output as blocked on every external comment.
-- I would frame it as not yet safe to claim "matches vendor WinCross conventions" until the correctness items are fixed.
+- I would frame it as materially stronger on serializer correctness and durability, while still not claiming full authored parity with every tab-house convention.
+
+---
+
+## Decision Rule: Portable Defaults Vs Learned Preferences
+
+Before implementing Bucket 2, we should separate three different classes of behavior:
+
+### A. Portable cross-conventions we should apply by default
+- These are serializer or content rules that improve correctness, durability, or baseline professionalism across jobs.
+- They should not depend on one vendor's house style.
+- They should usually be derivable from the current table semantics, not from a reference `.job`.
+
+### B. Preferences that are valid only when the `.job` can teach them safely
+- These are real style or authoring conventions, but we should only apply them when we can infer them from repeated, stable patterns in the uploaded `.job`.
+- They belong in the parsed/org profile only if we can explain the signal clearly and fall back safely when the signal is mixed or absent.
+- This is the right bucket for formatting or presentation choices that vary by tab house.
+
+### C. Preferences that are not safely inferable from a `.job` alone
+- These may be real client conventions, but they depend on analyst intent, email guidance, or local judgment that the file does not encode reliably.
+- These should not be hard-coded as global defaults.
+- These also should not be claimed as "learned from the reference job" unless we can point to a concrete, repeatable parse signal.
+
+### Practical test
+- If a rule changes whether the `.job` stays robust as new data arrives, it is usually Class A.
+- If a rule changes how the same content is presented and the source `.job` shows a repeatable pattern, it is usually Class B.
+- If we only know the rule because a human told us in email, or because one table happened to look that way once, it is Class C.
+
+### Current implementation boundary
+- The current parser already extracts some safe profile hints from uploaded `.job` files, such as value/reference alignment, stat-label caret alignment, header-row placement, and NET suffix style.
+- It does not currently learn deeper semantic planning preferences from one uploaded `.job`.
+- So Bucket 2 should default to Class A work first, then add Class B only where the parser can support it honestly.
 
 ---
 
@@ -69,6 +101,13 @@ These are the items to treat as true export defects.
 
 These are serializer-owned fixes that matter for practical vendor use, but are not the same class as denominator correctness.
 
+### Status
+- **Addressed**
+  - Eligible single-variable interim numeric tables now collapse to native `AF=` stat blocks when the non-stat rows are simple observed values, while binned / filtered / indexed / multi-variable cases remain explicit.
+  - Serializer-generated title wrapping pipes are no longer emitted; table titles now serialize as flat strings with the existing title-selection / truncation logic preserved.
+  - Escaped Unicode such as `<U+2019>` now normalizes in final serializer-owned display text without rewriting WinCross syntax-bearing lines.
+  - Regression coverage exists for the new mixed interim `AF=` path, the guard cases, flat-title behavior, and Unicode normalization boundaries.
+
 ### 3. Numeric interim tables should prefer native `AF=` stat blocks
 - **Observed**:
   - Our export sometimes emits every observed numeric value as its own stub, then adds stats.
@@ -77,8 +116,16 @@ These are serializer-owned fixes that matter for practical vendor use, but are n
   - For interim data, enumerating all current values is brittle. New values later will not automatically have stubs.
   - This is not just style. It affects durability of the `.job`.
   - This should be scoped to stat-style interim tables, not hard-coded as a rule for every numeric table.
-- **Classification**: Export convention with operational impact.
+- **Classification**: Portable serializer durability rule, not vendor-specific house style.
+- **Decision rule**:
+  - Treat this as a broad-based default whenever the table is truly a stat-only interim numeric table.
+  - Do not treat this as a learned preference from one vendor profile.
+  - Do not generalize it to analyst-authored binned numeric tables, where explicit ranges are part of the intended content.
 - **Likely fix owner**: WinCross serializer, with planner input when analyst-defined ranges are intentional.
+- **Implemented fix**:
+  - The serializer still uses native `AF=` for pure stat-only single-variable tables.
+  - It now also collapses conservative mixed interim numeric tables to native `AF=` when they are single-variable, include stat rows, and the non-stat rows are only simple value rows.
+  - It explicitly does not collapse binned, filtered, indexed, NET-bearing, or multi-variable mixed tables.
 
 ### 4. Remove `|` from table titles
 - **Observed**:
@@ -87,7 +134,15 @@ These are serializer-owned fixes that matter for practical vendor use, but are n
 - **Why it matters**:
   - This is a style contract issue, not a calculation issue.
   - It likely does not prevent WinCross from loading the job, but it does break fidelity to their preferred authored style.
-- **Classification**: Serializer presentation choice, not semantic breakage.
+- **Classification**: Neutral serializer presentation default, with room for future profile override.
+- **Decision rule**:
+  - We should not hard-code a vendor-specific title style if different tab houses author titles differently.
+  - But we also should not inject synthetic `|` wrapping unless we have a strong reason.
+  - The safe default is plain-space titles; later we can allow a profile-driven override if we can truly infer authored title-wrap behavior from uploaded jobs.
+- **Implemented fix**:
+  - Serializer-generated title wrapping pipes have been removed.
+  - Titles now serialize as flat strings, still using the existing candidate-priority logic and 1000-character truncation guard.
+  - This pass did not add profile-level title-wrap settings or parser inference.
 
 ### 5. Unicode escape strings like `<U+2019>`
 - **Observed**:
@@ -95,7 +150,10 @@ These are serializer-owned fixes that matter for practical vendor use, but are n
 - **Why it matters**:
   - Ugly and unprofessional; may also signal incomplete text normalization.
   - Usually not a blocker to execution.
-- **Classification**: Text-cleanup / serializer-output hygiene.
+- **Classification**: Portable output-hygiene default.
+- **Implemented fix**:
+  - Serializer-owned display text now decodes escaped Unicode into real characters in final emitted output.
+  - This normalization is limited to human-readable serializer output and does not rewrite WinCross syntax-bearing lines or raw passthrough logic sections.
 
 ---
 
@@ -110,7 +168,11 @@ These are real fidelity gaps, but they are not all serializer problems.
 - **Why it matters**:
   - This is mainly readability and house style.
   - It does not change calculations if the codes are correct.
-- **Classification**: Ordinal display-order convention.
+- **Classification**: Potentially profile-inferable ordinal display convention, not a universal serializer default.
+- **Decision rule**:
+  - Do not hard-code "highest anchor first" across all ordinal tables.
+  - Only promote this into reusable behavior if we can detect a stable pattern across many anchored scale tables in uploaded `.job` files, or derive it from a clearer canonical display-order rule.
+  - If the signal is mixed, keep the neutral canonical ordering.
 
 ### 7. Stub rows should contain only the attribute text
 - **Observed**:
@@ -119,7 +181,10 @@ These are real fidelity gaps, but they are not all serializer problems.
 - **Why it matters**:
   - This is much noisier and makes OE summary tables hard to read.
   - It is more a row-labeling problem than a WinCross problem.
-- **Classification**: Survey-cleanup / canonical-label fidelity issue.
+- **Classification**: Portable upstream content-fidelity rule, not a job-profile preference.
+- **Decision rule**:
+  - If we can deterministically separate question stem from attribute text, we should clean this up across the board.
+  - This should live in survey cleanup / canonical labeling, not in a vendor-specific WinCross profile.
 
 ---
 
@@ -143,6 +208,7 @@ These are worth documenting, but should not drive immediate implementation unles
   - What is unclear is the exact emitter rule that corresponds to that request in our export logic.
 - **Current read**:
   - Treat this as a real comment that needs an implementation mapping, not as a blocker we should guess at.
+  - Until we can map the emitted pattern deterministically, this stays out of both the global default bucket and the learned-profile bucket.
 
 ### 10. Exact NET row suffix styling (`^SX` vs `^SX,GX`)
 - **Why it needs clarification**:
@@ -151,6 +217,7 @@ These are worth documenting, but should not drive immediate implementation unles
   - This is a comparison-derived hypothesis, not an explicit vendor comment.
 - **Current read**:
   - Keep this documented as a follow-up question, but do not treat it as confirmed feedback until Antares says it matters.
+  - If this becomes a real requirement, it belongs in the profile-inferable bucket because suffix style is the kind of repeated serializer signal a `.job` can plausibly teach.
 
 ---
 
@@ -173,6 +240,29 @@ These are worth documenting, but should not drive immediate implementation unles
 ### OE coding / NET enrichment output
 - Potential future fix for duplicated OE umbrella rows where NET and `T1` say the same thing
 - Do not implement this via dataset-specific heuristics
+
+---
+
+## Implementation Guardrail For Bucket 2
+
+When we pick up Bucket 2, each item should be tagged one of these ways before we code it:
+
+- `portable_default`
+  - Safe to apply across exports without any uploaded reference job.
+- `profile_inferable`
+  - Only apply when the uploaded `.job` shows a stable pattern we can parse and store explicitly.
+- `not_job_inferable`
+  - Do not hard-code globally and do not pretend the `.job` taught it to us.
+
+### Current tagging
+- 3. Numeric interim `AF=` stat blocks: `portable_default`
+- 4. Title `|` removal: `portable_default` now, with possible future `profile_inferable` override
+- 5. Unicode cleanup: `portable_default`
+- 6. Top-anchor-first scale order: `profile_inferable` or upstream canonical rule, not `portable_default`
+- 7. Attribute-only stub labels: `portable_default` upstream cleanup
+- 8. OE umbrella duplication suppression: `not_job_inferable` for now
+- 9. Stub-level `OI2` redundancy: `not_job_inferable` until we map the emitted rule precisely
+- 10. NET suffix styling: `profile_inferable` if validated
 
 ---
 
@@ -276,12 +366,13 @@ Goal: improve visible match to uploaded reference jobs in ways that are portable
   - Extend profile extraction beyond alignment hints to lightweight style preferences that are safely inferable.
   - Candidate learnable preferences:
     - preferred NET suffix token when clearly detectable
-    - whether title line-break markers should be preserved or flattened
+    - whether title line-break markers should be preserved or flattened, if source evidence is clear
     - stable row alignment conventions
     - maybe ordinal anchor order when strongly evidenced across many tables
 - **Owner**: WinCross profile parser plus serializer application layer.
 - **Important constraint**:
   - Do not pretend a single uploaded `.job` can teach semantic planning rules that it cannot reliably encode.
+  - Only promote preferences that have a repeatable parse signal, an explicit profile field, and a safe fallback when absent.
 - **Acceptance**:
   - Uploaded references produce measurable style adaptation beyond spacing/alignment only.
   - We can explain exactly which preferences are learnable from the profile and which are not.

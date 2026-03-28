@@ -20,7 +20,7 @@ import { z } from 'zod';
 
 export const WINCROSS_EXPORT_MANIFEST_VERSION = 'wincross.phase1.v1';
 export const WINCROSS_EXPORTER_VERSION = 'wincross-exporter.v1';
-export const WINCROSS_SERIALIZER_CONTRACT_VERSION = 'wincross-serializer.v8';
+export const WINCROSS_SERIALIZER_CONTRACT_VERSION = 'wincross-serializer.v9';
 
 export interface WinCrossResolvedArtifacts {
   metadata: ExportManifestMetadata;
