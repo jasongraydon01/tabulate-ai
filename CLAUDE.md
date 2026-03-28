@@ -38,6 +38,39 @@ BRANCHES:
 - **`dev`** — Active development. Push freely. Uses `.env.local`.
 </branch_strategy>
 
+<current_focus>
+PHASE 9e: LAUNCH OUTREACH (Mar 30 – Apr 12, 2026)
+
+Current sprint is customer acquisition — not feature development. Product is live at tabulate-ai.com with pricing, demo, and billing. Goal: at least one buyer signal (paid tier entry) by Apr 12.
+
+- Code changes limited to real user-reported bugs only
+- No proactive refactoring, no speculative features
+- Prospect-reported issues are highest priority
+- See `docs/v3-roadmap.md` Phase 9e for full outreach plan and channel strategy
+</current_focus>
+
+<infrastructure>
+RAILWAY DEPLOYMENT (two environments):
+- **Production** — linked to `main`. Web auto-deploys on push; workers are disconnected (manual redeploy only).
+- **Development** — linked to `staging`. Web auto-deploys on push; workers are disconnected (manual redeploy only).
+
+Services per environment (same Docker image, different CMD):
+- **Web** (1 replica): `node server.js` — Next.js on port 3000, health check at `/api/ready`
+- **Workers** (3 replicas in prod): `npm run worker` — polling daemon, no HTTP server
+
+Workers are deliberately disconnected from automatic branch deploys. When code is pushed to `main` or `staging`, only the web service redeploys. Workers must be redeployed manually. This prevents mid-pipeline disruption — a worker processing a long-running pipeline won't be killed by an unrelated web deploy.
+
+CONVEX:
+- Schema + functions deployed via `npx convex deploy` (prod) or `npx convex dev` (local)
+- Deploy updated functions BEFORE pushing schema changes — existing documents must conform
+- The `runs` and `projects` tables have live data; adding required fields or changing types requires a backfill migration
+- All mutations are `internalMutation`; queries are public `query`
+
+CLOUDFLARE R2:
+- Pipeline artifacts stored per-run under `{orgId}/{projectId}/runs/{runId}/...`
+- Recovery manifests for durable checkpoints enabling resume-from-stage
+</infrastructure>
+
 <engineering_philosophy>
 THIS IS A PRODUCTION APPLICATION, NOT A PROTOTYPE.
 
@@ -144,7 +177,7 @@ V3 RUNTIME MODULES (`src/lib/v3/runtime/`):
 <v3_enrichment_pipeline>
 V3 IS THE PRODUCTION ARCHITECTURE.
 
-The V3 pipeline front-loads deterministic enrichment to produce rich `questionid-final.json`, then uses AI only for genuine ambiguity. The enrichment chain (stages 00–12) was proven via scripts in `scripts/v3-enrichment/`, then extracted into runtime modules in `src/lib/v3/runtime/`.
+The V3 pipeline front-loads deterministic enrichment to produce rich `questionid-final.json`, then uses AI only for genuine ambiguity. The enrichment chain (stages 00–12) was proven via standalone scripts, then extracted into runtime modules in `src/lib/v3/runtime/`.
 
 QUESTION-ID CHAIN (stages 00-12, sequential):
 ```
@@ -167,6 +200,41 @@ KEY PRINCIPLES:
 
 See `docs/references/v3-script-targets.md` for the full chain spec and `docs/v3-roadmap.md` for the phased plan.
 </v3_enrichment_pipeline>
+
+<pipeline_worker>
+WORKER QUEUE ARCHITECTURE:
+
+Pipelines execute via background workers, not in the web process. The web app enqueues runs; workers claim and execute them.
+
+ENTRY POINT: `scripts/worker.ts` — polls Convex every 5s for queued runs.
+
+FLOW: Web UI → `enqueueForWorker()` → Convex (`queued`) → Worker claims → Pipeline executes → Release (`success`/`error`)
+
+THREE QUEUE CLASSES (priority order):
+1. **`review_resume`** — highest. User submitted HITL review edits; pipeline resumes from checkpoint.
+2. **`project`** — standard runs from project wizard. Respects per-org concurrency limit.
+3. **`demo`** — unauthenticated demo runs. Capped globally.
+
+CAPACITY CONTROLS (env vars with sensible defaults):
+- `PIPELINE_WORKER_MAX_ACTIVE_RUNS_PER_ORG` (default 2) — prevents one org from monopolizing workers
+- `PIPELINE_WORKER_MAX_ACTIVE_DEMO_RUNS` (default 2) — prevents demos from starving production
+- `PIPELINE_WORKER_POLL_MS` (default 5000) — queue poll interval
+- `PIPELINE_WORKER_STALE_MS` (default 600000 / 10min) — heartbeat timeout before requeue
+
+EXECUTION STATES: `queued → claimed → running → success/partial/error/cancelled`
+Special states: `pending_review` (paused for HITL), `resuming` (from checkpoint)
+
+HEARTBEAT & RECOVERY:
+- Heartbeat every 30s; stale detection requeues orphaned runs after timeout
+- Durable checkpoints at: `question_id`, `fork_join`, `review_checkpoint`, `compute`
+- Recovery manifests in R2 allow resume without full restart
+
+KEY FILES:
+- `scripts/worker.ts` — entry point and polling loop
+- `src/lib/worker/` — `runClaimedRun.ts`, `scheduling.ts`, `types.ts`
+- `src/lib/api/heartbeat.ts` — heartbeat sender
+- `convex/runs.ts` — queue mutations (`claimNextQueuedRun`, `requeueStaleRuns`, `releaseRun`)
+</pipeline_worker>
 
 <code_patterns>
 AGENT CALL PATTERN (all agents follow this):
@@ -349,8 +417,8 @@ FOR R GENERATION, VALIDATION, RETRIES, AND FAILURES:
 <constraints>
 RULES - NEVER VIOLATE:
 
-1. NEVER run full pipeline yourself
-   `npx tsx scripts/test-pipeline.ts` takes 45-60 minutes. Let the user run it.
+1. NEVER trigger pipeline runs directly
+   Pipelines run via the worker queue. Launch through the web UI or API routes — never by calling orchestrator functions directly from scripts or tests.
 
 2. NEVER forget metrics recording
    Every agent call needs `recordAgentMetrics()` or pipeline cost summary breaks.
@@ -407,24 +475,27 @@ THINGS THAT WILL BREAK IF YOU FORGET:
 6. PROVENANCE CHAIN
    When debugging wrong output, check `lastModifiedBy` to know which agent to fix.
 
-7. THREE PIPELINE CODE PATHS — KEEP IN SYNC
-   All three run V3 exclusively now, but they MUST stay aligned:
-   - `src/lib/pipeline/PipelineRunner.ts` — used by `scripts/test-pipeline.ts` (CLI testing)
-   - `src/lib/api/pipelineOrchestrator.ts` — used by the web UI (API routes, Railway deploy)
-   - `src/lib/api/reviewCompletion.ts` — used after HITL review (resumes the pipeline post-review)
-   All three share the same V3 runtime modules (`src/lib/v3/runtime/`), but they
-   differ in how they report progress and handle state:
-   - PipelineRunner uses `log()` + eventBus
-   - Orchestrator uses `console.log` + `updateRunStatus` (Convex)
-   - ReviewCompletion uses `console.log` + `updateReviewRunStatus` (Convex)
-   The orchestrator runs stages 00-21 + compute for no-review runs. When HITL review
-   is needed, it pauses after stage 21 and returns. ReviewCompletion picks up from
-   the review checkpoint: applies decisions, then runs compute + post-processing.
-   Any pipeline logic change MUST be applied to ALL THREE files.
+7. TWO PIPELINE CODE PATHS — KEEP IN SYNC
+   Both run V3 exclusively and share the same runtime modules (`src/lib/v3/runtime/`):
+   - `src/lib/api/pipelineOrchestrator.ts` — full pipeline execution (called by worker)
+   - `src/lib/api/reviewCompletion.ts` — resumes pipeline post-HITL review
+   The orchestrator runs stages 00-21 + compute. When HITL review is needed, it pauses
+   after stage 21. ReviewCompletion picks up from the review checkpoint: applies
+   decisions, then runs compute + post-processing.
+   Any pipeline logic change MUST be applied to BOTH files.
+   Note: `src/lib/pipeline/PipelineRunner.ts` is a legacy CLI path — may be removed in Phase 12 cleanup.
 
 8. `pipelineOrchestrator.ts.bak` IS NOT A LIVE CODE PATH
    Do not patch `src/lib/api/pipelineOrchestrator.ts.bak` unless explicitly asked.
    Production code uses `src/lib/api/pipelineOrchestrator.ts`.
+
+9. CONVEX SCHEMA CHANGES REQUIRE CAREFUL DEPLOYMENT
+   The `runs` and `projects` tables have existing documents in production.
+   - Deploy updated Convex functions FIRST (`npx convex deploy`), then push web code
+   - New required fields need defaults or must be `v.optional()` initially
+   - Changing field types on populated tables requires a backfill migration function
+   - Test schema changes with `npx convex dev` locally before deploying to production
+   - Never assume tables are empty — production has real customer data
 </gotchas>
 
 <directory_structure>
@@ -475,6 +546,7 @@ tabulate-ai/
 │   │   │   └── wincross/          #   WinCross .job export (serializer, parser, profile resolver)
 │   │   ├── exporters/             # Legacy export format handlers
 │   │   ├── events/                # Event bus for CLI
+│   │   ├── worker/                 # Pipeline worker (scheduling, run execution, types)
 │   │   ├── r2/                    # Cloudflare R2 storage
 │   │   └── ...                    # auth, rateLimit, convex, storage, etc.
 │   ├── schemas/                   # Zod schemas (25 files, source of truth)
@@ -505,23 +577,8 @@ tabulate-ai/
 │   ├── providers/                 # Context providers
 │   └── guardrails/                # Agent safety guardrails
 ├── scripts/
-│   ├── test-pipeline.ts           # Full pipeline runner (user runs this)
-│   ├── batch-pipeline.ts          # Multi-dataset pipeline runner
-│   └── v3-enrichment/             # V3 modular enrichment scripts
-│       ├── 00-question-id-enricher.ts   # Step 00: .sav → questionid.json
-│       ├── 03-base-enricher.ts          # Step 03: base classification
-│       ├── 08a-survey-parser.ts         # Step 08a: survey document parsing
-│       ├── 09d-message-label-matcher.ts # Step 09d: message code matching
-│       ├── 10a-loop-gate.ts             # Step 10a: loop classification gate
-│       ├── 10-ai-gate-triage.ts         # Step 10: AI triage
-│       ├── 11-ai-gate-validate.ts       # Step 11: AI validation
-│       ├── 12-reconciliation-repass.ts  # Step 12: reconciliation
-│       ├── 13a-table-diagnostic.ts      # Step 13a: table diagnostics
-│       ├── 13b-table-planner.ts         # Step 13b: table planning (106KB)
-│       ├── 20-banner-plan.ts            # Step 20: banner planning
-│       ├── 21-crosstab-plan.ts          # Step 21: crosstab planning
-│       ├── 21a-banner-questionid-diagnostic.ts # Step 21a: banner diagnostics
-│       └── lib/                         # Shared: question-context, crosstab-v3, renderers
+│   ├── worker.ts                  # Pipeline worker daemon (entry point)
+│   └── pull-run-artifacts.ts      # Pull run artifacts from R2 for local inspection
 ├── convex/                        # Backend schema + mutations (Convex)
 ├── data/                          # Test datasets (.sav + survey + reference tabs)
 ├── docs/

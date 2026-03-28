@@ -23,14 +23,29 @@ TabulateAI turns raw survey data files (.sav) into publication-ready crosstabs �
 The pipeline front-loads deterministic enrichment to build a rich understanding of every survey question before any computation happens. AI is used only where genuine ambiguity exists — classification, structure validation, and crosstab planning. Everything else is deterministic.
 
 ```
-.sav → Validation → Question-ID Enrichment (stages 00-12)
-     → FORK:
-       ├── Canonical Chain: table planning → subtype/structure gates → assembly
-       └── Planning Chain: banner plan → crosstab plan
-     → JOIN → [optional HITL review] → R compute → Excel + Q/WinCross exports
+.sav --> Validation --> Question-ID Enrichment (stages 00-12)
+     --> FORK:
+       |-- Canonical Chain: table planning --> subtype/structure gates --> assembly
+       +-- Planning Chain: banner plan --> crosstab plan
+     --> JOIN --> [optional HITL review] --> R compute --> Excel + Q/WinCross exports
 ```
 
 **The .sav file is the single source of truth.** R + haven extracts column names, labels, value labels, SPSS format, and actual data statistics. No CSV datamaps needed.
+
+### Pipeline Worker Architecture
+
+Pipelines execute via background workers, not in the web process. The web app enqueues runs into Convex; workers poll, claim, and execute them.
+
+```
+Web UI --> enqueueForWorker() --> Convex (queued) --> Worker claims --> Pipeline executes --> Release
+```
+
+**Three queue classes** with priority ordering:
+1. **Review resume** — highest priority. User submitted HITL review edits; pipeline resumes from checkpoint.
+2. **Project** — standard runs from the project wizard. Per-org concurrency limits apply.
+3. **Demo** — unauthenticated demo runs. Capped at 2 concurrent globally.
+
+Workers send heartbeats every 30 seconds. Stale run detection requeues orphaned runs. Durable checkpoints at key pipeline boundaries allow resume without restarting from scratch.
 
 ### What the Pipeline Produces
 
@@ -65,7 +80,7 @@ AI handles genuine ambiguity through constrained agents. Each agent has a specif
 | LoopGateAgent | 10a | Binary loop classification — genuine iteration vs false positive |
 | AIGateAgent | 10, 11 | Constrained validation of enriched question metadata — triage + validate |
 | SubtypeGateAgent | 13c | Validate analytical subtype classifications |
-| StructureGateAgent | 13c₂ | Validate structural decisions for table assembly |
+| StructureGateAgent | 13c2 | Validate structural decisions for table assembly |
 | TableContextAgent | 13d | Refine table presentation metadata (subtitles, bases, labels) |
 | NETEnrichmentAgent | 13e | Propose NET roll-up groupings for frequency tables |
 | BannerAgent | 20 | Extract banner structure from PDF/DOCX |
@@ -75,7 +90,23 @@ AI handles genuine ambiguity through constrained agents. Each agent has a specif
 
 ---
 
-## Technology Stack
+## Infrastructure
+
+### Railway Deployment
+
+Two Railway environments, each running a web service and worker service from the same Docker image:
+
+| Environment | Branch | Web Replicas | Worker Replicas |
+|-------------|--------|--------------|-----------------|
+| **Production** | `main` | 1 | 3 |
+| **Development** | `staging` | 1 | 1 |
+
+- **Web service** (`node server.js`): Next.js on port 3000, health check at `/api/ready`
+- **Worker service** (`npm run worker`): polling daemon, no HTTP server
+
+Workers are disconnected from automatic branch deploys. When code is pushed to `main` or `staging`, only the web service redeploys. Workers are redeployed manually to prevent mid-pipeline disruption.
+
+### Technology Stack
 
 | Layer | Technology |
 |-------|------------|
@@ -88,10 +119,12 @@ AI handles genuine ambiguity through constrained agents. Each agent has a specif
 | **Analytics** | PostHog |
 | **Stats Engine** | R Runtime (haven, dplyr, tidyr) |
 | **Hosting** | Railway |
+| **Email** | Resend (from notifications@tabulate-ai.com) |
+| **Billing** | Stripe |
 
 ---
 
-## Getting Started
+## Development
 
 ### Prerequisites
 
@@ -107,41 +140,24 @@ npm install
 cp .env.example .env.local  # Fill in credentials
 ```
 
-### Development
+### Commands
 
 ```bash
-npm run dev                  # Start dev server (Turbopack)
+npm run dev                       # Start dev server (Turbopack)
+npm run dev:all                   # Start dev server + Convex dev watcher
+npm run worker                    # Start pipeline worker daemon
 npm run lint && npx tsc --noEmit  # Quality gate
-npx vitest run               # Test suite
+npx vitest run                    # Test suite
 ```
 
-### Running the Pipeline
+### Convex
 
 ```bash
-# Full pipeline (default dataset)
-npx tsx scripts/test-pipeline.ts
-
-# Specific dataset
-npx tsx scripts/test-pipeline.ts data/my-dataset
-
-# Batch: run all datasets
-npx tsx scripts/batch-pipeline.ts
-npx tsx scripts/batch-pipeline.ts --dry-run  # Preview ready/not-ready
+npx convex dev                    # Local development (watches for changes)
+npx convex deploy                 # Deploy functions + schema to production
 ```
 
-### Pipeline Output
-
-Each run produces artifacts in `outputs/<dataset>/pipeline-<timestamp>/`:
-
-```
-├── r/master.R                    # Generated R script
-├── results/tables.json           # Computed tables with stat testing
-├── results/crosstabs.xlsx        # Formatted Excel workbook
-├── exports/q/                    # Q script package
-├── exports/wincross/             # WinCross .job package
-├── pipeline-summary.json         # Run metadata and timing
-└── errors/errors.ndjson          # Structured error log
-```
+**Important:** When changing Convex schema, deploy updated functions first. The `runs` and `projects` tables have live data — adding required fields or changing types requires a migration.
 
 ---
 
@@ -156,7 +172,7 @@ tabulate-ai/
 │   ├── lib/
 │   │   ├── v3/runtime/      # V3 pipeline modules (questionId, canonical, planning, compute, review)
 │   │   ├── api/             # Pipeline orchestrator + review completion
-│   │   ├── pipeline/        # PipelineRunner (CLI path)
+│   │   ├── worker/          # Pipeline worker (scheduling, run execution, types)
 │   │   ├── exportData/      # Q and WinCross export (serializers, parsers, emitters)
 │   │   ├── r/               # R script generation + sanitization
 │   │   ├── excel/           # Excel formatter + renderers
@@ -167,7 +183,9 @@ tabulate-ai/
 │   │   └── ...              # auth, filters, review, R2, events, etc.
 │   ├── app/                 # Next.js app router (API routes, auth, product UI)
 │   └── components/          # React components (shadcn/ui)
-├── scripts/                 # Pipeline scripts + V3 enrichment scripts
+├── scripts/
+│   ├── worker.ts            # Pipeline worker daemon (entry point)
+│   └── pull-run-artifacts.ts # Pull run artifacts from R2
 ├── convex/                  # Backend schema + mutations
 ├── data/                    # Test datasets (.sav + survey docs + reference tabs)
 ├── docs/                    # Roadmap, implementation plans, reference specs
