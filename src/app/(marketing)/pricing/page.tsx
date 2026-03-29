@@ -32,7 +32,7 @@ import { internal } from '../../../../convex/_generated/api';
 import { canPerform } from '@/lib/permissions';
 import { isInternalAccessUser } from '@/lib/internalOperators';
 import { JsonLd } from '@/components/seo/JsonLd';
-import { FAQ_ITEMS } from '@/components/pricing/PricingFAQ';
+import { FAQ_ITEMS } from '@/lib/billing/faqItems';
 
 export const dynamic = 'force-dynamic';
 
