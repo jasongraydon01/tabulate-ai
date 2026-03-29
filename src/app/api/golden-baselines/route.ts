@@ -10,6 +10,10 @@ import { applyRateLimit } from "@/lib/withRateLimit";
 import { getApiErrorDetails } from "@/lib/api/errorDetails";
 import { bootstrapGoldenBaseline } from "@/lib/evaluation/bootstrapGoldenBaseline";
 import { parseRunResult } from "@/schemas/runResultSchema";
+import {
+  areRunArtifactsExpired,
+  RUN_ARTIFACTS_EXPIRED_MESSAGE,
+} from "@/lib/runs/artifactRetention";
 
 type BaselineStatus = "draft" | "active";
 
@@ -50,6 +54,10 @@ export async function POST(request: NextRequest) {
     });
     if (!run) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    if (areRunArtifactsExpired(run)) {
+      return NextResponse.json({ error: RUN_ARTIFACTS_EXPIRED_MESSAGE }, { status: 410 });
     }
 
     const runResult = parseRunResult(run.result);

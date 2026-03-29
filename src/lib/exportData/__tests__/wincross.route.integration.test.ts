@@ -81,6 +81,23 @@ describe('WinCross export route integration', () => {
     expect(payload.error).toBe('export_not_ready');
   });
 
+  it('returns 410 when run artifacts are expired', async () => {
+    mocks.query.mockResolvedValueOnce({
+      orgId: 'org-1',
+      projectId: 'proj-1',
+      expiredAt: Date.UTC(2026, 3, 20),
+      result: {},
+    });
+
+    const response = await POST(
+      new NextRequest('http://localhost/api/runs/run-1/exports/wincross', { method: 'POST' }),
+      { params: Promise.resolve({ runId: 'run-1' }) },
+    );
+
+    expect(response.status).toBe(410);
+    expect(mocks.generateWinCrossExportPackage).not.toHaveBeenCalled();
+  });
+
   it('persists descriptor on success', async () => {
     mocks.query.mockResolvedValueOnce({
       orgId: 'org-1',

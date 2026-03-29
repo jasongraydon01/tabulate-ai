@@ -748,6 +748,7 @@ export default function ProjectDetailPage({
                 projectName={project.name}
                 runCreatedAt={latestRun._creationTime}
                 status={status}
+                expiredAt={latestRun.expiredAt}
                 r2Outputs={r2Files?.outputs}
                 exportPackages={exportPackages}
                 exportReadiness={exportReadiness}

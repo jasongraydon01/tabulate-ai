@@ -98,6 +98,42 @@ describe('table presentation route', () => {
     });
   });
 
+  it('marks expired runs as not rebuildable', async () => {
+    mocks.query
+      .mockResolvedValueOnce({
+        _id: 'project-1',
+        config: {},
+      })
+      .mockResolvedValueOnce([
+        {
+          _id: 'run-1',
+          status: 'success',
+          expiredAt: Date.UTC(2026, 3, 20),
+          result: {
+            r2Files: {
+              outputs: {
+                'tables/13d-table-canonical.json': 'org/project/run/tables/13d-table-canonical.json',
+              },
+            },
+          },
+        },
+      ]);
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/projects/project-1/table-presentation'),
+      { params: Promise.resolve({ projectId: 'project_1' }) },
+    );
+    const payload = await response.json() as Record<string, unknown>;
+
+    expect(response.status).toBe(200);
+    expect(payload.latestRun).toEqual({
+      runId: 'run-1',
+      status: 'success',
+      canRebuild: false,
+    });
+    expect(mocks.getUsedSlots).not.toHaveBeenCalled();
+  });
+
   it('updates project config and rebuilds the latest run outputs', async () => {
     mocks.query
       .mockResolvedValueOnce({
@@ -214,5 +250,72 @@ describe('table presentation route', () => {
     expect(payload.rebuild).toMatchObject({
       runId: 'run-1',
     });
+  });
+
+  it('saves future labels when the latest completed run artifacts expired', async () => {
+    mocks.query
+      .mockResolvedValueOnce({
+        _id: 'project-1',
+        config: {
+          exportFormats: ['excel'],
+          displayMode: 'frequency',
+          theme: 'classic',
+        },
+      })
+      .mockResolvedValueOnce([
+        {
+          _id: 'run-1',
+          status: 'success',
+          expiredAt: Date.UTC(2026, 3, 20),
+          config: {
+            exportFormats: ['excel'],
+            displayMode: 'frequency',
+            theme: 'classic',
+          },
+          result: {
+            r2Files: {
+              outputs: {
+                'results/crosstabs.xlsx': 'org/project/run/results/crosstabs.xlsx',
+              },
+            },
+          },
+        },
+      ]);
+
+    const response = await PATCH(
+      new NextRequest('http://localhost/api/projects/project-1/table-presentation', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          labelVocabulary: {
+            rankFormat: 'Rank #{N}',
+            topBoxFormat: 'T{N}B',
+            bottomBoxFormat: 'Bottom {N} Box',
+            meanLabel: 'Average',
+            medianLabel: 'Median',
+            stddevLabel: 'Std Dev',
+            stderrLabel: 'Std Err',
+            totalLabel: 'All Respondents',
+            baseLabel: 'Base (n)',
+            netPrefix: 'NET: ',
+            middleBoxLabel: 'Middle',
+            notRankedLabel: 'Not Ranked',
+            npsScoreLabel: 'NPS Score',
+            promotersLabel: 'Promoters',
+            passivesLabel: 'Passives',
+            detractorsLabel: 'Detractors',
+          },
+        }),
+      }),
+      { params: Promise.resolve({ projectId: 'project_1' }) },
+    );
+    const payload = await response.json() as Record<string, unknown>;
+
+    expect(response.status).toBe(200);
+    expect(mocks.mutateInternal).toHaveBeenCalledTimes(1);
+    expect(mocks.rebuildRun).not.toHaveBeenCalled();
+    expect(payload.warnings).toEqual([
+      'Latest completed run artifacts expired. The new labels will apply on the next run.',
+    ]);
   });
 });

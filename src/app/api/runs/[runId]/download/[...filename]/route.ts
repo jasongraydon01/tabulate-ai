@@ -15,6 +15,10 @@ import { applyRateLimit } from '@/lib/withRateLimit';
 import { getApiErrorDetails } from '@/lib/api/errorDetails';
 import { buildDownloadFilename, buildPackageDownloadFilename } from '@/lib/utils/downloadFilename';
 import { parseRunResult } from '@/schemas/runResultSchema';
+import {
+  areRunArtifactsExpired,
+  RUN_ARTIFACTS_EXPIRED_MESSAGE,
+} from '@/lib/runs/artifactRetention';
 
 // Map user-friendly filenames to the R2 output keys — crosstab Excel files only.
 // Internal files (tables.json, master.R, pipeline-summary.json) are intentionally
@@ -115,6 +119,10 @@ export async function GET(
 
     if (!run) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+
+    if (areRunArtifactsExpired(run)) {
+      return NextResponse.json({ error: RUN_ARTIFACTS_EXPIRED_MESSAGE }, { status: 410 });
     }
 
     const result = parseRunResult(run.result);

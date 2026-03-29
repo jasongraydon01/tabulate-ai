@@ -453,17 +453,21 @@ export default function DataPrivacyPage() {
           <p>
             You can delete any project at any time from the dashboard.
             When a project is deleted, we hard-delete the project and run
-            records from our application database and make a best-effort
-            cleanup of associated R2 artifacts.
+            records from our application database and remove associated
+            run artifacts from storage.
           </p>
           <p>
-            Uploaded inputs are not stored in R2 by default, but the system
-            does create temporary upload/session directories and run
-            workspaces on the server. Short-lived session temp directories
-            are cleaned up after runs, while run workspaces and generated
-            artifacts may persist for downloads, exports, review recovery,
-            or operational cleanup until the project is deleted or the
-            environment is cleaned up.
+            For standard product runs, uploaded run inputs and generated
+            run artifacts are automatically purged from our storage after
+            30 days. That retention window exists so we can support
+            downloads, exports, review recovery, operational debugging,
+            and customer support when needed.
+          </p>
+          <p>
+            The system also creates temporary upload/session directories
+            and run workspaces on the server. Short-lived session temp
+            directories are cleaned up after runs, and run-scoped
+            artifacts follow the same 30-day purge policy.
           </p>
           <p>
             If you need your entire account and all associated data

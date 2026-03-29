@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { query, internalMutation } from "./_generated/server";
+import { query, internalMutation, internalQuery } from "./_generated/server";
 import { v3PipelineStageValidator } from "../src/schemas/pipelineStageSchema";
 import { configValidator } from "./projectConfigValidators";
 import {
@@ -7,6 +7,7 @@ import {
   recoveryManifestValidator,
   workerQueueClassValidator,
 } from "./runExecutionValidators";
+import { getRunArtifactsExpireAt } from "../src/lib/runs/artifactRetention";
 import { getStaleWorkerRecoveryAction } from "../src/lib/worker/recovery";
 import {
   buildClaimCandidateOrder,
@@ -19,6 +20,7 @@ const ACTIVE_STATUSES = ["in_progress", "resuming"] as const;
 const ACTIVE_STATUS_SET = new Set<string>(ACTIVE_STATUSES);
 const WORKER_ACTIVE_EXECUTION_STATES = new Set(["claimed", "running", "resuming"]);
 const TERMINAL_STATUSES = new Set(["success", "partial", "error", "cancelled"]);
+const TERMINAL_STATUS_VALUES = ["success", "partial", "error", "cancelled"] as const;
 const WORKER_QUEUE_CAPACITY = normalizeWorkerQueueCapacity({
   maxActiveDemoRuns: Number(process.env.PIPELINE_WORKER_MAX_ACTIVE_DEMO_RUNS ?? 2),
   maxActiveRunsPerOrg: Number(process.env.PIPELINE_WORKER_MAX_ACTIVE_RUNS_PER_ORG ?? 2),
@@ -512,6 +514,104 @@ export const clearExportPackages = internalMutation({
 
     await ctx.db.patch(args.runId, {
       result: nextResult,
+    });
+  },
+});
+
+export const markExpiredRuns = internalMutation({
+  handler: async (ctx) => {
+    const now = Date.now();
+    const candidates: Array<{ _id: unknown; _creationTime: number }> = [];
+
+    for (const status of TERMINAL_STATUS_VALUES) {
+      const runs = await ctx.db
+        .query("runs")
+        .withIndex("by_status", (q) => q.eq("status", status))
+        .order("asc")
+        .collect();
+
+      for (const run of runs) {
+        if (typeof run.expiredAt === "number") continue;
+        if (getRunArtifactsExpireAt(run._creationTime) > now) continue;
+        candidates.push({ _id: run._id, _creationTime: run._creationTime });
+      }
+    }
+
+    const toExpire = candidates
+      .sort((a, b) => a._creationTime - b._creationTime)
+      .slice(0, 50);
+
+    for (const run of toExpire) {
+      await ctx.db.patch(run._id as never, {
+        expiredAt: now,
+        artifactCleanupError: undefined,
+      });
+    }
+
+    return { expired: toExpire.length };
+  },
+});
+
+export const getRunsPendingArtifactCleanup = internalQuery({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const runs = await ctx.db
+      .query("runs")
+      .withIndex("by_expired_at")
+      .order("asc")
+      .collect();
+
+    const limit = args.limit ?? 5;
+    return runs
+      .filter((run) => typeof run.expiredAt === "number" && typeof run.artifactsPurgedAt !== "number")
+      .slice(0, limit)
+      .map((run) => ({
+        _id: run._id,
+        orgId: run.orgId,
+        projectId: run.projectId,
+        result: run.result,
+      }));
+  },
+});
+
+export const markRunArtifactsPurged = internalMutation({
+  args: {
+    runId: v.id("runs"),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run) throw new Error("Run not found");
+
+    const now = Date.now();
+    const existingResult = (run.result ?? {}) as Record<string, unknown>;
+    const nextResult = { ...existingResult };
+    delete nextResult.r2Files;
+    delete nextResult.exportPackages;
+    delete nextResult.reviewR2Keys;
+
+    await ctx.db.patch(args.runId, {
+      artifactsPurgedAt: now,
+      lastArtifactCleanupAttemptAt: now,
+      artifactCleanupError: undefined,
+      result: nextResult,
+    });
+  },
+});
+
+export const recordArtifactCleanupFailure = internalMutation({
+  args: {
+    runId: v.id("runs"),
+    error: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run) throw new Error("Run not found");
+
+    await ctx.db.patch(args.runId, {
+      lastArtifactCleanupAttemptAt: Date.now(),
+      artifactCleanupError: args.error,
     });
   },
 });

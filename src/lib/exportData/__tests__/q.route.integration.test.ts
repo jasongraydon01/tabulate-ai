@@ -82,6 +82,23 @@ describe('Q export route integration', () => {
     expect(payload.error).toBe('export_not_ready');
   });
 
+  it('returns 410 when run artifacts are expired', async () => {
+    mocks.query.mockResolvedValueOnce({
+      orgId: 'org-1',
+      projectId: 'proj-1',
+      expiredAt: Date.UTC(2026, 3, 20),
+      result: {},
+    });
+
+    const response = await POST(
+      new NextRequest('http://localhost/api/runs/run-1/exports/q', { method: 'POST' }),
+      { params: Promise.resolve({ runId: 'run-1' }) },
+    );
+
+    expect(response.status).toBe(410);
+    expect(mocks.generateQExportPackage).not.toHaveBeenCalled();
+  });
+
   it('persists q descriptor on successful generation', async () => {
     mocks.query.mockResolvedValueOnce({
       orgId: 'org-1',

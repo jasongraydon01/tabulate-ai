@@ -11,7 +11,9 @@ export function DemoPrivacyNotice() {
       <p className="text-xs text-muted-foreground leading-relaxed">
         For demo submissions, we store your contact details to verify and
         deliver the output, keep uploaded files while the demo is running,
-        and attempt to remove demo outputs after successful delivery.{' '}
+        and attempt to remove demo outputs after successful delivery. If
+        any run artifacts remain in storage, they follow the same 30-day
+        retention limit as standard runs.{' '}
         <Link href="/data-privacy" className="text-foreground underline underline-offset-2 hover:text-foreground/80">
           Data &amp; Privacy
         </Link>

@@ -17,8 +17,9 @@ export function DemoLimitationsCallout() {
         preview of the full output on your own data.
       </p>
       <p className="text-xs text-muted-foreground/80 leading-relaxed">
-        Nothing is retained after this session. Your uploaded files and generated outputs are deleted after delivery.
-        The only place your data is sent is to our AI providers during processing.
+        We attempt to remove demo outputs after delivery, and any remaining
+        run artifacts are automatically purged within 30 days. The only
+        place your data is sent is to our AI providers during processing.
         We won&apos;t use your contact information for marketing.{' '}
         <Link href="/data-privacy" className="text-muted-foreground underline underline-offset-2 hover:text-foreground">
           Data &amp; Privacy

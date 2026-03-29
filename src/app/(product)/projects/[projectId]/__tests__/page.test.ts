@@ -236,4 +236,54 @@ describe('project detail page', () => {
     // Legacy card must not be present
     expect(markup).not.toContain('Review Tables');
   });
+
+  it('renders the expired-artifacts state when the latest run is expired', () => {
+    const project = {
+      _id: 'project-1',
+      _creationTime: Date.UTC(2026, 2, 20),
+      name: 'Test Project',
+      intake: {
+        dataFile: 'test-data.sav',
+        survey: 'test-survey.docx',
+        bannerPlan: null,
+        messageList: null,
+      },
+      config: {
+        exportFormats: ['excel'],
+      },
+    };
+    const runs = [
+      {
+        _id: 'run-1',
+        _creationTime: Date.UTC(2026, 2, 20),
+        status: 'success',
+        expiredAt: Date.UTC(2026, 3, 20),
+        result: {
+          r2Files: {
+            outputs: {
+              'results/crosstabs.xlsx': 'org/project/run/results/crosstabs.xlsx',
+            },
+          },
+        },
+      },
+    ];
+
+    let queryCall = 0;
+    mocks.useQuery.mockReset();
+    mocks.useQuery.mockImplementation(() => {
+      queryCall += 1;
+      if (queryCall === 1) return project;
+      if (queryCall === 2) return runs;
+      return [];
+    });
+
+    const markup = renderToStaticMarkup(
+      React.createElement(Page, {
+        params: { projectId: 'project-1' } as never,
+      }),
+    );
+
+    expect(markup).toContain('Artifacts expired');
+    expect(markup).toContain('30-day retention period');
+  });
 });

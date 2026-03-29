@@ -21,6 +21,7 @@ import {
 import { generateQExportPackage } from '@/lib/exportData/q/service';
 import { generateWinCrossExportPackage } from '@/lib/exportData/wincross/service';
 import type { WinCrossPreferenceSource } from '@/lib/exportData/wincross/preferenceResolver';
+import { areRunArtifactsExpired } from '@/lib/runs/artifactRetention';
 
 const CONVEX_ID_RE = /^[a-zA-Z0-9_]+$/;
 
@@ -82,9 +83,11 @@ export async function GET(
       orgId: auth.convexOrgId as Id<'organizations'>,
     });
     const latestRun = runs[0] ?? null;
+    const latestRunExpired = latestRun ? areRunArtifactsExpired(latestRun) : false;
     const latestRunResult = latestRun ? parseRunResult(latestRun.result) : null;
     const r2Outputs = latestRunResult?.r2Files?.outputs ?? {};
     const usedSlots = latestRun && isCompletedStatus(latestRun.status)
+      && !latestRunExpired
       ? await getRunTablePresentationUsedSlots(r2Outputs)
       : [];
 
@@ -94,7 +97,7 @@ export async function GET(
       latestRun: latestRun ? {
         runId: String(latestRun._id),
         status: latestRun.status,
-        canRebuild: isCompletedStatus(latestRun.status) && Object.keys(r2Outputs).length > 0,
+        canRebuild: isCompletedStatus(latestRun.status) && !latestRunExpired && Object.keys(r2Outputs).length > 0,
       } : null,
     });
   } catch (error) {
@@ -178,7 +181,9 @@ export async function PATCH(
       });
       const runResult = parseRunResult(latestRun.result);
 
-      if (runResult?.r2Files?.outputs) {
+      if (areRunArtifactsExpired(latestRun)) {
+        warnings.push('Latest completed run artifacts expired. The new labels will apply on the next run.');
+      } else if (runResult?.r2Files?.outputs) {
         await mutateInternal(internal.runs.updateConfig, {
           runId: latestRun._id,
           orgId: auth.convexOrgId as Id<'organizations'>,

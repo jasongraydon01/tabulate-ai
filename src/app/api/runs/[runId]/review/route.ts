@@ -28,6 +28,10 @@ import { getApiErrorDetails } from '@/lib/api/errorDetails';
 import { parseRunResult } from '@/schemas/runResultSchema';
 import { loadCheckpoint } from '@/lib/v3/runtime/persistence';
 import { persistDurableRecoveryBoundary } from '@/lib/worker/recoveryPersistence';
+import {
+  areRunArtifactsExpired,
+  RUN_ARTIFACTS_EXPIRED_MESSAGE,
+} from '@/lib/runs/artifactRetention';
 
 const MISSING_CHECKPOINT_ERROR =
   'Review checkpoint was lost after a server restart. Please start a new run.';
@@ -86,6 +90,10 @@ export async function POST(
 
     if (!run) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+
+    if (areRunArtifactsExpired(run)) {
+      return NextResponse.json({ error: RUN_ARTIFACTS_EXPIRED_MESSAGE }, { status: 410 });
     }
 
     // Parse and validate request body

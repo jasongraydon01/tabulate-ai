@@ -9,4 +9,10 @@ crons.interval(
   internal.runs.reconcileStaleRuns,
 );
 
+crons.interval(
+  "mark expired runs for retention cleanup",
+  { hours: 1 },
+  internal.runs.markExpiredRuns,
+);
+
 export default crons;

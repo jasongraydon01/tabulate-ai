@@ -199,11 +199,16 @@ export default defineSchema({
     error: v.optional(v.string()),
     cancelRequested: v.boolean(),
     lastHeartbeat: v.optional(v.number()),
+    expiredAt: v.optional(v.number()),
+    artifactsPurgedAt: v.optional(v.number()),
+    lastArtifactCleanupAttemptAt: v.optional(v.number()),
+    artifactCleanupError: v.optional(v.string()),
   })
     .index("by_project", ["projectId"])
     .index("by_org", ["orgId"])
     .index("by_status", ["status"])
-    .index("by_execution_state", ["executionState"]),
+    .index("by_execution_state", ["executionState"])
+    .index("by_expired_at", ["expiredAt"]),
 
   goldenBaselines: defineTable({
     orgId: v.id("organizations"),

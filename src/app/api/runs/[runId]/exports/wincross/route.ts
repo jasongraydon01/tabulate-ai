@@ -14,6 +14,10 @@ import { generateWinCrossExportPackage } from '@/lib/exportData/wincross/service
 import { WinCrossExportServiceError } from '@/lib/exportData/wincross/types';
 import type { WinCrossPreferenceSource } from '@/lib/exportData/wincross/preferenceResolver';
 import { parseRunResult } from '@/schemas/runResultSchema';
+import {
+  areRunArtifactsExpired,
+  RUN_ARTIFACTS_EXPIRED_MESSAGE,
+} from '@/lib/runs/artifactRetention';
 
 function readRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -103,6 +107,10 @@ async function handleRequest(
     });
     if (!run) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+
+    if (areRunArtifactsExpired(run)) {
+      return NextResponse.json({ error: RUN_ARTIFACTS_EXPIRED_MESSAGE }, { status: 410 });
     }
 
     const runResult = parseRunResult(run.result);

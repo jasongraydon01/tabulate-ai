@@ -34,6 +34,7 @@ interface ExportSectionProps {
   projectName: string;
   runCreatedAt: number;
   status: string;
+  expiredAt?: number;
   r2Outputs?: Record<string, string>;
   exportPackages?: Record<string, Record<string, unknown>>;
   exportReadiness?: Record<string, unknown>;
@@ -192,6 +193,7 @@ export function ExportSection({
   projectName,
   runCreatedAt,
   status,
+  expiredAt,
   r2Outputs,
   exportPackages,
   exportReadiness,
@@ -233,6 +235,18 @@ export function ExportSection({
     if (selectedProfileId) return;
     setSelectedProfileId(defaultWinCrossProfileId || '__default__');
   }, [availableProfiles, defaultWinCrossProfileId, selectedProfileId]);
+
+  if (expiredAt) {
+    return (
+      <div className="rounded-lg border border-border bg-muted/30 p-6 text-center">
+        <p className="text-sm font-medium">Artifacts expired</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Download files and export packages were removed after the 30-day retention period.
+          Run history and metadata are still available.
+        </p>
+      </div>
+    );
+  }
 
   const excelOutputs = Object.keys(r2Outputs ?? {})
     .filter((path) => path.endsWith('.xlsx'))

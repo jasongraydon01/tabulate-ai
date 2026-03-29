@@ -136,4 +136,31 @@ describe('Download route', () => {
       expect.stringContaining('.xlsx'),
     );
   });
+
+  it('returns 410 when run artifacts are expired', async () => {
+    mocks.query.mockResolvedValueOnce({
+      _creationTime: Date.UTC(2026, 2, 20),
+      orgId: 'org-1',
+      projectId: 'proj-1',
+      expiredAt: Date.UTC(2026, 3, 20),
+      result: {
+        r2Files: {
+          outputs: {
+            'results/crosstabs.xlsx': 'r2/excel',
+          },
+        },
+      },
+    });
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/runs/run-1/download/crosstabs.xlsx'),
+      { params: Promise.resolve({ runId: 'run-1', filename: ['crosstabs.xlsx'] }) },
+    );
+
+    expect(response.status).toBe(410);
+    expect(await response.json()).toEqual({
+      error: 'Run artifacts have been removed after the 30-day retention period.',
+    });
+    expect(mocks.getDownloadUrl).not.toHaveBeenCalled();
+  });
 });

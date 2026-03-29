@@ -2,15 +2,17 @@ import '../src/lib/loadEnv';
 
 import { mutateInternal } from '@/lib/convex';
 import { internal } from '../convex/_generated/api';
-import type { Id } from '../convex/_generated/dataModel';
 import { runClaimedWorkerRun } from '@/lib/worker/runClaimedRun';
+import { cleanupPendingArtifactRuns } from '@/lib/worker/artifactCleanup';
 import type { ClaimedWorkerRun } from '@/lib/worker/types';
 
 const POLL_INTERVAL_MS = Number(process.env.PIPELINE_WORKER_POLL_MS ?? 5000);
 const STALE_LEASE_MS = Number(process.env.PIPELINE_WORKER_STALE_MS ?? 10 * 60 * 1000);
+const ARTIFACT_CLEANUP_INTERVAL_MS = 60 * 1000;
 const workerId = process.env.PIPELINE_WORKER_ID ?? `worker-${process.pid}`;
 
 let shuttingDown = false;
+let lastArtifactCleanupAt = 0;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -40,6 +42,17 @@ async function main(): Promise<void> {
 
   while (!shuttingDown) {
     try {
+      const now = Date.now();
+      if (now - lastArtifactCleanupAt >= ARTIFACT_CLEANUP_INTERVAL_MS) {
+        lastArtifactCleanupAt = now;
+        const cleanup = await cleanupPendingArtifactRuns();
+        if (cleanup.processed > 0) {
+          console.log(
+            `[Worker] Artifact cleanup: processed=${cleanup.processed} purged=${cleanup.purged} failed=${cleanup.failed}`,
+          );
+        }
+      }
+
       await mutateInternal(internal.runs.requeueStaleRuns, {
         staleBeforeMs: STALE_LEASE_MS,
       });
