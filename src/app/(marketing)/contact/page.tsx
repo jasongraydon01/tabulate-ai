@@ -1,6 +1,14 @@
+import type { Metadata } from 'next';
 import { ContactForm } from '@/components/marketing/ContactForm';
 import { parseContactTopic } from '@/lib/contact';
 import { getContactReplyToAddress } from '@/lib/contactNotifications';
+
+export const metadata: Metadata = {
+  title: 'Contact — Support & Sales',
+  description:
+    'Reach TabulateAI for demo questions, workspace setup, billing, or market research data processing support.',
+  alternates: { canonical: '/contact' },
+};
 
 export default async function ContactPage({
   searchParams,

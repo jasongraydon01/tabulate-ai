@@ -1,13 +1,22 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TrackedLink } from "@/components/TrackedLink";
 import { ScrollReveal } from "@/components/ui/scroll-reveal";
+import { JsonLd } from "@/components/seo/JsonLd";
 import { getAuth, getSessionAuth } from "@/lib/auth";
 import { getMarketingPrimaryCta, getMarketingSecondaryCta } from "@/lib/navigation";
 import { HeroSection } from "./_components/hero-section";
 import { HowItWorksSection } from "./_components/how-it-works-section";
 import { FeaturesSection } from "./_components/features-section";
+
+export const metadata: Metadata = {
+  title: "Crosstab Automation for Market Research Teams",
+  description:
+    "Upload SPSS survey data. TabulateAI produces publication-ready crosstabs with statistical testing, NETs, and bases. Excel, Q, and WinCross export.",
+  alternates: { canonical: "/" },
+};
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +28,38 @@ export default async function LandingPage() {
   const secondaryCta = getMarketingSecondaryCta({ isAuthenticated, hasWorkspaceAccess });
   return (
     <>
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          name: "TabulateAI",
+          applicationCategory: "BusinessApplication",
+          operatingSystem: "Web",
+          description:
+            "Automated crosstab generation for market research. Upload SPSS data and survey documents, get publication-ready cross tabulation tables with statistical testing.",
+          url: "https://tabulate-ai.com",
+          offers: {
+            "@type": "AggregateOffer",
+            priceCurrency: "USD",
+            lowPrice: "200",
+            highPrice: "4999",
+            offerCount: "4",
+          },
+          featureList: [
+            "SPSS .sav file processing",
+            "Automated crosstab generation",
+            "Statistical significance testing",
+            "Excel workbook output",
+            "Q script export",
+            "WinCross .job export",
+            "NET row grouping",
+            "Top 2 Box / Bottom 2 Box summaries",
+            "Skip logic handling",
+            "Human-in-the-loop review",
+          ],
+        }}
+      />
+
       {/* ============ HERO ============ */}
       <HeroSection
         isAuthenticated={isAuthenticated}

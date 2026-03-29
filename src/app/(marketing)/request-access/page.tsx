@@ -1,5 +1,13 @@
+import type { Metadata } from 'next';
 import { RequestAccessForm } from '@/components/marketing/RequestAccessForm';
 import { parseAccessRequestSource } from '@/lib/accessRequests';
+
+export const metadata: Metadata = {
+  title: 'Request Workspace Access',
+  description:
+    'Request a TabulateAI workspace for your market research team. We set up your organization, domain mapping, and admin access.',
+  alternates: { canonical: '/request-access' },
+};
 
 export default async function RequestAccessPage({
   searchParams,

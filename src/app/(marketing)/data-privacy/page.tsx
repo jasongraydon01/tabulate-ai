@@ -4,9 +4,10 @@ import { ScrollReveal } from "@/components/ui/scroll-reveal";
 import { Shield, Database, Globe, Heart, Lock, Key, Users, Gauge, CheckCircle2, Trash2 } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Data & Privacy — TabulateAI",
+  title: "Data & Privacy",
   description:
-    "How TabulateAI handles your data: what we collect, where it goes, and how it's protected.",
+    "How TabulateAI handles market research data: SPSS file processing, AI data flows, encryption, retention policies, and third-party service inventory.",
+  alternates: { canonical: "/data-privacy" },
 };
 
 /* ------------------------------------------------------------------ */

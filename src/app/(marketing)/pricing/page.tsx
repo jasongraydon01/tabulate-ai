@@ -1,5 +1,13 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRight, FileSpreadsheet, FileText, LayoutGrid, MessageSquare, SlidersHorizontal, UserCheck, CheckCircle2 } from 'lucide-react';
+
+export const metadata: Metadata = {
+  title: 'Pricing — Survey Tabulation Plans & Volume',
+  description:
+    'Volume-based pricing for automated cross tabulation. Every plan includes full SPSS processing, statistical testing, Excel output, Q scripts, and WinCross export.',
+  alternates: { canonical: '/pricing' },
+};
 import { Button } from '@/components/ui/button';
 import { TrackedLink } from '@/components/TrackedLink';
 import { ScrollReveal } from '@/components/ui/scroll-reveal';
@@ -23,6 +31,8 @@ import { queryInternal } from '@/lib/convex';
 import { internal } from '../../../../convex/_generated/api';
 import { canPerform } from '@/lib/permissions';
 import { isInternalAccessUser } from '@/lib/internalOperators';
+import { JsonLd } from '@/components/seo/JsonLd';
+import { FAQ_ITEMS } from '@/components/pricing/PricingFAQ';
 
 export const dynamic = 'force-dynamic';
 
@@ -73,6 +83,21 @@ export default async function PricingPage({
 
   return (
     <>
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: FAQ_ITEMS.map((item) => ({
+            "@type": "Question",
+            name: item.question,
+            acceptedAnswer: {
+              "@type": "Answer",
+              text: item.answer,
+            },
+          })),
+        }}
+      />
+
       {/* ============ HERO ============ */}
       <section className="relative overflow-hidden pt-32 pb-36 px-6">
         <div className="absolute inset-0 bg-editorial-radial" />

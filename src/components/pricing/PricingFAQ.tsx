@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/collapsible';
 import { ScrollReveal } from '@/components/ui/scroll-reveal';
 
-const FAQ_ITEMS = [
+export const FAQ_ITEMS = [
   {
     question: 'How do I get started?',
     answer:
