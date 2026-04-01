@@ -25,6 +25,7 @@ import {
   buildExportPackageBasePath,
   buildRunArtifactBasePath,
   buildRunArtifactKey,
+  deleteReviewFiles,
   downloadReviewFiles,
   uploadPipelineOutputs,
   uploadReviewFile,
@@ -118,5 +119,27 @@ describe('R2FileManager', () => {
     const restoredPath = path.join(tempDir, 'planning', '21-crosstab-plan.json');
     expect(downloaded.v3CrosstabPlan).toBe(restoredPath);
     await expect(fs.readFile(restoredPath, 'utf8')).resolves.toBe('{"ok":true}');
+  });
+
+  it('only deletes transient review artifacts after completion', async () => {
+    await deleteReviewFiles({
+      reviewState: 'org-1/project-1/runs/run-1/crosstab-review-state.json',
+      pathBResult: 'org-1/project-1/runs/run-1/stages/path-b-result.json',
+      v3CrosstabPlan: 'org-1/project-1/runs/run-1/planning/21-crosstab-plan.json',
+      v3TableEnriched: 'org-1/project-1/runs/run-1/tables/13e-table-enriched.json',
+      v3QuestionIdFinal: 'org-1/project-1/runs/run-1/enrichment/12-questionid-final.json',
+      v3Checkpoint: 'org-1/project-1/runs/run-1/checkpoint.json',
+      pipelineSummary: 'org-1/project-1/runs/run-1/pipeline-summary.json',
+      dataFileSav: 'org-1/project-1/runs/run-1/dataFile.sav',
+      spssInput: 'org-1/project-1/runs/run-1/inputs/source.sav',
+    });
+
+    expect(mocks.deleteFile).toHaveBeenCalledTimes(2);
+    expect(mocks.deleteFile).toHaveBeenCalledWith('org-1/project-1/runs/run-1/crosstab-review-state.json');
+    expect(mocks.deleteFile).toHaveBeenCalledWith('org-1/project-1/runs/run-1/stages/path-b-result.json');
+    expect(mocks.deleteFile).not.toHaveBeenCalledWith('org-1/project-1/runs/run-1/planning/21-crosstab-plan.json');
+    expect(mocks.deleteFile).not.toHaveBeenCalledWith('org-1/project-1/runs/run-1/tables/13e-table-enriched.json');
+    expect(mocks.deleteFile).not.toHaveBeenCalledWith('org-1/project-1/runs/run-1/checkpoint.json');
+    expect(mocks.deleteFile).not.toHaveBeenCalledWith('org-1/project-1/runs/run-1/dataFile.sav');
   });
 });

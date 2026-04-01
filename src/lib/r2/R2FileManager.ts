@@ -720,14 +720,24 @@ export async function downloadReviewFiles(
 
 /**
  * Delete review files from R2 after pipeline completion.
- * Skips spssInput key (shared with initial input upload).
+ * Only deletes transient review-only artifacts.
+ *
+ * Durable recovery artifacts (checkpoint, V3 stage outputs, dataFile.sav,
+ * pipeline summary) are stored in reviewR2Keys as well, but they live under
+ * the canonical run prefix and are required for later re-exports/debugging.
+ * Deleting them here breaks post-review Q/WinCross package generation.
  * Non-fatal — errors are logged but not thrown.
  */
 export async function deleteReviewFiles(reviewR2Keys: ReviewR2Keys): Promise<void> {
-  // Auto-enumerate all keys except spssInput (shared with initial input upload)
+  const transientFields: Array<keyof ReviewR2Keys> = [
+    'reviewState',
+    'pathBResult',
+    'pathCResult',
+  ];
+
   const keysToDelete: string[] = [];
-  for (const [field, value] of Object.entries(reviewR2Keys)) {
-    if (field === 'spssInput') continue; // shared — do not delete
+  for (const field of transientFields) {
+    const value = reviewR2Keys[field];
     if (typeof value === 'string' && value) keysToDelete.push(value);
   }
 
