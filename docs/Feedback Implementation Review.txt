@@ -1,0 +1,153 @@
+Jason Anderson  0:05  
+hello, how are you? Hello, good, thank you. How about you?
+
+Unknown Speaker  0:12  
+I'm good busy day. Yes, I
+
+Unknown Speaker  0:26  
+Yeah, all right, so where should we start?
+
+Jason Anderson  0:31  
+Yeah, well, yeah. I mean, firstly, just thank you for the feedback. It's been very helpful. And then, as you saw, I just sent another email, which just incorporates some of the changes that you all shared with with with me, and tried to explain, sort of how I thought through the different feedback. So at a high level, as kind of outlined in that email, I kind of took the feedback and tried to put it into three different buckets, some things that are just simply one, cross conventions that need to be adjusted. That's kind of bucket one, bucket two that could be reasonably kind of learned from a dot j, OB, without, you know, what do you call it? Stretching, kind of the understanding or trying to hard code certain, you know, conventions that may or may not be general. And then the third bucket are things that we decided to not change because they may depend more on kind of an analyst's intent or just feel like things that are really just dependent on how a specific firm might operate. So that's kind of how we, you know, implemented the changes. And yeah, that's kind of what the updated file kind of incorporates. But other than that, a lot of the feedback you shared was very helpful. And so those are kind of my initial thoughts. And, you know, unless you all have any other kind of thoughts, one thing that I'm trying to get out of this conversation is a sense of from that last version that I sent, you know, how close would that be from something you would consider, not necessarily client ready, but more, how much work would it take to get that version to what you might send to a client like that gap and trying to contextualize, you know, whether there's a time savings at all, or whether those changes or issues were, you know, big enough that any savings you might Get from the pipeline get kind of washed away because of those changes. So that's kind of what I'm interested in,
+
+Poorna Chavithini [Antares]  2:50  
+long, long notes. So initial feedback is like when we talk about the programming time point and other thing is like QC standpoint, reviewing the table standpoint, right? So, from the programming anyway, even the tool generates things, and other things QC need to be performed on the tables, right? So when we solely talk about the programming timing standpoint, what few other things that still need to be injected in terms of like how the titles need to be appeared, and some of the things and let me share. I quickly look at the file that you shared. I and some of the open ends having something like t1 I know this is like a different structure that then what we usually have. I think these are the subnets. And this the main part in it. Yeah. So this wording, something need to be tweaked in. And some of the percentage I check over the summary tables, especially, and still, there are some mismatches in the tables. Of course, the structure is fine, but the percentage, for example, if we have like this 170 5% 48% when it comes to the tables. It is something different person there. So those are all need to be taken care and in terms of the operands, as I shown earlier. So these need to be removed and tweak. Some tweaks need to be tested. Yep, okay. And I observe some things are not intentionally made, small size, something, notice somewhere some along with the base text, I'm getting something else.
+
+Poorna Chavithini [Antares]  5:01  
+Yeah, so this one, so is a default or intention layer. So because when we say, when the when we say that this structure is finalized, then the client should accept it, right? However, however we are delivering. So if we are still making these adjustments manually, then that may cause some additional efforts from our side. Yep. Okay, so at this point, I would say, from what we get from default Windows in terms of programming and what we are having here, it will be like 30% of time it will be reduced from the version. What we have, right?
+
+Jason Anderson  5:49  
+Okay, yeah, that's, yeah, that's very helpful.
+
+Poorna Chavithini [Antares]  5:53  
+Yeah, as, as I mentioned, it's a programming thing, because there are two aspects. Anyway, quality checks need to be done, whether it is done by the tool, or whatever it is, those QCS will be separate. But in terms of programming, we can see that 30% is what we can save from what the Green Cross file is producing versus the tool that you developed.
+
+Jason Anderson  6:15  
+Yeah, that's definitely helpful. Going to the open ended ones, yeah, those were tough, as you can see, you know, the open ended codes have a different variable name than the actual questions within the survey, so we couldn't figure out a way to kind of reliably link those things together. It's definitely on the, you know, roadmap in terms of if it's possible to link those together, but it's kind of difficult to so that's kind of why we have them appended to the back, versus kind of falling underneath the actual open ended question that was asked in terms of the t1 and that subnet. That's also something that we could definitely what do you call it? Kind of hard code a fix for like, if you see a t1, you know, in this structure, then collapse it in that way. But it's one of those things where, you know, I'm sort of debating if that's not that it's not necessary, but it doesn't yet feel like something that we could reliably, kind of make an assumption, right? That that is the case for every single survey, but definitely hear you on that and see that that t1 is the overall net, and then the subnets are underneath that. Still trying to think of a way to kind of reliably infer that collapse that bad relationship, yeah.
+
+Poorna Chavithini [Antares]  7:39  
+And if you look at the quotient text. It is too lengthy what we have here, so the entire text is copied something, yep, the base title need to be updated manually there, because it doesn't take the base titles automatically. Yeah. Okay. Case of any some kind of routing. Is there how it creates a basics for the specific questions that needs to be taken care manually? So I believe,
+
+Jason Anderson  8:12  
+Yep, yeah, yeah. That's yeah, no, that's helpful, and I'm taking some notes on some of these things. So yeah, we'll continue to work through them. Yeah. I mean, were there any other kind of notes? Oh, yeah,
+
+Poorna Chavithini [Antares]  8:41  
+I tried to access this one, but getting some different thing. Not sure what it is, any issues from my sides in terms of settings or
+
+Jason Anderson  8:52  
+No, I think what So what happened here was I've sort of changed the link so I could share with you all an updated link. I just kind of moved it from that link, that domain name, to a different one, so that that's all the issue is there?
+
+Poorna Chavithini [Antares]  9:09  
+Okay? Because we have been settling back in the same survey that prevana study. So what my thoughts is, we feature some of the things in this survey, but we need to take that into consideration for the different surveys and see how it is working. So we can say that any general fixes are needed as survey related. Survey specific fixes are needed some kind of questions that you have we can answer once we have, once you work on them for a couple of studies so that we can figure out what are the differences?
+
+Jason Anderson  9:40  
+Yeah, totally. I'll be sure to share with you kind of an updated link so you can, you know, upload some other projects in there and see what the results are. Yeah, I'll make sure I do that by the end of today. Okay,
+
+Poorna Chavithini [Antares]  10:06  
+so I think that's those are the points from my side. So do you have any other questions or anything this?
+
+Jason Anderson  10:18  
+Let's see. No, I think you, yeah, you gave a great answer to all of those three items. So yeah, I think I have a clear sense as to kind of, at least, for this specific project, how much time savings are there, and then we'll see if that carries over, if it's similar, or more or less for other projects. But, yeah, I guess one, one question would be, you know, if we're sitting at 30% now, you know, is there a threshold that you would feel, you would kind of feel, is a meaningful kind of time savings? You know, is at 50% 80% you know?
+
+Poorna Chavithini [Antares]  11:04  
+Yeah, anything higher will be great, yeah,
+
+Jason Anderson  11:08  
+yeah, definitely
+
+Poorna Chavithini [Antares]  11:10  
+about 60 to 70, considering that based titles is a manual or judgmental call based on the things. So anything about 60 to 70 will be great.
+
+Jason Anderson  11:23  
+Yeah, that's helpful, yeah?
+
+Poorna Chavithini [Antares]  11:26  
+Well, yeah, because, because, as I mentioned, if you're talking about the base title changes, quotient text into between those can be covered. Once we are doing manually, the QC time will be like we can cover, we can reduce some of the QC time in those aspects.
+
+Jason Anderson  11:42  
+Yeah, yeah.
+
+Poorna Chavithini [Antares]  11:45  
+So if this can be covered here, then we can it will substantially impact the other things. So that's the reason so anything about 60 to 70 would be great. Okay, okay,
+
+Jason Anderson  12:03  
+and what are some of the other aspects you're doing in the QC you are looking at the base titles, what else kind of falls within the QC part,
+
+Poorna Chavithini [Antares]  12:16  
+the piping of the data. And we need to make sure that whatever the data we have for each and every code we check manually, because if something goes wrong by accident or something else. So that's those are the two sides. One is either the data is not filled in correctly, or something happened in terms of create file creation that corrupts
+
+Jason Anderson  12:38  
+the data. Okay?
+
+Raina Friedman [Antares]  12:42  
+So I just jumping in here, probably a dumb question, but so I guess right now, if we're at 30% I know we talked about the base wording and all of that, how do we get to a higher number if we're, if we're going to be checking all of the data points manually to make sure that nothing happened, which, which is good we're doing that we want to make sure the data is accurate. But it seems like that maybe is a pretty large gap. So how do we reduce that? Is that possible? Is there something else we can do to reduce that? Maybe that's what you were thinking, Jason, like, I feel like that's a how do we get to a bigger savings of efficiency? Because it sounds like, yeah, we're checking everything manually. I don't know, yeah, any ideas on that?
+
+Jason Anderson  13:47  
+Yeah, I'll have to keep thinking on that. But I think foreign, I mean, it's partially a question. I think that you could also provide guidance on in just in terms of, yeah, is there? Yeah, like, is there something that you can see there that could reduce that QC time, despite having to kind of manually check each question,
+
+Raina Friedman [Antares]  14:19  
+and I guess porno To that end, what are you using to check manually against the output? Are you looking at the SPSS file and SPSS? Okay, yeah, we
+
+Poorna Chavithini [Antares]  14:34  
+mostly take the SPSS. Otherwise, there's another option to download from the decipher we have the Council Report, we can use the test bar, but as a traditional format, we check with the SPSS, right?
+
+Raina Friedman [Antares]  14:49  
+And since every questionnaire is custom, because I was trying to think, like, is there a macro that could be written that would kind of do some of that manual checking between the output and the SPSS, but
+
+Poorna Chavithini [Antares]  15:05  
+I think you can consider the one from the decipher, because it gives counts, report, report, but the only concern here is in the SPSS will Have some kind of frequencies for the only answered ones. But I don't think it will the decipher one will have the filtering filter counts,
+
+Jason Anderson  15:29  
+okay, and yeah. So when you're Yeah, checking on decipher or the SPSS file, what are you looking for? Whether, if the counts between your table matches match the counts within decipher, or SPSS, yeah, yeah, yeah.
+
+Raina Friedman [Antares]  15:53  
+I just, I don't know how you automate that, right, that part of it, or parts of that to try to reduce that amount of time, because that seems to be like the most significant amount of time I'm sure that you're spending between what the output is and what the data says,
+
+Jason Anderson  16:17  
+yeah, yeah. That's interesting. I mean, it feels like it feels doable,
+
+Jason Anderson  16:29  
+but it feels like a confidence thing too, right? Like your team wants to be confident, right? That. So even if we had a way to automatically do it, you're still in the same situation where you're like, we want to make sure that automatic case is actually right, so it feels like maybe less of a Is it doable automatically versus like, what can we do to make your team confident that the computer actually is treating it with the same rigor that your team is doing? So yeah, that's in kind of like a psychological thing as well. Yeah, for sure. Which is definitely, yeah, which is definitely fair.
+
+Raina Friedman [Antares]  17:08  
+Well, I think on the positive side, every number is being double checked. Jason, so there you go. That makes you feel good about the data.
+
+Jason Anderson  17:14  
+No, it's great. It's a great situation. Yeah, yeah. Well, I mean, I'm happy to put some thought to it, you know, I'm even considering, I wonder, maybe, you know, is there a way to, you know, check a subset of the sample you know, or a subset of the questions that in a way that you know covers a wide variety that makes the team feel confident. But I'm happy to kind of think through whether there's, like, a post survey in the platform for the team to kind of manually check certain aspects, or something else, maybe a score that this system could give on, you know, certain metrics. But yeah, happy to keep thinking through it.
+
+Poorna Chavithini [Antares]  18:04  
+Yeah. In the meantime, once we have the access, we'll try to assess for few more studies, once we have so that we can provide more feedback, whether it is a general survey, specific
+
+Raina Friedman [Antares]  18:14  
+things, yeah, and maybe there's certain questions, like, I don't know what hiccups you might have experienced in the past where something doesn't align, but maybe there's certain types of questions or certain types of tab elements that are more prone to error than others, and so maybe those areas you get specific attention to, but Then others that are more straightforward or you haven't really seen any concerns historically. Maybe those can be a more of a spot check type of or rely on some more automated checking macros or something. I'm talking like, I know what I'm talking about, but just throwing things out there, maybe that's something we could talk about.
+
+Jason Anderson  19:07  
+Yeah, well, yeah, I appreciate both of you all working on working with me on this, so it's been very helpful and learning a lot about the work that you all do. So really appreciate it all and, yeah, and fortune stuff. Definitely appreciate it,
+
+Unknown Speaker  19:24  
+great in setting the goal,
+
+Jason Anderson  19:28  
+yeah, in addition to me sending the access, are you able to send the, I guess, an export of the Excel sheet, porne, of the most recent dot, jlb that was created.
+
+Unknown Speaker  19:42  
+You mean the output format?
+
+Jason Anderson  19:44  
+Yes, not that I think will excel, like, what you would actually, you know, export from wind cross once you kind of just because I don't have access to the to win cross anymore, at least I had a demo version to kind of get everything where we currently are at. But I think what's interesting is, like, you know,
+
+Unknown Speaker  20:06  
+this time, right?
+
+Jason Anderson  20:07  
+Yeah, exactly. That would be helpful for me to kind of see how the percents are rendering.
+
+Unknown Speaker  20:14  
+Yeah, I'll share the right off the call.
+
+Jason Anderson  20:16  
+Okay, perfect, right, all right, well Happy April Fool's Day, best rest of your weeks.
+
+Raina Friedman [Antares]  20:29  
+Thanks, Jason, you too.
+
