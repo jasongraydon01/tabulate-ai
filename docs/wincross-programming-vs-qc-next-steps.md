@@ -2,13 +2,14 @@
 
 ## Purpose
 
-This note captures the main takeaways from the Antares feedback call and separates the next steps into:
+This note translates the Antares feedback into a practical response plan and separates the next steps into:
 
 1. TabulateAI behavior
 2. WinCross export conventions
 3. QC workflow inside TabulateAI
 
 The goal is to avoid treating every issue as a WinCross serializer problem when the actual gaps sit in different layers of the system.
+It is not a transcript summary. It is a product strategy memo for what TabulateAI should do next.
 
 ---
 
@@ -18,8 +19,11 @@ The goal is to avoid treating every issue as a WinCross serializer problem when 
 - Antares still sees two distinct workstreams:
   - programming / job-file creation
   - QC / validating that the output is safe and correct
+- Tracks A and B remain immediate priorities because output correctness and WinCross fidelity are table stakes.
+- Track C exists because even if A and B improve materially, Antares still has a separate QC bottleneck.
 - Some of the current gaps are true programming defects.
 - Some of the remaining drag is not that they must QC, but that their current QC workflow is inefficient because it happens outside TabulateAI by cross-referencing SPSS / Decipher manually.
+- Internally, this direction is informed by having run the pipeline across many datasets already. The open external validation question is how Antares experiences the output across studies beyond Prevnar once they run those projects themselves.
 
 ## Most Important Product Insight
 
@@ -32,6 +36,12 @@ The better goal is:
 - make it much faster, clearer, and more targeted than the current SPSS / Decipher cross-check process
 
 If Antares can review every table inside TabulateAI with much better visibility into bases, counts, denominators, filters, and warnings, that may create meaningful workflow savings even before we reach full automation trust.
+
+This does **not** reduce the importance of A or B.
+It means:
+
+- A and B improve the output itself
+- C improves the cost of trusting and validating that output
 
 ---
 
@@ -55,6 +65,8 @@ The clearest unresolved correctness issue is still:
 - mismatches between summary tables and underlying tables
 
 This is a product correctness issue, not merely QC overhead.
+The exact failing layer still needs manual reconciliation table by table.
+The current working read is that the remaining issue is more likely in WinCross serialization / convention handling than in TabulateAI's native Excel output, but that should be confirmed against the exact tables Antares flagged.
 
 ### 3. Some content/presentation issues remain upstream
 
@@ -75,6 +87,8 @@ Raina’s question was the strategic one:
 
 That suggests the next big unlock is not just cleaner export output.
 It is a **faster verification workflow**.
+
+But this should be read as an additional track, not a replacement for fixing correctness or export fidelity.
 
 ---
 
@@ -100,13 +114,13 @@ If these are wrong upstream, the WinCross export will still be wrong even if the
 
 ### Immediate next steps
 
+- Continue tightening title/base/OE logic in a dataset-general way.
 - Use the WinCross-exported Excel from Antares to isolate exact summary-table percent differences.
 - Compare:
   - TabulateAI Excel
   - WinCross-rendered Excel
   - source-data expectations
 - Classify mismatches by table family so denominator rules become explicit instead of ad hoc.
-- Continue tightening title/base/OE logic in a dataset-general way.
 
 ---
 
@@ -129,6 +143,11 @@ This is where house-style fidelity and WinCross-specific correctness live.
 
 ### Immediate next steps
 
+- Treat the current summary-table issue as likely serializer/convention work unless the table-by-table comparison shows otherwise.
+- Manually reconcile the exact tables Antares believes are wrong against:
+  - TabulateAI Excel
+  - WinCross output produced from our `.job`
+  - the reference WinCross-rendered Excel they sent
 - Keep improving denominator handling where the WinCross-rendered output diverges from expected percentages.
 - Use the reference `.job` only for preferences that are safely inferable and repeatable.
 - Do not overfit vendor-specific conventions into global defaults unless they are clearly portable.
@@ -267,11 +286,11 @@ That distinction is important because we should not let true correctness bugs hi
 
 ## Validation
 
-- Test the same workflow on multiple studies, not just the Prevnar project.
-- Separate:
-  - general fixes
-  - survey-family fixes
-  - study-specific exceptions
+- Internal confidence should continue to come from dataset-general behavior across the studies already run through the pipeline.
+- External validation should come from Antares running studies beyond Prevnar inside TabulateAI and reporting what feels:
+  - generally improved
+  - survey-family specific
+  - or still study-specific
 
 ---
 
@@ -284,5 +303,8 @@ The next step is:
 - continue fixing programming correctness issues
 - continue tightening WinCross export fidelity
 - and build a QC workflow inside TabulateAI so reviewers can verify output much faster than they do today
+
+Tracks A and B are immediate output work.
+Track C addresses the separate QC bottleneck that will still matter even after A and B improve.
 
 That is the most realistic route to turning current programming gains into real workflow savings.
