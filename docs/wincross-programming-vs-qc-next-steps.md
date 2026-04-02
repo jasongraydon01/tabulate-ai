@@ -19,7 +19,8 @@ It is not a transcript summary. It is a product strategy memo for what TabulateA
 - Antares still sees two distinct workstreams:
   - programming / job-file creation
   - QC / validating that the output is safe and correct
-- Tracks A and B remain immediate priorities because output correctness and WinCross fidelity are table stakes.
+- Track A remains the immediate programming priority because output correctness and output quality are still the main active gaps.
+- Track B still exists as backlog fidelity work, but it does not appear to be the main current Antares blocker.
 - Track C exists because even if A and B improve materially, Antares still has a separate QC bottleneck.
 - Some of the current gaps are true programming defects.
 - Some of the remaining drag is not that they must QC, but that their current QC workflow is inefficient because it happens outside TabulateAI by cross-referencing SPSS / Decipher manually.
@@ -37,10 +38,10 @@ The better goal is:
 
 If Antares can review every table inside TabulateAI with much better visibility into bases, counts, denominators, filters, and warnings, that may create meaningful workflow savings even before we reach full automation trust.
 
-This does **not** reduce the importance of A or B.
+This does **not** reduce the importance of A.
 It means:
 
-- A and B improve the output itself
+- A improves the output itself
 - C improves the cost of trusting and validating that output
 
 ---
@@ -66,7 +67,7 @@ The clearest unresolved correctness issue is still:
 
 This is a product correctness issue, not merely QC overhead.
 The exact failing layer still needs manual reconciliation table by table.
-The current working read is that the remaining issue is more likely in WinCross serialization / convention handling than in TabulateAI's native Excel output, but that should be confirmed against the exact tables Antares flagged.
+Current evidence points more toward upstream denominator/base behavior than a broad WinCross convention problem.
 
 ### 3. Some content/presentation issues remain upstream
 
@@ -77,7 +78,7 @@ They also called out:
 - OE / T1 / subnet structure issues
 - occasional rendering or formatting noise
 
-These are not purely WinCross serializer issues. Some belong in upstream table planning / labeling / content generation.
+These are not purely WinCross serializer issues. They mostly belong in upstream table planning, labeling, and content generation.
 
 ### 4. The real bottleneck is trustable verification
 
@@ -88,7 +89,7 @@ Raina’s question was the strategic one:
 That suggests the next big unlock is not just cleaner export output.
 It is a **faster verification workflow**.
 
-But this should be read as an additional track, not a replacement for fixing correctness or export fidelity.
+But this should be read as an additional track, not a replacement for fixing correctness.
 
 ---
 
@@ -126,7 +127,7 @@ If these are wrong upstream, the WinCross export will still be wrong even if the
 
 ## Track B: WinCross Export Conventions
 
-This is the serializer-specific layer.
+This is the serializer-specific layer, but it no longer looks like the main current Antares issue.
 
 ### Includes
 
@@ -139,17 +140,27 @@ This is the serializer-specific layer.
 
 ### Why this matters
 
-This is where house-style fidelity and WinCross-specific correctness live.
+This is where house-style fidelity and WinCross-specific correctness live when they are actually the source of a gap.
+Based on the current discussion, that seems more like backlog fidelity work than the main immediate problem.
+
+### Current read
+
+- Antares did previously give written feedback on some WinCross-specific conventions.
+- They did **not** emphasize those conventions as the main remaining blocker in the follow-up discussion.
+- In the discussion, the issues they stressed were:
+  - summary-table correctness
+  - base title / routing wording
+  - long question text
+  - OE / T1 structure
+- So Track B should be treated as mostly addressed for now unless new evidence shows a real serializer-specific defect.
 
 ### Immediate next steps
 
-- Treat the current summary-table issue as likely serializer/convention work unless the table-by-table comparison shows otherwise.
-- Manually reconcile the exact tables Antares believes are wrong against:
-  - TabulateAI Excel
-  - WinCross output produced from our `.job`
-  - the reference WinCross-rendered Excel they sent
-- Keep improving denominator handling where the WinCross-rendered output diverges from expected percentages.
-- Use the reference `.job` only for preferences that are safely inferable and repeatable.
+- Keep the remaining WinCross fidelity items documented, but do not let them drive near-term prioritization.
+- Only pull Track B work forward if:
+  - Antares explicitly re-raises a serializer-specific issue, or
+  - table-by-table reconciliation proves a real `.job` emission defect.
+- Continue using the reference `.job` only for preferences that are safely inferable and repeatable.
 - Do not overfit vendor-specific conventions into global defaults unless they are clearly portable.
 
 ---
@@ -301,10 +312,11 @@ The next step is not simply “make the `.job` better.”
 The next step is:
 
 - continue fixing programming correctness issues
-- continue tightening WinCross export fidelity
+- keep remaining WinCross fidelity work documented without treating it as the main current blocker
 - and build a QC workflow inside TabulateAI so reviewers can verify output much faster than they do today
 
-Tracks A and B are immediate output work.
-Track C addresses the separate QC bottleneck that will still matter even after A and B improve.
+Track A is the immediate output work.
+Track B is now mostly backlog fidelity work unless Antares re-raises a serializer-specific issue.
+Track C addresses the separate QC bottleneck that will still matter even after A improves.
 
 That is the most realistic route to turning current programming gains into real workflow savings.
