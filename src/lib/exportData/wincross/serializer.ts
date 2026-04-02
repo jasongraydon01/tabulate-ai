@@ -190,6 +190,12 @@ interface ResolvedWinCrossTableSemantics {
   filteredTotalExpr: string | null;
 }
 
+interface ResolvedBaseValidationRecord {
+  tautologicalSplitForbidden: boolean;
+  substantiveRebasingForbidden: boolean;
+  requiresSharedDisplayedBase: boolean;
+}
+
 export function serializeWinCrossJob(
   artifacts: WinCrossResolvedArtifacts,
   profile: WinCrossPreferenceProfile,
@@ -1659,11 +1665,17 @@ function resolveWinCrossTableSemantics(
   defaultTotalLine: string,
   additionalFilter: string,
 ): ResolvedWinCrossTableSemantics {
+  assertResolvedBaseContract(table);
+
+  const resolvedBaseMode = readResolvedBaseMode(table.resolvedBaseMode);
+  const resolvedBaseTextTemplate = readResolvedBaseTextTemplate(table.resolvedBaseTextTemplate);
   const explicitSemantic = readWinCrossDenominatorSemantic(table.wincrossDenominatorSemantic);
   const fallbackSemantic = classifyDenominatorSemanticFromTableKind(
     typeof table.tableKind === 'string' ? table.tableKind : '',
   );
-  let semantic = explicitSemantic ?? fallbackSemantic;
+  let semantic = resolvedBaseMode
+    ? resolveSemanticFromBaseContract(resolvedBaseMode, resolvedBaseTextTemplate, explicitSemantic)
+    : (explicitSemantic ?? fallbackSemantic);
   const qualifiedCodes = readStringArray(table.wincrossQualifiedCodes);
   const filteredTotalExpr = (
     typeof table.wincrossFilteredTotalExpr === 'string' && table.wincrossFilteredTotalExpr.trim().length > 0
@@ -1673,6 +1685,10 @@ function resolveWinCrossTableSemantics(
 
   if (filteredTotalExpr) {
     semantic = 'filtered_sample';
+  } else if (resolvedBaseMode && semantic === 'qualified_respondents') {
+    throw new Error(
+      `Table "${String(table.tableId ?? 'unknown')}" cannot use qualified_respondents under the simplified base contract`,
+    );
   } else if (semantic === 'qualified_respondents' && qualifiedCodes.length === 0) {
     semantic = 'sample_base';
   }
@@ -1738,6 +1754,110 @@ function resolveWinCrossTableSemantics(
     qualifiedCodes: [],
     filteredTotalExpr: null,
   };
+}
+
+function requiresResolvedBaseContract(table: Record<string, unknown>): boolean {
+  return typeof table.tableKind === 'string' && table.tableKind.trim().length > 0;
+}
+
+function readResolvedBaseMode(value: unknown): 'total_base' | 'table_universe_base' | 'model_base' | null {
+  switch (value) {
+    case 'total_base':
+    case 'table_universe_base':
+    case 'model_base':
+      return value;
+    default:
+      return null;
+  }
+}
+
+function readResolvedBaseTextTemplate(
+  value: unknown,
+): 'total_respondents' | 'shown_this_question' | 'shown_this_item' | 'model_derived' | null {
+  switch (value) {
+    case 'total_respondents':
+    case 'shown_this_question':
+    case 'shown_this_item':
+    case 'model_derived':
+      return value;
+    default:
+      return null;
+  }
+}
+
+function readResolvedBaseValidation(value: unknown): ResolvedBaseValidationRecord | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.tautologicalSplitForbidden !== 'boolean'
+    || typeof record.substantiveRebasingForbidden !== 'boolean'
+    || typeof record.requiresSharedDisplayedBase !== 'boolean'
+  ) {
+    return null;
+  }
+  return {
+    tautologicalSplitForbidden: record.tautologicalSplitForbidden,
+    substantiveRebasingForbidden: record.substantiveRebasingForbidden,
+    requiresSharedDisplayedBase: record.requiresSharedDisplayedBase,
+  };
+}
+
+function assertResolvedBaseContract(table: Record<string, unknown>): void {
+  if (!requiresResolvedBaseContract(table)) return;
+
+  const resolvedBaseMode = readResolvedBaseMode(table.resolvedBaseMode);
+  const resolvedBaseTextTemplate = readResolvedBaseTextTemplate(table.resolvedBaseTextTemplate);
+  const resolvedBaseValidation = readResolvedBaseValidation(table.resolvedBaseValidation);
+  if (!resolvedBaseMode || !resolvedBaseTextTemplate || !resolvedBaseValidation) {
+    throw new Error(
+      `Table "${String(table.tableId ?? 'unknown')}" is missing resolved base contract metadata`,
+    );
+  }
+
+  const splitPolicy = typeof table.resolvedSplitPolicy === 'string'
+    ? table.resolvedSplitPolicy
+    : 'none';
+  if (resolvedBaseValidation.tautologicalSplitForbidden && splitPolicy === 'required') {
+    throw new Error(
+      `Table "${String(table.tableId ?? 'unknown')}" requests a tautological split under the simplified base contract`,
+    );
+  }
+
+  if (resolvedBaseValidation.requiresSharedDisplayedBase) {
+    const normalizedBaseText = typeof table.baseText === 'string' ? table.baseText : '';
+    const normalizedUserNote = typeof table.userNote === 'string' ? table.userNote : '';
+    const legacyDisclosurePattern = /(base varies|rebased|qualified respondents|substantive|\(n\s*varies\))/i;
+    if (
+      legacyDisclosurePattern.test(normalizedBaseText)
+      || legacyDisclosurePattern.test(normalizedUserNote)
+    ) {
+      throw new Error(
+        `Table "${String(table.tableId ?? 'unknown')}" carries legacy base disclosure text that conflicts with the simplified base contract`,
+      );
+    }
+  }
+}
+
+function resolveSemanticFromBaseContract(
+  resolvedBaseMode: 'total_base' | 'table_universe_base' | 'model_base',
+  resolvedBaseTextTemplate:
+    | 'total_respondents'
+    | 'shown_this_question'
+    | 'shown_this_item'
+    | 'model_derived'
+    | null,
+  explicitSemantic: WinCrossDenominatorSemantic | null,
+): WinCrossDenominatorSemantic {
+  if (resolvedBaseMode === 'model_base') {
+    return explicitSemantic ?? 'sample_base';
+  }
+  if (resolvedBaseMode === 'total_base') {
+    return 'sample_base';
+  }
+  if (resolvedBaseTextTemplate === 'shown_this_item') {
+    return 'answering_base';
+  }
+  return 'sample_base';
 }
 
 function readWinCrossDenominatorSemantic(value: unknown): WinCrossDenominatorSemantic | null {

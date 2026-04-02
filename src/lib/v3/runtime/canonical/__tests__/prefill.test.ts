@@ -693,9 +693,7 @@ describe('13e userNote', () => {
       metadata: METADATA,
     });
 
-    expect(result.tables[0].userNote).toBe(
-      'Ranked top 3 of 10 items; Base varies by item (n=160-200)',
-    );
+    expect(result.tables[0].userNote).toBe('Ranked top 3 of 10 items');
   });
 
   it('cap at 3 notes max', () => {
@@ -713,12 +711,11 @@ describe('13e userNote', () => {
       metadata: METADATA,
     });
 
-    // ranking (1) + binary_flag (2) + rebased (3) — variable bases should be capped
+    // Simplified contract no longer injects rebased/varying-base note text by default
     const notes = result.tables[0].userNote.split('; ');
-    expect(notes).toHaveLength(3);
+    expect(notes).toHaveLength(2);
     expect(notes[0]).toBe('Ranked top 2 of 6 items');
     expect(notes[1]).toBe('Multiple answers accepted');
-    expect(notes[2]).toBe('Rebased to exclude non-substantive responses');
   });
 
   it('table with existing non-empty userNote → not overwritten', () => {
@@ -837,11 +834,12 @@ describe('13e userNote', () => {
 // =============================================================================
 
 describe('13e baseText', () => {
-  it('uses baseDisclosure default text before legacy fallback rules', () => {
+  it('uses resolved base text template before legacy fallback rules', () => {
     const table = makeTable({
       basePolicy: 'total_base',
       baseText: 'Legacy text that should be ignored',
       questionBase: 200,
+      resolvedBaseTextTemplate: 'shown_this_question',
       baseDisclosure: {
         referenceBaseN: 150,
         itemBaseRange: [120, 150],
@@ -858,14 +856,15 @@ describe('13e baseText', () => {
       metadata: METADATA,
     });
 
-    expect(result.tables[0].baseText).toBe('Those who were shown Q5');
-    expect(result.tables[0].userNote).toBe('Base varies by item (n=120-150)');
+    expect(result.tables[0].baseText).toBe('Respondents shown this question');
+    expect(result.tables[0].userNote).toBe('');
   });
 
   it('does not surface anchor range notes on precision views', () => {
     const table = makeTable({
       tableId: 'T002',
       baseViewRole: 'precision',
+      resolvedBaseTextTemplate: 'shown_this_item',
       userNote: '',
       baseDisclosure: {
         referenceBaseN: 120,
@@ -884,7 +883,7 @@ describe('13e baseText', () => {
     });
 
     expect(result.tables[0].userNote).toBe('');
-    expect(result.tables[0].baseText).toBe('Respondents shown selected item');
+    expect(result.tables[0].baseText).toBe('Respondents shown this item');
   });
 
   it('"All respondents (n=177)" with full sample → "Total respondents"', () => {
@@ -903,7 +902,7 @@ describe('13e baseText', () => {
     expect(result.tables[0].baseText).toBe('Total respondents');
   });
 
-  it('filtered entry → "Those who were shown {questionId}"', () => {
+  it('filtered entry → "Respondents shown this question"', () => {
     const table = makeTable({
       questionId: 'Q5',
       baseText: 'Respondents shown Q5r1 (n=150)',
@@ -923,10 +922,10 @@ describe('13e baseText', () => {
       metadata: METADATA,
     });
 
-    expect(result.tables[0].baseText).toBe('Those who were shown Q5');
+    expect(result.tables[0].baseText).toBe('Respondents shown this question');
   });
 
-  it('filtered entry without appliesToItem still maps to "Those who were shown {questionId}"', () => {
+  it('filtered entry without appliesToItem still maps to "Respondents shown this question"', () => {
     const table = makeTable({
       questionId: 'Q6',
       baseText: 'Respondents shown Q6 routing branch (n=140)',
@@ -946,7 +945,7 @@ describe('13e baseText', () => {
       metadata: METADATA,
     });
 
-    expect(result.tables[0].baseText).toBe('Those who were shown Q6');
+    expect(result.tables[0].baseText).toBe('Respondents shown this question');
   });
 
   it('resolves family-root questionIds to the representative loop entry', () => {
@@ -1025,10 +1024,10 @@ describe('13e baseText', () => {
       metadata: METADATA,
     });
 
-    expect(result.tables[0].baseText).toBe('Population cluster');
+    expect(result.tables[0].baseText).toBe('Total respondents');
   });
 
-  it('rebased text → strips (n=XXX) but keeps description', () => {
+  it('rebased text no longer injects disclosure notes by default', () => {
     const table = makeTable({
       baseText: 'Total respondents',
       basePolicy: 'total_base_rebased',
@@ -1043,10 +1042,10 @@ describe('13e baseText', () => {
     });
 
     expect(result.tables[0].baseText).toBe('Total respondents');
-    expect(result.tables[0].userNote).toBe('Rebased to exclude non-substantive responses');
+    expect(result.tables[0].userNote).toBe('');
   });
 
-  it('orders varying-base note before rebased note when both apply', () => {
+  it('does not inject varying-base or rebased note text from base disclosure', () => {
     const table = makeTable({
       baseDisclosure: {
         referenceBaseN: 150,
@@ -1069,12 +1068,10 @@ describe('13e baseText', () => {
       metadata: METADATA,
     });
 
-    expect(result.tables[0].userNote).toBe(
-      'Base varies by item (n=110-150); Rebased to exclude "Don\'t Know" from base',
-    );
+    expect(result.tables[0].userNote).toBe('');
   });
 
-  it('renders explicit excluded response labels when provided by base disclosure', () => {
+  it('does not render excluded-response disclosure by default', () => {
     const table = makeTable({
       baseDisclosure: {
         referenceBaseN: 177,
@@ -1093,9 +1090,7 @@ describe('13e baseText', () => {
       metadata: METADATA,
     });
 
-    expect(result.tables[0].userNote).toBe(
-      'Rebased to exclude "Don\'t Know" and "Not applicable" from base',
-    );
+    expect(result.tables[0].userNote).toBe('');
   });
 
   it('strips (n=XXX) from arbitrary patterns', () => {

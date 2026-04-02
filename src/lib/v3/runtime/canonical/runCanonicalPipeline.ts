@@ -56,6 +56,7 @@ import { runTablePlanner } from './plan';
 import { runSubtypeGate } from './subtypeGate';
 import { runStructureGate } from './structureGate';
 import { runCanonicalAssembly } from './assemble';
+import { resolveCanonicalBaseContract } from './resolveBaseContract';
 import { runTableMetadataPrefill } from './prefill';
 import {
   runTableContextTriage,
@@ -224,7 +225,7 @@ function getStageRunner(stageId: V3StageId): StageRunner {
           throw new Error('Cannot run 13d (canonical assembly) without validated plan from 13c');
         }
 
-        const canonicalOutput = await runCanonicalAssembly({
+        const assembledOutput = await runCanonicalAssembly({
           validatedPlan: state.validatedPlan,
           entries: state.correctedEntries,
           loopMappings: input.loopMappings,
@@ -232,6 +233,7 @@ function getStageRunner(stageId: V3StageId): StageRunner {
           dataset: input.dataset,
           tablePresentation: resolveTablePresentationConfig(input.tablePresentationConfig),
         });
+        const canonicalOutput = resolveCanonicalBaseContract(assembledOutput);
 
         return {
           ...state,

@@ -5,6 +5,58 @@ import { serializeWinCrossJob } from '@/lib/exportData/wincross/serializer';
 import type { WinCrossResolvedArtifacts } from '@/lib/exportData/wincross/types';
 import { buildReferenceWinCrossJobBuffer } from './wincross.fixtures';
 
+function enrichResolvedBaseContract(
+  table: Record<string, unknown>,
+): Record<string, unknown> {
+  if (table.resolvedBaseMode) return table;
+
+  const tableKind = typeof table.tableKind === 'string' ? table.tableKind : '';
+  if (!tableKind) return table;
+
+  const modelKinds = new Set(['maxdiff_api', 'maxdiff_ap', 'maxdiff_sharpref']);
+  const itemKinds = new Set([
+    'standard_item_detail',
+    'grid_row_detail',
+    'grid_col_detail',
+    'numeric_item_detail',
+    'numeric_per_value_detail',
+    'numeric_optimized_bin_detail',
+    'scale_item_detail_full',
+    'allocation_item_detail',
+    'ranking_item_rank',
+  ]);
+
+  if (modelKinds.has(tableKind)) {
+    return {
+      ...table,
+      resolvedBaseMode: 'model_base',
+      resolvedSplitPolicy: 'none',
+      resolvedBaseTextTemplate: 'model_derived',
+      resolvedBaseValidation: {
+        tautologicalSplitForbidden: false,
+        substantiveRebasingForbidden: true,
+        requiresSharedDisplayedBase: true,
+      },
+    };
+  }
+
+  const resolvedBaseTextTemplate = itemKinds.has(tableKind)
+    ? 'shown_this_item'
+    : 'shown_this_question';
+
+  return {
+    ...table,
+    resolvedBaseMode: 'table_universe_base',
+    resolvedSplitPolicy: 'none',
+    resolvedBaseTextTemplate,
+    resolvedBaseValidation: {
+      tautologicalSplitForbidden: false,
+      substantiveRebasingForbidden: true,
+      requiresSharedDisplayedBase: true,
+    },
+  };
+}
+
 function createArtifacts(overrides?: {
   tables?: WinCrossResolvedArtifacts['sortedFinal']['tables'];
   bannerCuts?: WinCrossResolvedArtifacts['crosstabRaw']['bannerCuts'];
@@ -44,6 +96,32 @@ function createArtifacts(overrides?: {
     idempotency: { integrityDigest: 'digest-1', jobs: {} },
   } as unknown as WinCrossResolvedArtifacts['metadata'];
 
+  const sortedFinalTables: WinCrossResolvedArtifacts['sortedFinal']['tables'] = (overrides?.tables ?? [
+    {
+      tableId: 't1',
+      questionId: 'Q1',
+      questionText: 'Question 1',
+      tableKind: 'standard_overview',
+      tableType: 'frequency',
+      additionalFilter: 'SEG == 1',
+      rows: [
+        { variable: 'Q1r1', label: 'A', filterValue: '1', rowKind: 'value', isNet: false, netComponents: [] },
+        { variable: 'Q1r2', label: 'B', filterValue: '1', rowKind: 'value', isNet: false, netComponents: [] },
+      ],
+    },
+    {
+      tableId: 't2',
+      questionId: 'Q2',
+      questionText: 'Question 2',
+      tableType: 'frequency',
+      additionalFilter: '',
+      rows: [
+        { variable: 'Q1r1', label: 'A', filterValue: '1', rowKind: 'value', isNet: false, netComponents: [] },
+        { variable: 'Q1r2', label: 'B', filterValue: '1', rowKind: 'value', isNet: false, netComponents: [] },
+      ],
+    },
+  ]).map(table => enrichResolvedBaseContract(table as Record<string, unknown>)) as WinCrossResolvedArtifacts['sortedFinal']['tables'];
+
   return {
     metadata,
     tableRouting: {
@@ -75,30 +153,7 @@ function createArtifacts(overrides?: {
     },
     sortedFinal: {
       _metadata: {},
-      tables: overrides?.tables ?? [
-        {
-          tableId: 't1',
-          questionId: 'Q1',
-          questionText: 'Question 1',
-          tableType: 'frequency',
-          additionalFilter: 'SEG == 1',
-          rows: [
-            { variable: 'Q1r1', label: 'A', filterValue: '1', rowKind: 'value', isNet: false, netComponents: [] },
-            { variable: 'Q1r2', label: 'B', filterValue: '1', rowKind: 'value', isNet: false, netComponents: [] },
-          ],
-        },
-        {
-          tableId: 't2',
-          questionId: 'Q2',
-          questionText: 'Question 2',
-          tableType: 'frequency',
-          additionalFilter: '',
-          rows: [
-            { variable: 'Q1r1', label: 'A', filterValue: '1', rowKind: 'value', isNet: false, netComponents: [] },
-            { variable: 'Q1r2', label: 'B', filterValue: '1', rowKind: 'value', isNet: false, netComponents: [] },
-          ],
-        },
-      ],
+      tables: sortedFinalTables,
     },
     resultsTables: { metadata: {}, tables: {} },
     crosstabRaw: {
@@ -251,13 +306,13 @@ describe('WinCross serializer', () => {
 
     const result = serializeWinCrossJob(artifacts, profile);
 
-    expect(result.contentUtf8).toContain('SCALE_FULL - Full scale table\r\nSBase: SBase\r\n Total^TN^1');
+    expect(result.contentUtf8).toContain('SCALE_FULL - Full scale table\r\nSBase: SBase\r\n Total^TN^0');
     expect(result.contentUtf8).toContain('RANK_SUMMARY - Ranking summary\r\nSBase: SBase\r\n Total^TN^0');
     expect(result.contentUtf8).toContain('FILTERED_SUMMARY - Filtered summary\r\nSBase: SBase\r\n Total^SEG == 1^0');
     expect(result.contentUtf8).toContain('AF=SEG == 1');
   });
 
-  it('appends PO(...) for qualified scale rollups when qualified codes are present', () => {
+  it('keeps scale rollups on the shared shown base even when qualified codes are present', () => {
     const artifacts = createArtifacts({
       tables: [
         {
@@ -279,8 +334,9 @@ describe('WinCross serializer', () => {
 
     const result = serializeWinCrossJob(artifacts, profile);
 
-    expect(result.contentUtf8).toContain(' OS,OR,OV,OI2,O%,PO(1-7)');
-    expect(result.contentUtf8).toContain(' Total^TN^1');
+    expect(result.contentUtf8).toContain(' OS,OR,OV,OI2,O%');
+    expect(result.contentUtf8).not.toContain('PO(1-7)');
+    expect(result.contentUtf8).toContain(' Total^TN^0');
   });
 
   it('falls back to the profile default total line for unknown table kinds', () => {
@@ -483,6 +539,7 @@ describe('WinCross serializer', () => {
           tableId: 't1',
           questionId: 'Q1',
           questionText: 'Question 1',
+          tableKind: 'standard_overview',
           tableType: 'frequency',
           additionalFilter: '',
           rows: [
@@ -1230,6 +1287,7 @@ describe('WinCross serializer', () => {
           tableId: 't1',
           questionId: 'Q1',
           questionText: 'Question 1',
+          tableKind: 'standard_overview',
           tableType: 'frequency',
           additionalFilter: '',
           rows: [
@@ -1363,13 +1421,14 @@ describe('WinCross serializer', () => {
     expect(result.applicationDiagnostics.tables[0]?.displayTemplateKind).toBe('plain_rows');
   });
 
-  it('builds SBase from structural disclosure with compact note text', () => {
+  it('rejects legacy varying-base disclosure text under the simplified contract', () => {
     const artifacts = createArtifacts({
       tables: [
         {
           tableId: 't1',
           questionId: 'Q1',
           questionText: 'Question 1',
+          tableKind: 'standard_overview',
           tableType: 'frequency',
           additionalFilter: '',
           baseText: 'Those who were shown Q1',
@@ -1403,10 +1462,8 @@ describe('WinCross serializer', () => {
       ],
     });
     const profile = buildDefaultWinCrossPreferenceProfile();
-    const result = serializeWinCrossJob(artifacts, profile);
-
-    expect(result.contentUtf8).toContain(
-      'SBase: Those who were shown Q1; Base varies by item (n=120-150); Rebased to exclude non-substantive responses',
+    expect(() => serializeWinCrossJob(artifacts, profile)).toThrow(
+      /legacy base disclosure text/i,
     );
   });
 

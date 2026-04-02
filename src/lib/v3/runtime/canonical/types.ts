@@ -564,6 +564,25 @@ export type WinCrossDenominatorSemantic =
   | 'filtered_sample'
   | 'response_level';
 
+export type ResolvedBaseMode =
+  | 'total_base'
+  | 'table_universe_base'
+  | 'model_base';
+
+export type ResolvedSplitPolicy = 'none' | 'required';
+
+export type ResolvedBaseTextTemplate =
+  | 'total_respondents'
+  | 'shown_this_question'
+  | 'shown_this_item'
+  | 'model_derived';
+
+export interface ResolvedBaseValidation {
+  tautologicalSplitForbidden: boolean;
+  substantiveRebasingForbidden: boolean;
+  requiresSharedDisplayedBase: boolean;
+}
+
 export interface CanonicalRow {
   variable: string;
   label: string;
@@ -611,6 +630,10 @@ export interface CanonicalTable {
   wincrossDenominatorSemantic?: WinCrossDenominatorSemantic;
   wincrossQualifiedCodes?: string[];
   wincrossFilteredTotalExpr?: string | null;
+  resolvedBaseMode?: ResolvedBaseMode;
+  resolvedSplitPolicy?: ResolvedSplitPolicy;
+  resolvedBaseTextTemplate?: ResolvedBaseTextTemplate;
+  resolvedBaseValidation?: ResolvedBaseValidation;
 
   // Base and context
   basePolicy: string;

@@ -31,7 +31,10 @@ const DEFAULT_SUM_TOLERANCE = 5;
 
 function hasPhase4BaseMetadata(table: CanonicalTable): boolean {
   return Boolean(
-    table.baseViewRole
+    table.resolvedBaseMode
+    || table.resolvedBaseTextTemplate
+    || table.resolvedBaseValidation
+    || table.baseViewRole
     || table.plannerBaseComparability
     || (table.plannerBaseSignals && table.plannerBaseSignals.length > 0)
     || (table.computeRiskSignals && table.computeRiskSignals.length > 0)
@@ -193,12 +196,16 @@ function buildTableMaskRecipe(table: CanonicalTable): ComputeTableContextV1['tab
 function buildTableComputeContext(table: CanonicalTable): ComputeTableContextV1 | undefined {
   if (!hasPhase4BaseMetadata(table)) return undefined;
 
-  const rebaseSourceVariables = uniqueStrings(
-    table.rows
-      .filter(row => row.variable && row.variable !== '_CAT_')
-      .map(row => row.variable),
-  );
-  const rebaseExcludedValues = table.statsSpec?.excludeTailValues ?? [];
+  const sharedDisplayedBase = table.resolvedBaseValidation?.requiresSharedDisplayedBase === true;
+  const rebaseAllowed = table.resolvedBaseValidation?.substantiveRebasingForbidden !== true;
+  const rebaseSourceVariables = rebaseAllowed
+    ? uniqueStrings(
+      table.rows
+        .filter(row => row.variable && row.variable !== '_CAT_')
+        .map(row => row.variable),
+    )
+    : [];
+  const rebaseExcludedValues = rebaseAllowed ? (table.statsSpec?.excludeTailValues ?? []) : [];
   const tableMaskIntent = buildTableMaskIntent(table);
   const tableMaskRecipe = buildTableMaskRecipe(table);
   const validityExpression = (table.additionalFilter || '').trim() || buildSumConstraintValidityExpression(table);
@@ -208,10 +215,14 @@ function buildTableComputeContext(table: CanonicalTable): ComputeTableContextV1 
   return {
     version: 1,
     referenceUniverse: table.baseContract.classification.referenceUniverse,
-    effectiveBaseMode: table.baseContract.policy.effectiveBaseMode,
+    effectiveBaseMode: table.resolvedBaseMode === 'model_base'
+      ? 'model'
+      : (sharedDisplayedBase
+        ? 'table_mask_shared_n'
+        : table.baseContract.policy.effectiveBaseMode),
     tableMaskIntent,
     tableMaskRecipe,
-    rebasePolicy: table.baseContract.policy.rebasePolicy,
+    rebasePolicy: rebaseAllowed ? table.baseContract.policy.rebasePolicy : 'none',
     rebaseSourceVariables,
     rebaseExcludedValues,
     validityPolicy: validityExpression ? 'legacy_expression' : 'none',
@@ -338,6 +349,14 @@ export function canonicalToComputeTable(table: CanonicalTable): TableWithLoopFra
     userNote: table.userNote || '',
     tableSubtitle: table.tableSubtitle || '',
     sortOrder: table.sortOrder,
+    tableKind: table.tableKind,
+    wincrossDenominatorSemantic: table.wincrossDenominatorSemantic,
+    wincrossQualifiedCodes: table.wincrossQualifiedCodes,
+    wincrossFilteredTotalExpr: table.wincrossFilteredTotalExpr ?? null,
+    resolvedBaseMode: table.resolvedBaseMode,
+    resolvedSplitPolicy: table.resolvedSplitPolicy,
+    resolvedBaseTextTemplate: table.resolvedBaseTextTemplate,
+    resolvedBaseValidation: table.resolvedBaseValidation,
     additionalFilter: table.additionalFilter || '',
     filterReviewRequired: table.filterReviewRequired,
     splitFromTableId: table.splitFromTableId || '',

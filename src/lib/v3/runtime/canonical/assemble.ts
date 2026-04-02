@@ -323,7 +323,7 @@ function buildCanonicalTable(
 
 function resolveWinCrossDenominatorConfig(
   planned: PlannedTable,
-  items: QuestionItem[],
+  _items: QuestionItem[],
 ): {
   semantic: WinCrossDenominatorSemantic;
   qualifiedCodes?: string[];
@@ -361,13 +361,6 @@ function resolveWinCrossDenominatorConfig(
   ]);
 
   if (summaryKinds.has(planned.tableKind)) {
-    const qualifiedCodes = resolveQualifiedResponseCodes(planned, items);
-    if (qualifiedCodes.length > 0) {
-      return {
-        semantic: 'qualified_respondents',
-        qualifiedCodes,
-      };
-    }
     return { semantic: 'sample_base' };
   }
 
@@ -377,38 +370,6 @@ function resolveWinCrossDenominatorConfig(
 
   return { semantic: 'answering_base' };
 }
-
-function resolveQualifiedResponseCodes(
-  planned: PlannedTable,
-  items: QuestionItem[],
-): string[] {
-  if (planned.baseContract.policy.rebasePolicy !== 'exclude_non_substantive_tail') {
-    return [];
-  }
-
-  const scaleEligibleKinds = new Set<TableKind>([
-    'scale_overview_rollup_t2b',
-    'scale_overview_rollup_middle',
-    'scale_overview_rollup_b2b',
-    'scale_overview_rollup_nps',
-    'scale_overview_rollup_combined',
-    'scale_overview_rollup_mean',
-    'scale_dimension_compare',
-  ]);
-
-  if (!scaleEligibleKinds.has(planned.tableKind)) {
-    return [];
-  }
-
-  const scaleLabels = getScaleLabels(items);
-  const substantiveCodes = scaleLabels
-    .filter((sl) => !isNonSubstantiveTail(sl.label))
-    .map((sl) => String(sl.value).trim())
-    .filter((value) => value.length > 0);
-
-  return Array.from(new Set(substantiveCodes));
-}
-
 // =============================================================================
 // Label resolution
 // =============================================================================

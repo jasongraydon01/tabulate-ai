@@ -2815,8 +2815,8 @@ describe('Canonical assembly (13d)', () => {
       dataset: 'test',
     });
 
-    expect(result.tables.find(t => t.tableId === 'scale_rollup')?.wincrossDenominatorSemantic).toBe('qualified_respondents');
-    expect(result.tables.find(t => t.tableId === 'scale_rollup')?.wincrossQualifiedCodes).toEqual(['1', '2', '3', '4', '5', '6', '7']);
+    expect(result.tables.find(t => t.tableId === 'scale_rollup')?.wincrossDenominatorSemantic).toBe('sample_base');
+    expect(result.tables.find(t => t.tableId === 'scale_rollup')?.wincrossQualifiedCodes).toBeUndefined();
     expect(result.tables.find(t => t.tableId === 'scale_full')?.wincrossDenominatorSemantic).toBe('answering_base');
   });
 

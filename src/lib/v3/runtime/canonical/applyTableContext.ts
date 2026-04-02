@@ -74,7 +74,7 @@ function applyToTable(
   if (aiResult.tableSubtitle && shouldApplySubtitleOverride(table, aiResult.tableSubtitle)) {
     updated.tableSubtitle = aiResult.tableSubtitle;
   }
-  if (aiResult.baseText) {
+  if (aiResult.baseText && shouldApplyBaseTextOverride(aiResult.baseText)) {
     updated.baseText = aiResult.baseText;
   }
   if (aiResult.userNote) {
@@ -104,6 +104,12 @@ function applyToTable(
   updated.lastModifiedBy = 'TableContextAgent';
 
   return updated;
+}
+
+function shouldApplyBaseTextOverride(suggestedBaseText: string): boolean {
+  return !/(base varies|rebased|qualified respondents|substantive|\(n\s*varies\))/i.test(
+    suggestedBaseText,
+  );
 }
 
 function shouldApplySubtitleOverride(table: CanonicalTable, suggestedSubtitle: string): boolean {
@@ -182,7 +188,12 @@ function enforceBaseTextConsistency(
     const baseTextCounts = new Map<string, number>();
     for (const idx of indices) {
       const aiResult = resultsByTableId.get(result[idx].tableId);
-      if (aiResult && !aiResult.noChangesNeeded && aiResult.baseText) {
+      if (
+        aiResult
+        && !aiResult.noChangesNeeded
+        && aiResult.baseText
+        && shouldApplyBaseTextOverride(aiResult.baseText)
+      ) {
         const count = baseTextCounts.get(aiResult.baseText) ?? 0;
         baseTextCounts.set(aiResult.baseText, count + 1);
       }
@@ -203,7 +214,12 @@ function enforceBaseTextConsistency(
     // Propagate to tables in the group that weren't explicitly set by AI
     for (const idx of indices) {
       const aiResult = resultsByTableId.get(result[idx].tableId);
-      const wasSetByAI = aiResult && !aiResult.noChangesNeeded && aiResult.baseText;
+      const wasSetByAI = Boolean(
+        aiResult
+        && !aiResult.noChangesNeeded
+        && aiResult.baseText
+        && shouldApplyBaseTextOverride(aiResult.baseText),
+      );
       if (!wasSetByAI && result[idx].baseText !== mostCommonBaseText) {
         result[idx] = {
           ...result[idx],

@@ -6,6 +6,10 @@ import type {
   ComputeRowUniverseModeV1,
   ComputeTableContextV1,
 } from '@/lib/v3/runtime/compute/contract';
+import type {
+  ResolvedBaseMode,
+  ResolvedBaseTextTemplate,
+} from '@/lib/v3/runtime/canonical/types';
 
 /**
  * VerificationAgent Schemas
@@ -121,6 +125,20 @@ export const ComputeTableContextSchema = z.object({
   }),
 });
 
+const WinCrossDenominatorSemanticSchema = z.enum([
+  'answering_base',
+  'sample_base',
+  'qualified_respondents',
+  'filtered_sample',
+  'response_level',
+]);
+
+const ResolvedBaseValidationSchema = z.object({
+  tautologicalSplitForbidden: z.boolean(),
+  substantiveRebasingForbidden: z.boolean(),
+  requiresSharedDisplayedBase: z.boolean(),
+});
+
 // =============================================================================
 // Extended Table Definition Schema
 // =============================================================================
@@ -194,6 +212,25 @@ export const ExtendedTableDefinitionSchema = z.object({
 
   /** Canonical sort position from V3 assembly. Infrastructure-populated when available. */
   sortOrder: z.number().optional(),
+
+  /** Canonical classification metadata required by compute/export paths. */
+  tableKind: z.string().optional(),
+  wincrossDenominatorSemantic: WinCrossDenominatorSemanticSchema.optional(),
+  wincrossQualifiedCodes: z.array(z.string()).optional(),
+  wincrossFilteredTotalExpr: z.string().nullable().optional(),
+  resolvedBaseMode: z.enum([
+    'total_base',
+    'table_universe_base',
+    'model_base',
+  ] as [ResolvedBaseMode, ...ResolvedBaseMode[]]).optional(),
+  resolvedSplitPolicy: z.enum(['none', 'required']).optional(),
+  resolvedBaseTextTemplate: z.enum([
+    'total_respondents',
+    'shown_this_question',
+    'shown_this_item',
+    'model_derived',
+  ] as [ResolvedBaseTextTemplate, ...ResolvedBaseTextTemplate[]]).optional(),
+  resolvedBaseValidation: ResolvedBaseValidationSchema.optional(),
 
   // =========================================================================
   // Phase 3: Filter Fields (skip/show logic handling via FilterApplicator)

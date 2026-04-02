@@ -623,6 +623,116 @@ describe('canonicalToComputeTables', () => {
     expect(adapted[0]!.computeContext?.rebaseExcludedValues).toEqual([98, 99]);
   });
 
+  it('preserves resolved base contract and WinCross denominator metadata', () => {
+    const canonicalTables: CanonicalTable[] = [
+      {
+        tableId: 'A100a_t2b',
+        questionId: 'A100a',
+        familyRoot: 'A100a',
+        sourceTableId: 'A100a_t2b',
+        splitFromTableId: '',
+        tableKind: 'scale_overview_rollup_t2b',
+        analyticalSubtype: 'scale',
+        normalizedType: 'ordinal',
+        tableType: 'frequency',
+        questionText: 'Top 2 Box summary',
+        rows: [
+          {
+            variable: 'A100a',
+            label: 'Vaxneuvance',
+            filterValue: '6,7',
+            rowKind: 'value',
+            isNet: false,
+            indent: 0,
+            netLabel: '',
+            netComponents: [],
+            statType: '',
+            binRange: null,
+            binLabel: '',
+            rankLevel: null,
+            topKLevel: null,
+            excludeFromStats: false,
+            rollupConfig: null,
+          },
+        ],
+        statsSpec: {
+          mean: false,
+          meanWithoutOutliers: false,
+          median: false,
+          stdDev: false,
+          stdErr: false,
+          valueRange: null,
+          excludeTailValues: [98],
+        },
+        derivationHint: null,
+        statTestSpec: null,
+        wincrossDenominatorSemantic: 'sample_base',
+        wincrossQualifiedCodes: undefined,
+        wincrossFilteredTotalExpr: null,
+        resolvedBaseMode: 'table_universe_base',
+        resolvedSplitPolicy: 'none',
+        resolvedBaseTextTemplate: 'shown_this_question',
+        resolvedBaseValidation: {
+          tautologicalSplitForbidden: false,
+          substantiveRebasingForbidden: true,
+          requiresSharedDisplayedBase: true,
+        },
+        basePolicy: 'question_base_shared',
+        baseSource: 'questionBase',
+        questionBase: 177,
+        itemBase: null,
+        baseContract: projectTableBaseContract(buildEntryBaseContract({
+          totalN: 177,
+          questionBase: 177,
+          itemBase: null,
+          itemBaseRange: null,
+          hasVariableItemBases: false,
+          variableBaseReason: null,
+          rankingDetail: null,
+          exclusionReason: null,
+        }), {
+          basePolicy: 'question_base_shared',
+          questionBase: 177,
+          itemBase: null,
+        }),
+        baseText: 'Respondents shown this question',
+        isDerived: true,
+        sortOrder: 0,
+        sortBlock: 'A100a',
+        surveySection: 'SECTION A',
+        userNote: '',
+        tableSubtitle: 'Top 2 Box Summary',
+        splitReason: null,
+        appliesToItem: null,
+        computeMaskAnchorVariable: null,
+        appliesToColumn: null,
+        stimuliSetSlice: null,
+        binarySide: null,
+        additionalFilter: '',
+        exclude: false,
+        excludeReason: '',
+        filterReviewRequired: false,
+        lastModifiedBy: 'DeterministicBaseEngine',
+        notes: [],
+      },
+    ];
+
+    const adapted = canonicalToComputeTables(canonicalTables);
+
+    expect(adapted[0]).toMatchObject({
+      tableKind: 'scale_overview_rollup_t2b',
+      wincrossDenominatorSemantic: 'sample_base',
+      resolvedBaseMode: 'table_universe_base',
+      resolvedSplitPolicy: 'none',
+      resolvedBaseTextTemplate: 'shown_this_question',
+    });
+    expect(adapted[0]!.computeContext).toMatchObject({
+      effectiveBaseMode: 'table_mask_shared_n',
+      rebasePolicy: 'none',
+    });
+    expect(adapted[0]!.rows[0]!.computeContext?.universeMode).toBe('masked_shared_table_n');
+  });
+
   it('derives question-universe and precision-item mask recipes deterministically', () => {
     const entryContract = buildEntryBaseContract({
       totalN: 200,
@@ -1721,6 +1831,65 @@ describe('runPostRQc', () => {
 
     expect(result.valid).toBe(true);
     expect(result.errors).toEqual([]);
+  });
+
+  it('rejects simplified-base tables that still carry hidden denominator drift signals', () => {
+    const table = {
+      ...makeTables()[0]!,
+      tableId: 'A100a_t2b',
+      questionId: 'A100a',
+      baseText: 'Base varies by item',
+      tableKind: 'scale_overview_rollup_t2b',
+      resolvedBaseMode: 'table_universe_base',
+      resolvedSplitPolicy: 'none',
+      resolvedBaseTextTemplate: 'shown_this_question',
+      resolvedBaseValidation: {
+        tautologicalSplitForbidden: false,
+        substantiveRebasingForbidden: true,
+        requiresSharedDisplayedBase: true,
+      },
+      computeContext: {
+        version: 1,
+        referenceUniverse: 'question',
+        effectiveBaseMode: 'table_mask_then_row_observed_n',
+        tableMaskIntent: 'question_universe',
+        tableMaskRecipe: { kind: 'any_answered', variables: ['A100a'] },
+        rebasePolicy: 'exclude_non_substantive_tail',
+        rebaseSourceVariables: ['A100a'],
+        rebaseExcludedValues: [98],
+        validityPolicy: 'none',
+        validityExpression: null,
+        referenceBaseN: 177,
+        itemBaseRange: null,
+        baseViewRole: 'anchor',
+        plannerBaseComparability: 'shared',
+        plannerBaseSignals: [],
+        computeRiskSignals: [],
+        legacyCompatibility: {
+          basePolicy: 'question_base_shared',
+          additionalFilter: '',
+        },
+      },
+    } as unknown as TableWithLoopFrame;
+
+    const pkg = buildComputePackage({
+      tables: [table],
+      cutsSpec: makeCutsSpec(),
+      statTestingConfig: makeStatConfig(),
+    });
+
+    const result = runPostRQc({
+      rScriptInput: pkg.rScriptInput,
+      cutsSpec: pkg.cutsSpec,
+      outputDir: '/tmp/test',
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toEqual(expect.arrayContaining([
+      'Table "A100a_t2b" violates shared displayed base contract',
+      'Table "A100a_t2b" still carries a substantive rebase policy',
+      'Table "A100a_t2b" uses legacy base text that conflicts with the simplified base contract',
+    ]));
   });
 });
 

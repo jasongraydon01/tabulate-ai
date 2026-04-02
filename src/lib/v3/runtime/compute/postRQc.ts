@@ -95,6 +95,44 @@ function validateComputeContexts(
         warnings.push(`Table "${table.tableId}" row "${row.label}" uses shared-table base for stat summary`);
       }
     }
+
+    const resolvedBaseMode = table.resolvedBaseMode ?? null;
+    const resolvedValidation = table.resolvedBaseValidation;
+    if (
+      resolvedBaseMode
+      && !resolvedValidation
+    ) {
+      errors.push(`Table "${table.tableId}" is missing resolvedBaseValidation metadata`);
+    }
+
+    if (
+      resolvedValidation?.requiresSharedDisplayedBase
+      && computeContext.effectiveBaseMode !== 'table_mask_shared_n'
+      && resolvedBaseMode !== 'model_base'
+    ) {
+      errors.push(`Table "${table.tableId}" violates shared displayed base contract`);
+    }
+
+    if (
+      resolvedValidation?.substantiveRebasingForbidden
+      && computeContext.rebasePolicy !== 'none'
+    ) {
+      errors.push(`Table "${table.tableId}" still carries a substantive rebase policy`);
+    }
+
+    if (
+      resolvedValidation?.tautologicalSplitForbidden
+      && table.resolvedSplitPolicy === 'required'
+    ) {
+      errors.push(`Table "${table.tableId}" requests a tautological split`);
+    }
+
+    if (
+      resolvedValidation?.requiresSharedDisplayedBase
+      && /(base varies|rebased|qualified respondents|substantive|\(n\s*varies\))/i.test(table.baseText)
+    ) {
+      errors.push(`Table "${table.tableId}" uses legacy base text that conflicts with the simplified base contract`);
+    }
   }
 }
 

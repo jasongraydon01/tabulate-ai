@@ -20,13 +20,10 @@ import type {
   CanonicalTable,
   QuestionIdEntry,
   SurveyMetadata,
+  ResolvedBaseTextTemplate,
   TableKind,
 } from './types';
 import { isNonSubstantiveTail } from './nonSubstantive';
-import {
-  buildBaseNoteParts,
-  resolveDisplayBaseText,
-} from './baseDisclosurePresentation';
 import type { TablePresentationConfig } from '@/lib/tablePresentation/labelVocabulary';
 import {
   getBottomBoxLabel,
@@ -444,47 +441,47 @@ function buildScaleAnchorNote(entry: QuestionIdEntry): string | null {
 /** Strip (n=XXX) or (n=varies) suffix from base text */
 const N_SUFFIX_REGEX = /\s*\(n=[^)]*\)\s*$/;
 
+function resolveTemplateBaseText(template: ResolvedBaseTextTemplate | undefined): string | null {
+  switch (template) {
+    case 'total_respondents':
+      return 'Total respondents';
+    case 'shown_this_question':
+      return 'Respondents shown this question';
+    case 'shown_this_item':
+      return 'Respondents shown this item';
+    case 'model_derived':
+      return 'Model-derived base';
+    default:
+      return null;
+  }
+}
+
 function refineBaseText(
   table: CanonicalTable,
   entry: QuestionIdEntry | undefined,
 ): string {
-  const displayBaseText = resolveDisplayBaseText({
-    baseDisclosure: table.baseDisclosure,
-    baseText: table.baseText,
-    basePolicy: table.basePolicy,
-  });
-  if (table.baseDisclosure?.defaultBaseText) {
-    // Trust the planner-provided disclosure text. The contract may intentionally
-    // surface filtered/item-specific wording even when the comparable base equals totalN.
-    return table.baseDisclosure.defaultBaseText;
+  const templateBaseText = resolveTemplateBaseText(table.resolvedBaseTextTemplate);
+  if (templateBaseText) {
+    return templateBaseText;
   }
 
-  let text = displayBaseText ?? table.baseText;
+  let text = table.baseText;
 
   // Step 1: Strip (n=XXX) suffix — the table already shows the N
   text = text.replace(N_SUFFIX_REGEX, '');
 
-  // Step 2: Semantic mapping
-  if (table.basePolicy.includes('rebased')) {
-    // Already descriptive from 13d (e.g. "All respondents excluding non-substantive (rebased)")
-    // After stripping (n=...), just return as-is
-    return text;
-  }
-
-  // Cluster base: strip was already applied, return cleaned text.
-  // Keep this before full-sample mapping so cluster semantics are preserved.
-  if (table.basePolicy.includes('cluster_base')) {
-    return text;
-  }
-
   const effectiveBaseFallback = table.itemBase ?? table.questionBase;
-  if (entry && effectiveBaseFallback != null && entry.totalN != null && effectiveBaseFallback === entry.totalN) {
+  if (
+    entry
+    && effectiveBaseFallback != null
+    && entry.totalN != null
+    && effectiveBaseFallback === entry.totalN
+  ) {
     return 'Total respondents';
   }
 
   if (entry?.isFiltered) {
-    // Use the parent questionId for readability, not the raw SPSS column
-    return `Those who were shown ${table.questionId}`;
+    return 'Respondents shown this question';
   }
 
   return text;
@@ -494,18 +491,7 @@ function buildBaseDisclosureNotes(
   table: CanonicalTable,
   entry: QuestionIdEntry | undefined,
 ): string[] {
-  const notes = buildBaseNoteParts({
-    baseDisclosure: table.baseDisclosure,
-    basePolicy: table.basePolicy,
-  });
-
-  if (notes.length > 0 || table.baseDisclosure) {
-    return notes;
-  }
-
-  if (entry?.hasVariableItemBases === true) {
-    return ['Base varies by item'];
-  }
-
+  void table;
+  void entry;
   return [];
 }
