@@ -61,6 +61,8 @@ describe('project detail page', () => {
   let Page: typeof import('@/app/(product)/projects/[projectId]/page').default;
 
   beforeEach(async () => {
+    delete process.env.NEXT_PUBLIC_ENABLE_R2_ARTIFACT_DEBUG_PATH;
+
     if (!Page) {
       ({ default: Page } = await import('@/app/(product)/projects/[projectId]/page'));
     }
@@ -235,6 +237,20 @@ describe('project detail page', () => {
     expect(markup).toContain('profile-01');
     // Legacy card must not be present
     expect(markup).not.toContain('Review Tables');
+  });
+
+  it('renders the debug R2 artifact path when the flag is enabled', () => {
+    process.env.NEXT_PUBLIC_ENABLE_R2_ARTIFACT_DEBUG_PATH = 'true';
+
+    const markup = renderToStaticMarkup(
+      React.createElement(Page, {
+        params: { projectId: 'project-1' } as never,
+      }),
+    );
+
+    expect(markup).toContain('R2 Artifact Path');
+    expect(markup).toContain('Copy Path');
+    expect(markup).toContain('org-1/project-1/runs/run-1');
   });
 
   it('renders the expired-artifacts state when the latest run is expired', () => {

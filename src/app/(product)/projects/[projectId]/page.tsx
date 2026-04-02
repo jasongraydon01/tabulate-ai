@@ -34,6 +34,7 @@ import {
   CheckCircle,
   AlertCircle,
   Clock,
+  Copy,
   FileText,
   Loader2,
   Table,
@@ -324,6 +325,14 @@ function formatFileLabel(value: string | null | undefined): string {
   return parts[parts.length - 1] ?? value;
 }
 
+function buildRunArtifactDebugPath(
+  orgId: string,
+  projectId: string,
+  runId: string,
+): string {
+  return `${orgId}/${projectId}/runs/${runId}`;
+}
+
 function ConfigValue({ value }: { value: unknown }) {
   if (value === null || value === undefined || value === '') {
     return <span className="text-muted-foreground">Not set</span>;
@@ -375,6 +384,10 @@ export default function ProjectDetailPage({
   const exportPackages = runResult?.exportPackages;
   const exportReadiness = asRecord(runResult?.exportReadiness);
   const exportErrors = runResult?.exportErrors;
+  const showR2ArtifactDebugPath = process.env.NEXT_PUBLIC_ENABLE_R2_ARTIFACT_DEBUG_PATH === 'true';
+  const runArtifactDebugPath = convexOrgId && latestRun
+    ? buildRunArtifactDebugPath(String(convexOrgId), projectId, String(latestRun._id))
+    : null;
 
   const addTableIdsFromInput = () => {
     const raw = tableIdInput.trim();
@@ -484,6 +497,21 @@ export default function ProjectDetailPage({
     posthog.capture('project_deleted', { project_id: projectId });
     toast.success('Project deleted');
     router.push('/dashboard');
+  };
+
+  const handleCopyRunArtifactDebugPath = async () => {
+    if (!runArtifactDebugPath) return;
+
+    try {
+      await navigator.clipboard.writeText(runArtifactDebugPath);
+      toast.success('R2 artifact path copied', {
+        description: 'Use this prefix to pull the run artifacts from R2.',
+      });
+    } catch (error) {
+      toast.error('Could not copy R2 artifact path', {
+        description: error instanceof Error ? error.message : 'Clipboard write failed',
+      });
+    }
   };
 
   // Loading state
@@ -737,27 +765,55 @@ export default function ProjectDetailPage({
 
         {/* Downloads */}
         {latestRun ? (
-          <Card className="mb-8">
-            <CardHeader>
-              <CardTitle className="text-lg">Downloads</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ExportSection
-                runId={String(latestRun._id)}
-                projectId={projectId}
-                projectName={project.name}
-                runCreatedAt={latestRun._creationTime}
-                status={status}
-                expiredAt={latestRun.expiredAt}
-                r2Outputs={r2Files?.outputs}
-                exportPackages={exportPackages}
-                exportReadiness={exportReadiness}
-                exportErrors={exportErrors}
-                requestedFormats={requestedExportFormats}
-                defaultWinCrossProfileId={projectConfig?.wincrossProfileId}
-              />
-            </CardContent>
-          </Card>
+          <>
+            <Card className="mb-8">
+              <CardHeader>
+                <CardTitle className="text-lg">Downloads</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ExportSection
+                  runId={String(latestRun._id)}
+                  projectId={projectId}
+                  projectName={project.name}
+                  runCreatedAt={latestRun._creationTime}
+                  status={status}
+                  expiredAt={latestRun.expiredAt}
+                  r2Outputs={r2Files?.outputs}
+                  exportPackages={exportPackages}
+                  exportReadiness={exportReadiness}
+                  exportErrors={exportErrors}
+                  requestedFormats={requestedExportFormats}
+                  defaultWinCrossProfileId={projectConfig?.wincrossProfileId}
+                />
+              </CardContent>
+            </Card>
+
+            {showR2ArtifactDebugPath && runArtifactDebugPath && (
+              <Card className="mb-8 border-dashed">
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-3">
+                    <CardTitle className="text-lg">R2 Artifact Path</CardTitle>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCopyRunArtifactDebugPath}
+                    >
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copy Path
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Debug view for pulling this run&apos;s uploaded artifacts from R2.
+                  </p>
+                  <div className="rounded-md border bg-muted/40 px-3 py-2 font-mono text-sm break-all">
+                    {runArtifactDebugPath}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </>
         ) : (
           <Card className="mb-8">
             <CardHeader>
