@@ -27,14 +27,22 @@ Target firms that look like Antares — companies that do fielding, programming,
 - Sago
 - Test
 
+### Account List (Built)
+
+**221 accounts** identified via Apollo.io look-alike search against Antares, Sago, and Test. Filtered by industry to ensure relevance — primarily market research, with some adjacent industries that do tabulation/programming work. U.S. only.
+
+**Daily targets:**
+- **~11–12 accounts per day** across 20 workdays
+- **3–5 contacts per account** → **30–60 emails per day**
+- Next day's outreach is prepped the evening before (Sunday prep covers Monday)
+
 ### Account-First Approach
 
 Role titles are unreliable across these firms. A "Project Manager" at one shop does the same programming work as a "Data Processing Director" at another. The approach:
 
-1. **Build the account list.** Use Apollo.io's "companies like" feature against the three reference accounts. U.S. only. This produces the master list.
-2. **Prioritize accounts.** Not every look-alike is equally promising. Prioritize by: firm size (sweet spot: 20–150 employees), services offered (must do tabulation/programming, not just fielding), and any signal of current WinCross/Q usage.
-3. **Identify 3–5 contacts per account.** Manually review each account to find the right people — project managers, data processing leads, programming team leads, operations directors. Don't rely on title-based filtering alone.
-4. **Divide contacts across 20 days.** Total contacts / 20 = daily quota.
+1. ~~**Build the account list.**~~ Done — 221 accounts from Apollo look-alike search.
+2. **Identify 3–5 contacts per account.** Manually review each day's batch (~12 accounts) to find the right people — project managers, data processing leads, programming team leads, operations directors. Don't rely on title-based filtering alone.
+3. **Prep the night before.** Each evening, identify the next day's accounts and draft outreach so mornings start with sending, not research.
 
 ### Channels
 
@@ -54,7 +62,7 @@ Role titles are unreliable across these firms. A "Project Manager" at one shop d
 
 | Week | Dates | Focus |
 |------|-------|-------|
-| 0 (prep) | Apr 5–6 (Sun–Mon) | Build account list, prioritize, identify first batch of contacts |
+| 0 (prep) | Apr 5–6 (Sun–Mon) | ~~Build account list~~ (done — 221 accounts). Prep Monday's batch: identify contacts for first ~12 accounts, draft emails. |
 | 1 | Apr 7–11 | First full outreach week. Aim for all priority accounts touched. |
 | 2 | Apr 14–18 | Follow-ups on Week 1 + new accounts. Iterate messaging based on response patterns. |
 | 3 | Apr 21–25 | Continued outreach + follow-ups. Mid-sprint assessment: what's working? |
@@ -159,3 +167,4 @@ Track key decisions and pivots here as the sprint progresses.
 | Apr 3 | Outreach extended from Apr 12 to May 3 | Original 10-day window insufficient; 20 workdays gives consistent daily effort |
 | Apr 3 | Validation pass (P0) before any code fixes | Prevents Prevnar-specific band-aids; ensures fixes target root causes across survey types |
 | Apr 3 | Added QC assistance export (P4) | Lightweight per-table metadata export to speed up Antares' manual QC — not full QC automation |
+| Apr 4 | Account list built: 221 accounts from Apollo | Antares/Sago/Test look-alikes, filtered by industry, U.S. only. ~12 accounts/day, 30–60 emails/day. |
