@@ -71,7 +71,30 @@ Role titles are unreliable across these firms. A "Project Manager" at one shop d
 
 ## Track 2: Product Improvement
 
-Work on these only after daily outreach quota is met. Ordered by impact on the 30% → 60–70% savings gap.
+Work on these only after daily outreach quota is met.
+
+### Sequencing Note
+
+**Validation first, then fixes.** The temptation is to jump straight to prompt changes or code fixes for question text and base text. Resist that. The right sequence is:
+
+1. Run 2–3 surveys + Prevnar through the pipeline (P0 below)
+2. Review output with a **presentation quality lens** — not correctness (that was last round), but: Does the question text read like what a programmer would write? Are base lines clean? Do denominators match across table types?
+3. Compile specific findings across surveys
+4. *Then* decide whether fixes are prompt changes, deterministic changes, or both — informed by real cross-survey evidence
+
+This prevents band-aids that work for Prevnar but break on other structures. It also ensures we're fixing root causes, not symptoms.
+
+### P0: Cross-Survey Validation (Do This First)
+
+**Problem:** Most pipeline testing has focused on Prevnar (the Antares benchmark study). Other surveys have been run through the pipeline and produced output, but haven't received the same level of scrutiny — reviewing every table, checking denominators, validating question text, confirming .job correctness.
+
+**What Antares said:** They want to test additional studies. We should do the same on our side first.
+
+**Impact:** Gives us the evidence base for all subsequent fixes. Ensures fixes are generalizable, not Prevnar-specific. Catches survey-specific edge cases before Antares (or any new prospect) encounters them.
+
+**Approach:** Select 2–3 surveys from our test data that represent different structures (e.g., one with loops, one with grids, one straightforward tracker). Run each through the pipeline, then review the Excel and .job output with the same rigor applied to Prevnar. This time the focus is **presentation quality**: question text length, base text readability, denominator consistency, table structure, and whether the output looks like what a programmer would send to a client without manual edits.
+
+Also re-run Prevnar to validate the summary table denominator fix (base contract matrix, April 1 commits). Compare summary table percentages against the WinCross reference output Poorna shared.
 
 ### P1: Question Text Shortening
 
@@ -81,7 +104,7 @@ Work on these only after daily outreach quota is met. Ordered by impact on the 3
 
 **Impact:** Affects every table in the output. Fixing this removes a per-table manual edit that multiplies across hundreds of tables.
 
-**Approach:** Update the relevant agents (SurveyCleanupAgent, TableContextAgent, or the canonical assembly chain) to produce concise table titles — the kind a programmer would write, not the full survey instrument text.
+**Approach:** Informed by P0 findings. The fix may be a prompt change (e.g., TableContextAgent or SurveyCleanupAgent), a deterministic change (truncation/extraction logic in canonical assembly), or both. Don't prescribe the solution until we see the patterns across surveys. The goal is the kind of concise title a programmer would write — not the full survey instrument text.
 
 ### P2: Base Text Quality
 
@@ -91,7 +114,7 @@ Work on these only after daily outreach quota is met. Ordered by impact on the 3
 
 **Impact:** Affects every table. Combined with P1, these two fixes address the two things Poorna said would move the needle most.
 
-**Approach:** Ensure the resolved base text from the base contract actually produces clean, standard base lines. Validate that TableContextAgent respects the contract and doesn't introduce complexity the contract already resolved.
+**Approach:** Informed by P0 findings. Ensure the resolved base text from the base contract produces clean, standard base lines. The fix needs to work across survey types — not just Prevnar's specific routing patterns.
 
 ### P3: Base Contract Propagation Audit
 
@@ -101,30 +124,22 @@ Work on these only after daily outreach quota is met. Ordered by impact on the 3
 
 **Approach:** Audit the full pipeline for base-related logic. Ensure the base contract resolution propagates through: canonical assembly, TableContextAgent prompts, R script generation, WinCross serialization, and Excel formatting. Every surface that touches base text or denominators should consume the resolved contract, not infer its own.
 
-### P4: Cross-Survey Validation (Prevnar-Level Rigor)
+### P4: QC Assistance Export
 
-**Problem:** Most pipeline testing has focused on Prevnar (the Antares benchmark study). Other surveys have been run through the pipeline and produced output, but haven't received the same level of scrutiny — reviewing every table, checking denominators, validating question text, confirming .job correctness.
+**Problem:** Antares manually QCs every table by cross-referencing counts and bases against the SPSS data file. This is time-consuming and our platform doesn't help with it at all.
 
-**What Antares said:** They want to test additional studies. We should do the same on our side first.
+**What Raina asked:** Can TabulateAI help automate or assist the QC process?
 
-**Impact:** Ensures fixes are generalizable, not Prevnar-specific. Catches survey-specific edge cases before Antares (or any new prospect) encounters them.
+**Impact:** Doesn't replace their QC workflow, but dramatically speeds it up by providing the reference data they're manually looking up. This is a differentiator — no other tool gives them a QC companion file alongside the tables.
 
-**Approach:** Select 2–3 surveys from our test data that represent different structures (e.g., one with loops, one with grids, one straightforward tracker). Run each through the pipeline, then review the Excel and .job output with the same rigor applied to Prevnar: check question text, base text, denominators, table structure, and WinCross conventions.
-
-### P5: Validate Summary Table Fix on Prevnar
-
-**Problem:** The base contract matrix was specifically built to fix the summary table denominator issue (42% vs 48% mismatch on Top 2 Box tables). This fix needs to be confirmed on the actual Prevnar output.
-
-**Impact:** This is the specific bug Poorna flagged with percentage mismatches. If it's not actually fixed, the 30% number doesn't improve.
-
-**Approach:** Re-run Prevnar through the pipeline, compare summary table percentages against the WinCross reference output Poorna shared. Confirm the denominator contract is producing correct numbers.
+**Approach:** Generate a simple Excel export (available as a download from the project detail page alongside the existing exports) that provides, per table: table number, question text, variable name(s), base description, base count, denominator type, and sample size. All of this data already exists in the canonical `table.json` and R compute output — this is a rendering/export task, not a computation task. Keep it simple: one worksheet, one row per table, clean headers.
 
 ---
 
 ## What's Explicitly Not in Scope
 
 - **Open-ended question linking** — not reliably solvable; deprioritized by mutual agreement
-- **QC automation** (comparing output against SPSS) — strategic opportunity mapped to Phase 10/15, but too large for this sprint
+- **Full QC automation** (comparing output against SPSS programmatically) — strategic opportunity mapped to Phase 10/15, but too large for this sprint. The QC assistance export (P4) is the lightweight version that helps without building the full workflow.
 - **Architecture changes** — no pipeline restructuring, no new stages, no schema migrations
 - **WinCross serializer syntax fixes** — the serializer is no longer the bottleneck per Antares feedback; remaining issues are upstream content quality
 - **New features** — no Chat With Your Data, no multiple banners, no Excel input. Those are post-validation.
@@ -142,3 +157,5 @@ Track key decisions and pivots here as the sprint progresses.
 | Apr 3 | Manual email over Apollo sequences | Personalization > automation at this volume; Apollo unsubscribe footer looks mass-market |
 | Apr 3 | LinkedIn added as co-equal outreach channel | Premium free trial available; covers contacts without findable emails |
 | Apr 3 | Outreach extended from Apr 12 to May 3 | Original 10-day window insufficient; 20 workdays gives consistent daily effort |
+| Apr 3 | Validation pass (P0) before any code fixes | Prevents Prevnar-specific band-aids; ensures fixes target root causes across survey types |
+| Apr 3 | Added QC assistance export (P4) | Lightweight per-table metadata export to speed up Antares' manual QC — not full QC automation |
