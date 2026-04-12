@@ -312,6 +312,9 @@ export default async function PricingPage({
           <Link href="/pricing" className="text-xs text-muted-foreground/60 hover:text-foreground transition-colors duration-200">
             Pricing
           </Link>
+          <Link href="/blog" className="text-xs text-muted-foreground/60 hover:text-foreground transition-colors duration-200">
+            Blog
+          </Link>
         </div>
       </footer>
     </>
