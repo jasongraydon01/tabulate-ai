@@ -34,7 +34,7 @@ The problem is that these rules encode assumptions about how surveys are program
  
 AI gives the system flexibility. A language model can read a survey document the way a human would, understanding that Q7 is a satisfaction battery even if the variable naming doesn't follow any standard pattern. This means TabulateAI works with your research materials as they are, rather than requiring you to restructure them to fit the system's expectations.
  
-(If you're interested in a deeper look at why the survey document matters for table quality, we wrote about that separately in [Why Technically Correct Crosstabs Aren't Enough](/blog/why-technically-correct-crosstabs-arent-enough).)
+(If you're interested in a deeper look at why the survey document matters for table quality, we wrote about that separately in [What Gets Lost When Crosstabs Are Built From Data Alone](/blog/what-gets-lost-when-crosstabs-are-built-from-data-alone).)
  
 ## What this means in practice
  
