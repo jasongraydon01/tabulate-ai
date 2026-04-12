@@ -14,7 +14,7 @@ import { FeaturesSection } from "./_components/features-section";
 export const metadata: Metadata = {
   title: "Crosstab Automation for Market Research Teams",
   description:
-    "Upload SPSS survey data. TabulateAI produces publication-ready crosstabs with statistical testing, NETs, and bases. Excel, Q, and WinCross export.",
+    "Upload your SPSS data file, survey document, and banner spec. TabulateAI produces validated crosstabs with statistical testing, NETs, and proper bases in minutes. Excel, Q, and WinCross export.",
   alternates: { canonical: "/" },
 };
 
@@ -36,7 +36,7 @@ export default async function LandingPage() {
           applicationCategory: "BusinessApplication",
           operatingSystem: "Web",
           description:
-            "Automated crosstab generation for market research. Upload SPSS data and survey documents, get publication-ready cross tabulation tables with statistical testing.",
+            "Automated crosstab generation for market research. Upload your SPSS data file, survey document, and banner spec — get validated crosstabs with statistical testing in minutes.",
           url: "https://tabulate-ai.com",
           offers: {
             "@type": "AggregateOffer",
@@ -99,12 +99,12 @@ export default async function LandingPage() {
         <div className="relative max-w-4xl mx-auto px-6 py-40 text-center">
           <ScrollReveal>
             <h2 className="editorial-display text-5xl sm:text-6xl lg:text-7xl mb-8">
-              Spend your time on insight,{" "}
+              What used to take hours{" "}
               <br className="hidden sm:inline" />
-              not <span className="editorial-emphasis">table building.</span>
+              now takes <span className="editorial-emphasis">minutes.</span>
             </h2>
             <p className="text-lg text-muted-foreground mb-14 max-w-lg mx-auto leading-relaxed">
-              Upload your survey data. Download publication-ready tables. It&apos;s that direct.
+              Upload your SPSS data file, survey document, and banner spec. Download validated crosstabs ready for delivery.
             </p>
             <div className="flex gap-4 justify-center flex-wrap">
               {hasWorkspaceAccess ? (
@@ -180,7 +180,7 @@ export default async function LandingPage() {
           </div>
           <div className="mt-8 pt-6 border-t border-border/30">
             <p className="text-[11px] text-muted-foreground/40 font-mono tracking-wider">
-              Research data, clearly structured.
+              Crosstabs in minutes, not hours.
             </p>
           </div>
         </div>

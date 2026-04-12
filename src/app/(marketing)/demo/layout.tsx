@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: 'Free Demo — Try Automated Crosstabs on Your Data',
   description:
-    'Upload your .sav file and survey document. TabulateAI processes 100 respondents and delivers 25 publication-ready crosstabs to your inbox.',
+    'Upload your SPSS data file and survey document. TabulateAI processes 100 respondents and delivers 25 validated crosstabs to your inbox.',
   alternates: { canonical: '/demo' },
 };
 

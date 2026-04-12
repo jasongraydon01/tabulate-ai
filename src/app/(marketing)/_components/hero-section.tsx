@@ -53,9 +53,9 @@ export function HeroSection({ isAuthenticated, hasWorkspaceAccess }: HeroSection
               className="editorial-display text-[clamp(2.75rem,5.5vw,5.5rem)] mb-8"
               lines={[
                 { text: "From survey data" },
-                { text: "to publication-ready" },
+                { text: "to crosstabs" },
                 {
-                  text: "tables.",
+                  text: "in minutes.",
                   className: "editorial-emphasis",
                 },
               ]}
@@ -74,9 +74,9 @@ export function HeroSection({ isAuthenticated, hasWorkspaceAccess }: HeroSection
               className="animate-fade-up text-lg text-muted-foreground max-w-md leading-relaxed mb-12"
               style={{ animationDelay: "0.9s" }}
             >
-              Upload your .sav file and survey document. TabulateAI understands
-              your research design and produces formatted crosstabs with
-              statistical testing, NET groupings, and proper bases.
+              Upload your SPSS data file, survey document, and banner spec.
+              TabulateAI produces validated crosstabs with statistical testing,
+              NET groupings, and proper bases — in minutes, not hours.
             </p>
 
             {/* CTAs */}

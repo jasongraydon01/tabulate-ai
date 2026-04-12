@@ -281,8 +281,8 @@ export default async function PricingPage({
               Ready to automate your <span className="editorial-emphasis">tabs?</span>
             </h2>
             <p className="text-lg text-muted-foreground mb-12 max-w-lg mx-auto">
-              Start with the demo if you want to see the workflow on your own data. If your team is
-              ready for a workspace, request access and we&apos;ll provision it cleanly.
+              What used to take hours of manual programming now takes minutes. Start with the demo
+              on your own data, or request access if your team is ready.
             </p>
             <Button asChild size="lg" className="text-base px-8 rounded-full bg-foreground text-background hover:bg-foreground/90">
               <TrackedLink
@@ -304,7 +304,7 @@ export default async function PricingPage({
           <span className="font-serif text-lg font-semibold tracking-tight text-foreground">Tabulate</span>
           <span className="font-serif text-lg font-semibold tracking-tight text-primary">AI</span>
         </div>
-        <p className="text-[11px] text-muted-foreground/40 mb-5 font-mono tracking-wider">Research data, clearly structured.</p>
+        <p className="text-[11px] text-muted-foreground/40 mb-5 font-mono tracking-wider">Crosstabs in minutes, not hours.</p>
         <div className="flex items-center justify-center gap-6">
           <Link href="/data-privacy" className="text-xs text-muted-foreground/60 hover:text-foreground transition-colors duration-200">
             Data & Privacy

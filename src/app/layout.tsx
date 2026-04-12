@@ -29,7 +29,7 @@ export const metadata: Metadata = {
     default: "TabulateAI — Crosstab Automation for Market Research",
   },
   description:
-    "Automated crosstab software for market research teams. Upload SPSS survey data, get publication-ready cross tabulation tables with statistical testing. Excel, Q, and WinCross export.",
+    "Automated crosstab software for market research teams. Upload your SPSS data file, survey document, and banner spec — get validated crosstabs with statistical testing in minutes. Excel, Q, and WinCross export.",
   keywords: [
     "crosstab automation",
     "market research software",
@@ -68,7 +68,7 @@ export default function RootLayout({
             name: "TabulateAI",
             url: "https://tabulate-ai.com",
             description:
-              "Automated crosstab software for market research firms. Upload survey data, download publication-ready tables.",
+              "Automated crosstab software for market research firms. Upload your SPSS data file, survey document, and banner spec — get validated crosstabs in minutes.",
             contactPoint: {
               "@type": "ContactPoint",
               contactType: "sales",
