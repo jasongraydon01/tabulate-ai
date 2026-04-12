@@ -24,6 +24,8 @@ const workosMiddleware = authkitMiddleware({
       "/api/demo/validate-data",
       "/api/access-requests",
       "/api/contact",
+      "/blog",
+      "/blog/:slug",
     ],
   },
 });
