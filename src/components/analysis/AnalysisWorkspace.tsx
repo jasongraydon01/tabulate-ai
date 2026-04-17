@@ -11,8 +11,10 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import { AppBreadcrumbs } from "@/components/app-breadcrumbs";
 import { AnalysisEmptyState } from "@/components/analysis/AnalysisEmptyState";
 import { AnalysisSessionList } from "@/components/analysis/AnalysisSessionList";
+import { AnalysisThread } from "@/components/analysis/AnalysisThread";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { persistedAnalysisMessagesToUIMessages } from "@/lib/analysis/messages";
 import { useAuthContext } from "@/providers/auth-provider";
 
 interface AnalysisWorkspaceProps {
@@ -84,14 +86,6 @@ export function AnalysisWorkspace({
 
   const messages = useQuery(
     api.analysisMessages.listBySession,
-    convexOrgId && selectedSession ? {
-      orgId: convexOrgId as Id<"organizations">,
-      sessionId: selectedSession._id,
-    } : "skip",
-  );
-
-  const artifacts = useQuery(
-    api.analysisArtifacts.listBySession,
     convexOrgId && selectedSession ? {
       orgId: convexOrgId as Id<"organizations">,
       sessionId: selectedSession._id,
@@ -190,7 +184,7 @@ export function AnalysisWorkspace({
             </CardContent>
           </Card>
         ) : selectedSession ? (
-          messages === undefined || artifacts === undefined ? (
+          messages === undefined ? (
             <Card className="border-border/80 bg-card/90">
               <CardContent className="flex min-h-[420px] items-center justify-center gap-3 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -198,10 +192,18 @@ export function AnalysisWorkspace({
               </CardContent>
             </Card>
           ) : (
-            <AnalysisEmptyState
-              hasSession
+            <AnalysisThread
+              key={String(selectedSession._id)}
+              runId={runId}
+              sessionId={String(selectedSession._id)}
               sessionTitle={selectedSession.title}
-              artifactCount={artifacts.length}
+              initialMessages={persistedAnalysisMessagesToUIMessages(
+                messages.map((message) => ({
+                  _id: String(message._id),
+                  role: message.role,
+                  content: message.content,
+                })),
+              )}
             />
           )
         ) : (
