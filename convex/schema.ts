@@ -95,6 +95,32 @@ const wincrossParseDiagnosticsValidator = v.object({
   encoding: v.union(v.literal("utf16le"), v.literal("utf8"), v.literal("unknown")),
 });
 
+const analysisSourceClassValidator = v.union(
+  v.literal("from_tabs"),
+  v.literal("assistant_synthesis"),
+);
+
+const analysisGroundingRefValidator = v.object({
+  refType: v.string(),
+  refId: v.string(),
+  label: v.optional(v.string()),
+});
+
+const analysisAgentMetricsValidator = v.object({
+  model: v.string(),
+  inputTokens: v.number(),
+  outputTokens: v.number(),
+  durationMs: v.number(),
+});
+
+const analysisMessagePartValidator = v.object({
+  type: v.string(),
+  text: v.optional(v.string()),
+  state: v.optional(v.string()),
+  artifactId: v.optional(v.id("analysisArtifacts")),
+  label: v.optional(v.string()),
+});
+
 // ---------------------------------------------------------------------------
 // Schema
 // ---------------------------------------------------------------------------
@@ -318,6 +344,59 @@ export default defineSchema({
     .index("by_run", ["runId"])
     .index("by_run_table", ["runId", "tableId"])
     .index("by_org", ["orgId"]),
+
+  analysisSessions: defineTable({
+    orgId: v.id("organizations"),
+    projectId: v.id("projects"),
+    runId: v.id("runs"),
+    createdBy: v.id("users"),
+    title: v.string(),
+    status: v.union(
+      v.literal("active"),
+      v.literal("archived"),
+    ),
+    createdAt: v.number(),
+    lastMessageAt: v.number(),
+  })
+    .index("by_run", ["runId"])
+    .index("by_org", ["orgId"])
+    .index("by_project", ["projectId"]),
+
+  analysisMessages: defineTable({
+    sessionId: v.id("analysisSessions"),
+    orgId: v.id("organizations"),
+    role: v.union(
+      v.literal("user"),
+      v.literal("assistant"),
+      v.literal("system"),
+    ),
+    content: v.string(),
+    parts: v.optional(v.array(analysisMessagePartValidator)),
+    groundingRefs: v.optional(v.array(analysisGroundingRefValidator)),
+    agentMetrics: v.optional(analysisAgentMetricsValidator),
+    createdAt: v.number(),
+  }).index("by_session_created", ["sessionId", "createdAt"]),
+
+  analysisArtifacts: defineTable({
+    sessionId: v.id("analysisSessions"),
+    orgId: v.id("organizations"),
+    projectId: v.id("projects"),
+    runId: v.id("runs"),
+    artifactType: v.union(
+      v.literal("table_card"),
+      v.literal("note"),
+    ),
+    sourceClass: analysisSourceClassValidator,
+    title: v.string(),
+    sourceTableIds: v.array(v.string()),
+    sourceQuestionIds: v.array(v.string()),
+    // Payload varies by rendered card type and remains internal-only for v1.
+    payload: v.any(),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+  })
+    .index("by_session", ["sessionId"])
+    .index("by_run", ["runId"]),
 
   demoRuns: defineTable({
     name: v.string(),

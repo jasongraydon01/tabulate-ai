@@ -9,6 +9,9 @@
  */
 
 import type * as accessRequests from "../accessRequests.js";
+import type * as analysisArtifacts from "../analysisArtifacts.js";
+import type * as analysisMessages from "../analysisMessages.js";
+import type * as analysisSessions from "../analysisSessions.js";
 import type * as crons from "../crons.js";
 import type * as demoRuns from "../demoRuns.js";
 import type * as goldenBaselines from "../goldenBaselines.js";
@@ -32,6 +35,9 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   accessRequests: typeof accessRequests;
+  analysisArtifacts: typeof analysisArtifacts;
+  analysisMessages: typeof analysisMessages;
+  analysisSessions: typeof analysisSessions;
   crons: typeof crons;
   demoRuns: typeof demoRuns;
   goldenBaselines: typeof goldenBaselines;

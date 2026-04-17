@@ -1,0 +1,79 @@
+import { v } from "convex/values";
+import { query, internalMutation } from "./_generated/server";
+
+const groundingRefValidator = v.object({
+  refType: v.string(),
+  refId: v.string(),
+  label: v.optional(v.string()),
+});
+
+const agentMetricsValidator = v.object({
+  model: v.string(),
+  inputTokens: v.number(),
+  outputTokens: v.number(),
+  durationMs: v.number(),
+});
+
+const messagePartValidator = v.object({
+  type: v.string(),
+  text: v.optional(v.string()),
+  state: v.optional(v.string()),
+  artifactId: v.optional(v.id("analysisArtifacts")),
+  label: v.optional(v.string()),
+});
+
+export const listBySession = query({
+  args: {
+    orgId: v.id("organizations"),
+    sessionId: v.id("analysisSessions"),
+  },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session || session.orgId !== args.orgId) return [];
+
+    return await ctx.db
+      .query("analysisMessages")
+      .withIndex("by_session_created", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+  },
+});
+
+export const create = internalMutation({
+  args: {
+    sessionId: v.id("analysisSessions"),
+    orgId: v.id("organizations"),
+    role: v.union(
+      v.literal("user"),
+      v.literal("assistant"),
+      v.literal("system"),
+    ),
+    content: v.string(),
+    parts: v.optional(v.array(messagePartValidator)),
+    groundingRefs: v.optional(v.array(groundingRefValidator)),
+    agentMetrics: v.optional(agentMetricsValidator),
+  },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session || session.orgId !== args.orgId) {
+      throw new Error("Analysis session not found");
+    }
+
+    const createdAt = Date.now();
+    const messageId = await ctx.db.insert("analysisMessages", {
+      sessionId: args.sessionId,
+      orgId: args.orgId,
+      role: args.role,
+      content: args.content,
+      createdAt,
+      ...(args.parts ? { parts: args.parts } : {}),
+      ...(args.groundingRefs ? { groundingRefs: args.groundingRefs } : {}),
+      ...(args.agentMetrics ? { agentMetrics: args.agentMetrics } : {}),
+    });
+
+    await ctx.db.patch(args.sessionId, {
+      lastMessageAt: createdAt,
+    });
+
+    return messageId;
+  },
+});
