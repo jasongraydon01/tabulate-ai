@@ -46,6 +46,7 @@ export function validateStartupEnvironment(): StartupValidationResult {
 
   // ── AI Provider ──────────────────────────────────────────────────────
   const aiProvider = (process.env.AI_PROVIDER || 'azure').toLowerCase();
+  const analysisAiProvider = process.env.ANALYSIS_AI_PROVIDER?.toLowerCase();
 
   if (aiProvider === 'azure') {
     requireVar('AZURE_API_KEY', errors);
@@ -54,6 +55,14 @@ export function validateStartupEnvironment(): StartupValidationResult {
     requireVar('OPENAI_API_KEY', errors);
   } else {
     errors.push(`Unknown AI_PROVIDER: "${aiProvider}" (expected "azure" or "openai")`);
+  }
+
+  if (analysisAiProvider) {
+    if (!['azure', 'openai', 'anthropic'].includes(analysisAiProvider)) {
+      errors.push(`Unknown ANALYSIS_AI_PROVIDER: "${analysisAiProvider}" (expected "azure", "openai", or "anthropic")`);
+    } else if (analysisAiProvider === 'anthropic') {
+      requireVar('ANTHROPIC_API_KEY', errors);
+    }
   }
 
   // ── Convex ───────────────────────────────────────────────────────────

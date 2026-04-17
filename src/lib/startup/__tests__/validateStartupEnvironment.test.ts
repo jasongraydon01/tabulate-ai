@@ -59,6 +59,16 @@ describe('validateStartupEnvironment', () => {
       expect(result.errors).toHaveLength(0);
     });
 
+    it('passes when analysis chat uses Anthropic but the main pipeline stays on Azure', () => {
+      setMinimalValidEnv();
+      process.env.ANALYSIS_AI_PROVIDER = 'anthropic';
+      process.env.ANTHROPIC_API_KEY = 'sk-ant-test-12345';
+
+      const result = validateStartupEnvironment();
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
     it('passes with WorkOS auth instead of AUTH_BYPASS', () => {
       setMinimalValidEnv();
       delete process.env.AUTH_BYPASS;
@@ -109,6 +119,25 @@ describe('validateStartupEnvironment', () => {
       const result = validateStartupEnvironment();
       expect(result.valid).toBe(false);
       expect(result.errors[0]).toContain('Unknown AI_PROVIDER');
+    });
+
+    it('errors when ANALYSIS_AI_PROVIDER is anthropic but ANTHROPIC_API_KEY is missing', () => {
+      setMinimalValidEnv();
+      process.env.ANALYSIS_AI_PROVIDER = 'anthropic';
+      delete process.env.ANTHROPIC_API_KEY;
+
+      const result = validateStartupEnvironment();
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain('Missing required environment variable: ANTHROPIC_API_KEY');
+    });
+
+    it('errors on unknown ANALYSIS_AI_PROVIDER', () => {
+      setMinimalValidEnv();
+      process.env.ANALYSIS_AI_PROVIDER = 'gemini';
+
+      const result = validateStartupEnvironment();
+      expect(result.valid).toBe(false);
+      expect(result.errors[0]).toContain('Unknown ANALYSIS_AI_PROVIDER');
     });
   });
 

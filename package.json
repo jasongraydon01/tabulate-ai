@@ -15,6 +15,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.71",
     "@ai-sdk/azure": "^3.0.2",
     "@ai-sdk/openai": "^3.0.26",
     "@ai-sdk/react": "^3.0.97",

@@ -92,6 +92,14 @@ export function AnalysisWorkspace({
     } : "skip",
   );
 
+  const artifacts = useQuery(
+    api.analysisArtifacts.listBySession,
+    convexOrgId && selectedSession ? {
+      orgId: convexOrgId as Id<"organizations">,
+      sessionId: selectedSession._id,
+    } : "skip",
+  );
+
   async function handleCreateSession() {
     setIsCreatingSession(true);
     try {
@@ -145,7 +153,7 @@ export function AnalysisWorkspace({
             <h1 className="font-serif text-4xl tracking-tight">Chat with your data</h1>
             <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
               Analysis sessions are attached to this run so TabulateAI can keep durable history,
-              future grounded messages, and rendered artifacts in one place.
+              grounded messages, and rendered artifacts in one place.
             </p>
           </div>
 
@@ -184,7 +192,7 @@ export function AnalysisWorkspace({
             </CardContent>
           </Card>
         ) : selectedSession ? (
-          messages === undefined ? (
+          messages === undefined || artifacts === undefined ? (
             <Card className="border-border/80 bg-card/90">
               <CardContent className="flex min-h-[420px] items-center justify-center gap-3 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -202,6 +210,18 @@ export function AnalysisWorkspace({
                   _id: String(message._id),
                   role: message.role,
                   content: message.content,
+                  parts: message.parts?.map((part) => ({
+                    type: part.type,
+                    text: part.text,
+                    state: part.state,
+                    artifactId: part.artifactId ? String(part.artifactId) : undefined,
+                    label: part.label,
+                  })),
+                })),
+                artifacts.map((artifact) => ({
+                  _id: String(artifact._id),
+                  artifactType: artifact.artifactType,
+                  payload: artifact.payload,
                 })),
               )}
             />

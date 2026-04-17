@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { type UIMessage } from "ai";
+import { isTextUIPart, isToolUIPart, type UIMessage } from "ai";
 
 import { getApiErrorDetails } from "@/lib/api/errorDetails";
 import { streamAnalysisResponse } from "@/lib/analysis/AnalysisAgent";
-import { getAnalysisUIMessageText, persistedAnalysisMessagesToUIMessages } from "@/lib/analysis/messages";
+import { loadAnalysisGroundingContext } from "@/lib/analysis/grounding";
+import {
+  getAnalysisUIMessageText,
+  persistedAnalysisMessagesToUIMessages,
+  sanitizeAnalysisMessageContent,
+} from "@/lib/analysis/messages";
+import { isAnalysisTableCard } from "@/lib/analysis/types";
 import { getConvexClient, mutateInternal } from "@/lib/convex";
 import { requireConvexAuth, AuthenticationError } from "@/lib/requireConvexAuth";
 import { applyRateLimit } from "@/lib/withRateLimit";
@@ -14,6 +20,62 @@ const CONVEX_ID_RE = /^[a-zA-Z0-9_.-]+$/;
 
 function isAnalysisMessageCandidate(value: unknown): value is UIMessage[] {
   return Array.isArray(value);
+}
+
+async function persistAssistantMessageParts(params: {
+  parts: UIMessage["parts"];
+  sessionId: Id<"analysisSessions">;
+  orgId: Id<"organizations">;
+  projectId: Id<"projects">;
+  runId: Id<"runs">;
+  createdBy: Id<"users">;
+}) {
+  const persistedParts: Array<{
+    type: string;
+    text?: string;
+    state?: string;
+    artifactId?: Id<"analysisArtifacts">;
+    label?: string;
+  }> = [];
+
+  for (const part of params.parts) {
+    if (isTextUIPart(part)) {
+      const text = sanitizeAnalysisMessageContent(part.text);
+      if (text) {
+        persistedParts.push({
+          type: "text",
+          text,
+          ...(part.state ? { state: part.state } : {}),
+        });
+      }
+      continue;
+    }
+
+    if (isToolUIPart(part) && part.type === "tool-getTableCard" && part.state === "output-available" && isAnalysisTableCard(part.output)) {
+      const artifactId = await mutateInternal(internal.analysisArtifacts.create, {
+        sessionId: params.sessionId,
+        orgId: params.orgId,
+        projectId: params.projectId,
+        runId: params.runId,
+        artifactType: "table_card",
+        sourceClass: "from_tabs",
+        title: part.output.title,
+        sourceTableIds: [part.output.tableId],
+        sourceQuestionIds: part.output.questionId ? [part.output.questionId] : [],
+        payload: part.output,
+        createdBy: params.createdBy,
+      });
+
+      persistedParts.push({
+        type: "tool-getTableCard",
+        state: part.state,
+        artifactId,
+        label: part.output.title,
+      });
+    }
+  }
+
+  return persistedParts;
 }
 
 export async function POST(
@@ -42,13 +104,15 @@ export async function POST(
 
     const submittedMessages = isAnalysisMessageCandidate(body?.messages) ? body?.messages : [];
     const latestUserMessage = [...submittedMessages].reverse().find((message) => message.role === "user");
-    const latestUserText = latestUserMessage ? getAnalysisUIMessageText(latestUserMessage) : "";
+    const latestUserText = latestUserMessage
+      ? sanitizeAnalysisMessageContent(getAnalysisUIMessageText(latestUserMessage))
+      : "";
     if (!latestUserText) {
       return NextResponse.json({ error: "A user message is required" }, { status: 400 });
     }
 
     const convex = getConvexClient();
-    const [run, session, persistedMessages] = await Promise.all([
+    const [run, session, persistedMessages, persistedArtifacts] = await Promise.all([
       convex.query(api.runs.get, {
         runId: runId as Id<"runs">,
         orgId: auth.convexOrgId,
@@ -58,6 +122,10 @@ export async function POST(
         sessionId: sessionId as Id<"analysisSessions">,
       }),
       convex.query(api.analysisMessages.listBySession, {
+        orgId: auth.convexOrgId,
+        sessionId: sessionId as Id<"analysisSessions">,
+      }),
+      convex.query(api.analysisArtifacts.listBySession, {
         orgId: auth.convexOrgId,
         sessionId: sessionId as Id<"analysisSessions">,
       }),
@@ -77,6 +145,18 @@ export async function POST(
         _id: String(message._id),
         role: message.role,
         content: message.content,
+        parts: message.parts?.map((part) => ({
+          type: part.type,
+          text: part.text,
+          state: part.state,
+          artifactId: part.artifactId ? String(part.artifactId) : undefined,
+          label: part.label,
+        })),
+      })),
+      persistedArtifacts.map((artifact) => ({
+        _id: String(artifact._id),
+        artifactType: artifact.artifactType,
+        payload: artifact.payload,
       })),
     );
 
@@ -107,8 +187,11 @@ export async function POST(
       ];
     }
 
+    const groundingContext = await loadAnalysisGroundingContext(run.result);
+
     const result = await streamAnalysisResponse({
       messages: conversationMessages,
+      groundingContext,
       abortSignal: request.signal,
     });
 
@@ -122,14 +205,23 @@ export async function POST(
       onFinish: async ({ responseMessage, isAborted }) => {
         if (isAborted) return;
 
-        const assistantText = getAnalysisUIMessageText(responseMessage);
-        if (!assistantText) return;
+        const assistantText = sanitizeAnalysisMessageContent(getAnalysisUIMessageText(responseMessage));
+        const persistedParts = await persistAssistantMessageParts({
+          parts: responseMessage.parts,
+          sessionId: session._id,
+          orgId: auth.convexOrgId,
+          projectId: session.projectId,
+          runId: session.runId,
+          createdBy: auth.convexUserId,
+        });
+        if (!assistantText && persistedParts.length === 0) return;
 
         await mutateInternal(internal.analysisMessages.create, {
           sessionId: session._id,
           orgId: auth.convexOrgId,
           role: "assistant",
           content: assistantText,
+          ...(persistedParts.length > 0 ? { parts: persistedParts } : {}),
         });
       },
     });

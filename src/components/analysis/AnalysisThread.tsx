@@ -72,7 +72,7 @@ export function AnalysisThread({
                 {sessionTitle}
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                Persistent conversation for this run. Direct run-grounded lookup is being connected next.
+                Persistent conversation for this run with grounded lookup against the published artifacts.
               </p>
             </div>
             <Badge variant="outline" className="font-mono">
