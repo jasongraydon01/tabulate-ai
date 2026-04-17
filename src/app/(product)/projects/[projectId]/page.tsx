@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, use } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery } from 'convex/react';
 import posthog from 'posthog-js';
@@ -561,6 +562,15 @@ export default function ProjectDetailPage({
   const isActive = status === 'in_progress' || status === 'pending_review' || status === 'resuming';
   const hasOutputs = (summary?.tables ?? 0) > 0 || (summary?.cuts ?? 0) > 0;
   const feedbackAvailable = !isActive && (status === 'success' || status === 'partial');
+  const analysisAvailable = Boolean(
+    latestRun
+    && !latestRun.expiredAt
+    && hasOutputs
+    && (status === 'success' || status === 'partial'),
+  );
+  const analysisHref = latestRun
+    ? `/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(String(latestRun._id))}/analysis`
+    : null;
   const parsedConfigResult = ProjectConfigSchema.safeParse(project.config);
   const projectConfig = parsedConfigResult.success ? parsedConfigResult.data : undefined;
   const configSections = projectConfig ? buildConfigSections(projectConfig, project.intake) : [];
@@ -762,6 +772,52 @@ export default function ProjectDetailPage({
             - Pipeline Decisions: replace block cards with a concise AI-generated summary paragraph
             - Table Labels: clarify user flow, reduce visual weight, add guidance
             The components and data fetching remain intact — just not rendered. */}
+
+        <Card className="mb-8">
+          <CardHeader>
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="space-y-2">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5 text-primary" />
+                  Analysis Workspace
+                </CardTitle>
+                <p className="max-w-2xl text-sm text-muted-foreground">
+                  Open a run-scoped TabulateAI conversation tied to this output so grounded answers,
+                  inline table cards, and session history stay attached to the same run.
+                </p>
+              </div>
+
+              {analysisAvailable && analysisHref ? (
+                <Button asChild>
+                  <Link href={analysisHref}>Open Chat with your data</Link>
+                </Button>
+              ) : (
+                <Badge variant="outline" className="w-fit">
+                  Not available yet
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {analysisAvailable ? (
+              <p className="text-sm text-muted-foreground">
+                Available for the latest completed run once outputs are present and still within retention.
+              </p>
+            ) : latestRun?.expiredAt ? (
+              <p className="text-sm text-muted-foreground">
+                Analysis is unavailable because this run&apos;s artifacts have expired.
+              </p>
+            ) : latestRun ? (
+              <p className="text-sm text-muted-foreground">
+                Analysis becomes available after TabulateAI finishes this run and the output artifacts are ready.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Analysis will appear here once this project has a completed run with output artifacts.
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Downloads */}
         {latestRun ? (

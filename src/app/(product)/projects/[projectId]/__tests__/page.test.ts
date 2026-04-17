@@ -214,6 +214,9 @@ describe('project detail page', () => {
 
     // Core page sections
     expect(markup).toContain('Downloads');
+    expect(markup).toContain('Analysis Workspace');
+    expect(markup).toContain('Open Chat with your data');
+    expect(markup).toContain('/projects/project-1/runs/run-1/analysis');
     // Pipeline Decisions and Table Labels are hidden pending UX redesign
     expect(markup).not.toContain('Pipeline Decisions');
     expect(markup).not.toContain('Table Labels');
@@ -299,6 +302,7 @@ describe('project detail page', () => {
       }),
     );
 
+    expect(markup).toContain('Analysis is unavailable because this run&#x27;s artifacts have expired.');
     expect(markup).toContain('Artifacts expired');
     expect(markup).toContain('30-day retention period');
   });
