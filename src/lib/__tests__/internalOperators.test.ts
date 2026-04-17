@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   getInternalAccessDomains,
+  hasBillingBypassAccess,
   isInternalAccessUser,
   isInternalOperator,
 } from '@/lib/internalOperators';
@@ -34,5 +35,19 @@ describe('internal operator and access helpers', () => {
     process.env.RESEND_FROM_ADDRESS = 'TabulateAI <notifications@tabulate-ai.com>';
     expect(getInternalAccessDomains()).toEqual(['tabulate-ai.com']);
     expect(isInternalAccessUser('person@tabulate-ai.com')).toBe(true);
+  });
+
+  it('treats bypass auth as internal billing access even when the email domain is different', () => {
+    process.env.INTERNAL_ACCESS_DOMAINS = 'tabulate-ai.com';
+
+    expect(hasBillingBypassAccess({
+      email: 'dev@crosstab.ai',
+      isBypass: true,
+    })).toBe(true);
+
+    expect(hasBillingBypassAccess({
+      email: 'person@example.com',
+      isBypass: false,
+    })).toBe(false);
   });
 });

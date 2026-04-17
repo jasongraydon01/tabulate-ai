@@ -34,7 +34,7 @@ import { applyRateLimit } from '@/lib/withRateLimit';
 import { getApiErrorDetails } from '@/lib/api/errorDetails';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { hasActiveSubscriptionStatus } from '@/lib/billing/subscriptionStatus';
-import { isInternalAccessUser } from '@/lib/internalOperators';
+import { hasBillingBypassAccess } from '@/lib/internalOperators';
 import { uploadRunInputFiles } from '@/lib/r2/R2FileManager';
 import {
   buildWorkerExecutionPayload,
@@ -73,7 +73,10 @@ export async function POST(request: NextRequest) {
     const subscription = await queryInternal(internal.subscriptions.getByOrgInternal, {
       orgId: auth.convexOrgId,
     });
-    if (!isInternalAccessUser(auth.email) && (!subscription || !hasActiveSubscriptionStatus(subscription.status))) {
+    if (
+      !hasBillingBypassAccess({ email: auth.email, isBypass: auth.isBypass })
+      && (!subscription || !hasActiveSubscriptionStatus(subscription.status))
+    ) {
       return NextResponse.json(
         { error: 'No active billing plan', action: 'redirect_to_pricing' },
         { status: 402 },

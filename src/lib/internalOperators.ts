@@ -49,6 +49,20 @@ export function isInternalAccessUser(email: string | null | undefined): boolean 
   return getInternalAccessDomains().includes(domain);
 }
 
+export function hasBillingBypassAccess({
+  email,
+  isBypass,
+}: {
+  email: string | null | undefined;
+  isBypass?: boolean;
+}): boolean {
+  if (isBypass) {
+    return true;
+  }
+
+  return isInternalAccessUser(email);
+}
+
 export function isInternalOperator(email: string | null | undefined): boolean {
   if (!email) return false;
   return getInternalOpsAllowlist().includes(email.trim().toLowerCase());

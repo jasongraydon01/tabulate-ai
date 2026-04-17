@@ -880,26 +880,6 @@ export async function completePipeline(
   });
 
   return consoleCapture.run(() => runWithMetricsCollector(metricsCollector, async () => {
-  if (process.env.SKIP_HEALTH_CHECK !== 'true') {
-    await updateReviewRunStatus(runId, {
-      status: 'resuming',
-      progress: 53,
-      message: 'Checking AI provider health...',
-    });
-    const {
-      formatHealthCheckFailure,
-      getHealthCheckProviderLabel,
-      runHealthCheck,
-    } = await import('@/lib/pipeline/HealthCheck');
-    const providerLabel = getHealthCheckProviderLabel();
-    console.log(`[ReviewCompletion] Pre-flight: checking ${providerLabel} deployments...`);
-    const health = await runHealthCheck(abortSignal);
-    if (!health.success) {
-      throw new Error(`${providerLabel} health check failed: ${formatHealthCheckFailure(health)}`);
-    }
-    console.log(`[ReviewCompletion] Pre-flight: ${health.deployments.length} deployment(s) healthy (${health.durationMs}ms)`);
-  }
-
   // -------------------------------------------------------------------------
   // V3 Checkpoint — Load from disk
   // -------------------------------------------------------------------------
@@ -1048,6 +1028,29 @@ export async function completePipeline(
         message: 'Classifying loop semantics...',
       });
       await assertRunNotCancelled(runId, abortSignal, orgId);
+
+      if (process.env.SKIP_HEALTH_CHECK !== 'true') {
+        const {
+          formatHealthCheckFailure,
+          getHealthCheckProviderLabel,
+          runHealthCheckForAgentModels,
+        } = await import('@/lib/pipeline/HealthCheck');
+        const { getEnvironmentConfig } = await import('@/lib/env');
+        const config = getEnvironmentConfig();
+        const providerLabel = getHealthCheckProviderLabel();
+        console.log('[ReviewCompletion] Pre-flight: checking LoopSemanticsAgent deployment...');
+        const health = await runHealthCheckForAgentModels(
+          [{ agent: 'LoopSemanticsAgent', model: config.loopSemanticsModel }],
+          abortSignal,
+        );
+        if (!health.success) {
+          throw new Error(`${providerLabel} health check failed: ${formatHealthCheckFailure(health)}`);
+        }
+        console.log(
+          `[ReviewCompletion] Pre-flight: loop semantics deployment healthy (${health.durationMs}ms)`,
+        );
+      }
+
       console.log('[ReviewCompletion] Running LoopSemanticsPolicyAgent...');
 
       const cutsSpecForPolicy = buildCutsSpec(modifiedCrosstabResult);

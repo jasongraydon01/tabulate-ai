@@ -30,7 +30,7 @@ import { syncAuthToConvex } from '@/lib/auth-sync';
 import { queryInternal } from '@/lib/convex';
 import { internal } from '../../../../convex/_generated/api';
 import { canPerform } from '@/lib/permissions';
-import { isInternalAccessUser } from '@/lib/internalOperators';
+import { hasBillingBypassAccess } from '@/lib/internalOperators';
 import { JsonLd } from '@/components/seo/JsonLd';
 import { FAQ_ITEMS } from '@/lib/billing/faqItems';
 
@@ -44,7 +44,10 @@ export default async function PricingPage({
   const [sessionAuth, auth] = await Promise.all([getSessionAuth(), getAuth()]);
   const isAuthenticated = !!sessionAuth;
   const hasWorkspaceAccess = !!auth;
-  const hasInternalAccess = isInternalAccessUser(auth?.email ?? null);
+  const hasInternalAccess = hasBillingBypassAccess({
+    email: auth?.email ?? null,
+    isBypass: auth?.isBypass ?? false,
+  });
   const params = await searchParams;
   const checkoutPlanParam = params[PRICING_CHECKOUT_PLAN_PARAM];
   const checkoutPlan = parsePlanId(

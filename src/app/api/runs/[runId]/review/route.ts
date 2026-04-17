@@ -25,6 +25,7 @@ import type { CrosstabReviewState } from '@/lib/api/types';
 import { applyRateLimit } from '@/lib/withRateLimit';
 import { canPerform } from '@/lib/permissions';
 import { getApiErrorDetails } from '@/lib/api/errorDetails';
+import { getOutputsBaseDir, isPathInsideOutputsBase } from '@/lib/paths/outputs';
 import { parseRunResult } from '@/schemas/runResultSchema';
 import { loadCheckpoint } from '@/lib/v3/runtime/persistence';
 import { persistDurableRecoveryBoundary } from '@/lib/worker/recoveryPersistence';
@@ -127,9 +128,7 @@ export async function POST(
     }
 
     // Validate outputDir resolves under the expected outputs directory
-    const resolvedOutput = path.resolve(outputDir);
-    const allowedBase = path.resolve(process.cwd(), 'outputs');
-    if (!resolvedOutput.startsWith(allowedBase + path.sep) && resolvedOutput !== allowedBase) {
+    if (!isPathInsideOutputsBase(outputDir)) {
       return NextResponse.json({ error: 'Invalid output path' }, { status: 400 });
     }
 
@@ -148,7 +147,7 @@ export async function POST(
       if (reviewR2Keys?.reviewState) {
         console.log('[Review API] Local review state missing — attempting R2 recovery');
         try {
-          recoveredOutputDir = path.join(process.cwd(), 'outputs', '_recovered', runId);
+          recoveredOutputDir = path.join(getOutputsBaseDir(), '_recovered', runId);
           await downloadReviewFiles(reviewR2Keys, recoveredOutputDir);
 
           const recoveredPath = path.join(recoveredOutputDir, 'crosstab-review-state.json');

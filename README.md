@@ -144,11 +144,14 @@ cp .env.example .env.local  # Fill in credentials
 
 ```bash
 npm run dev                       # Start dev server (Turbopack)
-npm run dev:all                   # Start dev server + Convex dev watcher
+npm run dev:convex                # Start Convex dev watcher only
 npm run worker                    # Start pipeline worker daemon
+npm run dev:all                   # Start Next.js, Convex, and the worker together
 npm run lint && npx tsc --noEmit  # Quality gate
 npx vitest run                    # Test suite
 ```
+
+For local pipeline testing, use `npm run dev:all`. The Next.js dev server does not execute pipeline jobs; the worker process claims queued runs and performs the actual work.
 
 ### Convex
 

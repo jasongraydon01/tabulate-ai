@@ -26,6 +26,11 @@ export interface HealthCheckResult {
   durationMs: number;
 }
 
+export interface HealthCheckAgentModel {
+  agent: string;
+  model: string;
+}
+
 export function getHealthCheckProviderLabel(): string {
   try {
     return getEnvironmentConfig().aiProvider === 'openai' ? 'OpenAI' : 'Azure';
@@ -47,46 +52,51 @@ export function formatHealthCheckFailure(health: HealthCheckResult): string {
     .join('; ');
 }
 
-export async function runHealthCheck(abortSignal?: AbortSignal): Promise<HealthCheckResult> {
-  const startTime = Date.now();
-
-  let config;
-  try {
-    config = getEnvironmentConfig();
-  } catch (error) {
-    return {
-      success: false,
-      deployments: [{
-        name: '(config)',
-        agents: ['all'],
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-        latencyMs: Date.now() - startTime,
-      }],
-      durationMs: Date.now() - startTime,
-    };
-  }
-
-  const provider = getActiveProvider();
-
-  // Deduplicate deployments for active pipeline agents.
-  // Deprecated Path C agents (SkipLogicAgent/FilterTranslatorAgent) are intentionally excluded.
+export function buildDeploymentHealthTargets(
+  agentModels: HealthCheckAgentModel[],
+): Map<string, string[]> {
   const deploymentMap = new Map<string, string[]>();
-  const agentModels: [string, string][] = [
-    ['BannerAgent', config.bannerModel],
-    ['BannerGenerateAgent', config.bannerGenerateModel],
-    ['CrosstabAgent', config.crosstabModel],
-    ['VerificationAgent', config.verificationModel],
-    ['LoopSemanticsAgent', config.loopSemanticsModel],
-  ];
 
-  for (const [agent, model] of agentModels) {
+  for (const { agent, model } of agentModels) {
     const existing = deploymentMap.get(model);
     if (existing) {
       existing.push(agent);
     } else {
       deploymentMap.set(model, [agent]);
     }
+  }
+
+  return deploymentMap;
+}
+
+function buildConfigErrorResult(startTime: number, error: unknown): HealthCheckResult {
+  return {
+    success: false,
+    deployments: [{
+      name: '(config)',
+      agents: ['all'],
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+      latencyMs: Date.now() - startTime,
+    }],
+    durationMs: Date.now() - startTime,
+  };
+}
+
+async function runHealthCheckAgainstAgentModels(
+  agentModels: HealthCheckAgentModel[],
+  abortSignal?: AbortSignal,
+): Promise<HealthCheckResult> {
+  const startTime = Date.now();
+  const provider = getActiveProvider();
+  const deploymentMap = buildDeploymentHealthTargets(agentModels);
+
+  if (deploymentMap.size === 0) {
+    return {
+      success: true,
+      deployments: [],
+      durationMs: 0,
+    };
   }
 
   // 15-second timeout for the entire health check
@@ -153,4 +163,41 @@ export async function runHealthCheck(abortSignal?: AbortSignal): Promise<HealthC
     deployments: results,
     durationMs: Date.now() - startTime,
   };
+}
+
+export async function runHealthCheckForAgentModels(
+  agentModels: HealthCheckAgentModel[],
+  abortSignal?: AbortSignal,
+): Promise<HealthCheckResult> {
+  const startTime = Date.now();
+
+  try {
+    getEnvironmentConfig();
+  } catch (error) {
+    return buildConfigErrorResult(startTime, error);
+  }
+
+  return runHealthCheckAgainstAgentModels(agentModels, abortSignal);
+}
+
+export async function runHealthCheck(abortSignal?: AbortSignal): Promise<HealthCheckResult> {
+  const startTime = Date.now();
+
+  let config;
+  try {
+    config = getEnvironmentConfig();
+  } catch (error) {
+    return buildConfigErrorResult(startTime, error);
+  }
+
+  return runHealthCheckAgainstAgentModels(
+    [
+      { agent: 'BannerAgent', model: config.bannerModel },
+      { agent: 'BannerGenerateAgent', model: config.bannerGenerateModel },
+      { agent: 'CrosstabAgent', model: config.crosstabModel },
+      { agent: 'VerificationAgent', model: config.verificationModel },
+      { agent: 'LoopSemanticsAgent', model: config.loopSemanticsModel },
+    ],
+    abortSignal,
+  );
 }

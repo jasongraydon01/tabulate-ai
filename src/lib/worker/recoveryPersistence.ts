@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 import { mutateInternal } from '@/lib/convex';
+import { isPathInsideOutputsBase } from '@/lib/paths/outputs';
 import { uploadRunOutputArtifact, downloadToTemp } from '@/lib/r2/R2FileManager';
 import { internal } from '../../../convex/_generated/api';
 import type { Id } from '../../../convex/_generated/dataModel';
@@ -154,13 +155,7 @@ export async function persistDurableRecoveryBoundary(params: {
 }
 
 function ensureOutputDirIsSafe(outputDir: string): void {
-  const resolvedOutputDir = path.resolve(outputDir);
-  const allowedBase = path.resolve(process.cwd(), 'outputs');
-
-  if (
-    !resolvedOutputDir.startsWith(`${allowedBase}${path.sep}`)
-    && resolvedOutputDir !== allowedBase
-  ) {
+  if (!isPathInsideOutputsBase(outputDir)) {
     throw new Error(`Invalid recovery output path: ${outputDir}`);
   }
 }

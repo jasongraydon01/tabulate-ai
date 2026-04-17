@@ -1,18 +1,22 @@
 import '../src/lib/loadEnv';
 
-import { mutateInternal } from '@/lib/convex';
+import { mutateInternal, queryInternal } from '@/lib/convex';
 import { internal } from '../convex/_generated/api';
 import { runClaimedWorkerRun } from '@/lib/worker/runClaimedRun';
 import { cleanupPendingArtifactRuns } from '@/lib/worker/artifactCleanup';
+import { formatWorkerQueueSnapshotLog } from '@/lib/worker/logging';
 import type { ClaimedWorkerRun } from '@/lib/worker/types';
 
 const POLL_INTERVAL_MS = Number(process.env.PIPELINE_WORKER_POLL_MS ?? 5000);
 const STALE_LEASE_MS = Number(process.env.PIPELINE_WORKER_STALE_MS ?? 10 * 60 * 1000);
 const ARTIFACT_CLEANUP_INTERVAL_MS = 60 * 1000;
+const IDLE_LOG_INTERVAL_MS = Number(process.env.PIPELINE_WORKER_IDLE_LOG_MS ?? 15000);
 const workerId = process.env.PIPELINE_WORKER_ID ?? `worker-${process.pid}`;
 
 let shuttingDown = false;
 let lastArtifactCleanupAt = 0;
+let lastIdleSnapshotKey = '';
+let lastIdleLogAt = 0;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -37,8 +41,43 @@ async function claimNextRun(): Promise<ClaimedWorkerRun | null> {
   };
 }
 
+async function logIdleQueueSnapshot(): Promise<void> {
+  const now = Date.now();
+  let snapshot;
+
+  try {
+    snapshot = await queryInternal(internal.runs.getWorkerQueueSnapshot, {});
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const snapshotKey = `unavailable:${message}`;
+
+    if (snapshotKey === lastIdleSnapshotKey && now - lastIdleLogAt < IDLE_LOG_INTERVAL_MS) {
+      return;
+    }
+
+    lastIdleSnapshotKey = snapshotKey;
+    lastIdleLogAt = now;
+    console.log('[Worker] Queue diagnostics unavailable until Convex is ready.');
+    return;
+  }
+
+  const snapshotKey = JSON.stringify(snapshot);
+
+  if (snapshotKey === lastIdleSnapshotKey && now - lastIdleLogAt < IDLE_LOG_INTERVAL_MS) {
+    return;
+  }
+
+  lastIdleSnapshotKey = snapshotKey;
+  lastIdleLogAt = now;
+  for (const line of formatWorkerQueueSnapshotLog(snapshot, now)) {
+    console.log(line);
+  }
+}
+
 async function main(): Promise<void> {
-  console.log(`[Worker] Starting pipeline worker ${workerId}`);
+  console.log(
+    `[Worker] Starting pipeline worker ${workerId} (poll ${POLL_INTERVAL_MS}ms, stale ${STALE_LEASE_MS}ms)`,
+  );
 
   while (!shuttingDown) {
     try {
@@ -59,10 +98,12 @@ async function main(): Promise<void> {
 
       const claimedRun = await claimNextRun();
       if (!claimedRun) {
+        await logIdleQueueSnapshot();
         await sleep(POLL_INTERVAL_MS);
         continue;
       }
 
+      lastIdleSnapshotKey = '';
       console.log(`[Worker] Claimed run ${claimedRun.runId} (attempt ${claimedRun.attemptCount})`);
       await runClaimedWorkerRun(claimedRun, workerId);
     } catch (error) {

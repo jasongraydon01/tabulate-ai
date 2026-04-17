@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 
 import {
+  buildDeploymentHealthTargets,
   formatHealthCheckFailure,
   getHealthCheckProviderLabel,
   type HealthCheckResult,
@@ -35,6 +36,19 @@ describe('HealthCheck helpers', () => {
     expect(formatHealthCheckFailure(health)).toBe(
       'gpt-5-mini (BannerGenerateAgent, VerificationAgent): The project you are requesting has been archived and is no longer accessible',
     );
+  });
+
+  it('deduplicates repeated model probes across agents', () => {
+    const targets = buildDeploymentHealthTargets([
+      { agent: 'BannerGenerateAgent', model: 'gpt-5-mini' },
+      { agent: 'VerificationAgent', model: 'gpt-5-mini' },
+      { agent: 'LoopSemanticsAgent', model: 'gpt-5-nano' },
+    ]);
+
+    expect([...targets.entries()]).toEqual([
+      ['gpt-5-mini', ['BannerGenerateAgent', 'VerificationAgent']],
+      ['gpt-5-nano', ['LoopSemanticsAgent']],
+    ]);
   });
 
   it('uses OpenAI as the fallback provider label', () => {

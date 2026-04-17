@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildClaimCandidateOrder,
   getWorkerQueueClass,
+  summarizeWorkerQueue,
 } from '../scheduling';
 
 type TestRun = {
@@ -82,5 +83,62 @@ describe('worker scheduling', () => {
     };
 
     expect(getWorkerQueueClass(legacyReviewResume)).toBe('review_resume');
+  });
+
+  it('summarizes blocked org-capacity runs for diagnostics', () => {
+    const queuedRuns: TestRun[] = [
+      { id: 'blocked-project', orgId: 'org-a', queueClass: 'project' },
+      { id: 'eligible-project', orgId: 'org-b', queueClass: 'project' },
+    ];
+    const activeRuns: Array<TestRun & { executionState: 'claimed' | 'running' | 'resuming' }> = [
+      { id: 'active-1', orgId: 'org-a', queueClass: 'project', executionState: 'running' },
+      { id: 'active-2', orgId: 'org-a', queueClass: 'project', executionState: 'claimed' },
+    ];
+
+    const snapshot = summarizeWorkerQueue(
+      queuedRuns,
+      activeRuns,
+      {
+        maxActiveDemoRuns: 2,
+        maxActiveRunsPerOrg: 2,
+      },
+    );
+
+    expect(snapshot.queuedCount).toBe(2);
+    expect(snapshot.eligibleCount).toBe(1);
+    expect(snapshot.blockedByOrgLimitCount).toBe(1);
+    expect(snapshot.blockedByDemoLimitCount).toBe(0);
+    expect(snapshot.nextClaimableQueueClass).toBe('project');
+    expect(snapshot.activeByOrg).toEqual({ 'org-a': 2 });
+  });
+
+  it('summarizes demo-capacity blocks separately from org limits', () => {
+    const queuedRuns: TestRun[] = [
+      { id: 'demo-queued', orgId: 'demo-org', queueClass: 'demo' },
+      { id: 'project-queued', orgId: 'project-org', queueClass: 'project' },
+    ];
+    const activeRuns: Array<TestRun & { executionState: 'claimed' | 'running' | 'resuming' }> = [
+      { id: 'demo-active-1', orgId: 'demo-org', queueClass: 'demo', executionState: 'running' },
+      { id: 'demo-active-2', orgId: 'demo-org-2', queueClass: 'demo', executionState: 'claimed' },
+    ];
+
+    const snapshot = summarizeWorkerQueue(
+      queuedRuns,
+      activeRuns,
+      {
+        maxActiveDemoRuns: 2,
+        maxActiveRunsPerOrg: 2,
+      },
+    );
+
+    expect(snapshot.queuedByClass).toEqual({
+      review_resume: 0,
+      project: 1,
+      demo: 1,
+    });
+    expect(snapshot.eligibleCount).toBe(1);
+    expect(snapshot.blockedByOrgLimitCount).toBe(0);
+    expect(snapshot.blockedByDemoLimitCount).toBe(1);
+    expect(snapshot.nextClaimableQueueClass).toBe('project');
   });
 });

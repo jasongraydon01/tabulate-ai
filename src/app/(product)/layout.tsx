@@ -11,7 +11,7 @@ import { internal } from "../../../convex/_generated/api";
 import type { Role } from "@/lib/permissions";
 import { hasActiveSubscriptionStatus } from "@/lib/billing/subscriptionStatus";
 import {
-  isInternalAccessUser,
+  hasBillingBypassAccess,
   isInternalOperator as isInternalOperatorEmail,
 } from "@/lib/internalOperators";
 
@@ -31,7 +31,10 @@ export default async function ProductLayout({
   let convexUserId: string | null = null;
   let role: Role | null = null;
   const isInternalOperator = isInternalOperatorEmail(auth.email);
-  const isInternalAccess = isInternalAccessUser(auth.email);
+  const isInternalAccess = hasBillingBypassAccess({
+    email: auth.email,
+    isBypass: auth.isBypass,
+  });
   let hasActiveSubscription = false;
   let subscriptionPlan: string | null = null;
 

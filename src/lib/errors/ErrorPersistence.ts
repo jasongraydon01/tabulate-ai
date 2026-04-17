@@ -11,6 +11,7 @@ import {
   type PipelineErrorSource,
 } from '../../schemas/pipelineErrorSchema';
 
+import { getOutputsBaseDir, getWorkspaceRoot } from '../paths/outputs';
 import { isPolicyError, isRateLimitError } from '../retryWithPolicyHandling';
 
 // =============================================================================
@@ -31,13 +32,13 @@ export function getErrorsArchiveDir(outputDir: string): string {
 
 export function getGlobalSystemOutputDir(): string {
   // Used when we don't have a pipeline output dir yet (early failures).
-  return path.join(process.cwd(), 'outputs', '_system', 'pipeline-global');
+  return path.join(getOutputsBaseDir(), '_system', 'pipeline-global');
 }
 
 export function inferRunIdentityFromOutputDir(outputDir: string): { dataset: string; pipelineId: string } {
   // Expected: outputs/<dataset>/<pipelineId>
   try {
-    const rel = path.relative(process.cwd(), outputDir);
+    const rel = path.relative(getWorkspaceRoot(), outputDir);
     const parts = rel.split(path.sep).filter(Boolean);
     const outputsIdx = parts.indexOf('outputs');
     if (outputsIdx >= 0 && parts.length >= outputsIdx + 3) {
@@ -153,7 +154,7 @@ export function buildPipelineErrorRecord(args: {
 
     dataset: args.dataset,
     pipelineId: args.pipelineId,
-    outputDirRelative: path.relative(process.cwd(), args.outputDir),
+    outputDirRelative: path.relative(getWorkspaceRoot(), args.outputDir),
 
     source: args.source,
     agentName: args.agentName || '',
@@ -183,7 +184,7 @@ export function buildPipelineErrorRecord(args: {
     timestamp: new Date().toISOString(),
     dataset: args.dataset || '',
     pipelineId: args.pipelineId || '',
-    outputDirRelative: path.relative(process.cwd(), args.outputDir || ''),
+    outputDirRelative: path.relative(getWorkspaceRoot(), args.outputDir || ''),
     source: args.source,
     agentName: args.agentName || '',
     stageNumber: 0,
@@ -400,4 +401,3 @@ export async function archiveAndClearPipelineErrors(outputDir: string): Promise<
     clearedAt: new Date().toISOString(),
   };
 }
-

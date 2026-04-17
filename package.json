@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "dev:convex": "npx convex dev",
-    "dev:all": "npx convex dev & next dev --turbopack",
+    "dev:all": "tsx scripts/dev-all.ts",
     "build": "next build",
     "start": "next start",
     "worker": "tsx scripts/worker.ts",

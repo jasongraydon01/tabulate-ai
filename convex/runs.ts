@@ -13,7 +13,9 @@ import {
   buildClaimCandidateOrder,
   getWorkerQueueClass,
   normalizeWorkerQueueCapacity,
+  summarizeWorkerQueue,
 } from "../src/lib/worker/scheduling";
+import type { WorkerQueueRunDiagnostics } from "../src/lib/worker/types";
 
 /** Statuses that represent an actively-running pipeline (heartbeat expected). */
 const ACTIVE_STATUSES = ["in_progress", "resuming"] as const;
@@ -835,6 +837,118 @@ export const claimNextQueuedRun = internalMutation({
     }
 
     return null;
+  },
+});
+
+export const getWorkerQueueSnapshot = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const queuedRuns = await ctx.db
+      .query("runs")
+      .withIndex("by_execution_state", (q) => q.eq("executionState", "queued"))
+      .order("asc")
+      .collect();
+    const claimedRuns = await ctx.db
+      .query("runs")
+      .withIndex("by_execution_state", (q) => q.eq("executionState", "claimed"))
+      .collect();
+    const runningRuns = await ctx.db
+      .query("runs")
+      .withIndex("by_execution_state", (q) => q.eq("executionState", "running"))
+      .collect();
+    const resumingRuns = await ctx.db
+      .query("runs")
+      .withIndex("by_execution_state", (q) => q.eq("executionState", "resuming"))
+      .collect();
+    const pendingReviewRuns = await ctx.db
+      .query("runs")
+      .withIndex("by_status", (q) => q.eq("status", "pending_review"))
+      .collect();
+
+    function toRunDiagnostics(
+      run: typeof queuedRuns[number],
+      executionStateOverride?: "queued" | "claimed" | "running" | "pending_review" | "resuming",
+    ): WorkerQueueRunDiagnostics {
+      return {
+        runId: String(run._id),
+        projectId: String(run.projectId),
+        orgId: String(run.orgId),
+        status: run.status,
+        executionState: executionStateOverride ?? run.executionState ?? "queued",
+        queueClass: run.queueClass,
+        workerId: run.workerId,
+        stage: run.stage,
+        progress: run.progress,
+        message: run.message,
+        attemptCount: run.attemptCount,
+        resumeFromStage: run.resumeFromStage,
+        claimedAt: run.claimedAt,
+        heartbeatAt: run.heartbeatAt,
+        lastHeartbeat: run.lastHeartbeat,
+        createdAt: run._creationTime,
+      };
+    }
+
+    const activeRuns = [
+      ...claimedRuns.map((run) => toRunDiagnostics(run, "claimed")),
+      ...runningRuns.map((run) => toRunDiagnostics(run, "running")),
+      ...resumingRuns.map((run) => toRunDiagnostics(run, "resuming")),
+    ];
+
+    const summary = summarizeWorkerQueue(
+      queuedRuns.map((run) => ({
+        orgId: String(run.orgId),
+        queueClass: getWorkerQueueClass({
+          orgId: String(run.orgId),
+          queueClass: run.queueClass,
+          resumeFromStage: run.resumeFromStage,
+        }),
+        resumeFromStage: run.resumeFromStage,
+      })),
+      [
+        ...claimedRuns.map((run) => ({
+          orgId: String(run.orgId),
+          queueClass: getWorkerQueueClass({
+            orgId: String(run.orgId),
+            queueClass: run.queueClass,
+            resumeFromStage: run.resumeFromStage,
+          }),
+          resumeFromStage: run.resumeFromStage,
+          executionState: "claimed" as const,
+        })),
+        ...runningRuns.map((run) => ({
+          orgId: String(run.orgId),
+          queueClass: getWorkerQueueClass({
+            orgId: String(run.orgId),
+            queueClass: run.queueClass,
+            resumeFromStage: run.resumeFromStage,
+          }),
+          resumeFromStage: run.resumeFromStage,
+          executionState: "running" as const,
+        })),
+        ...resumingRuns.map((run) => ({
+          orgId: String(run.orgId),
+          queueClass: getWorkerQueueClass({
+            orgId: String(run.orgId),
+            queueClass: run.queueClass,
+            resumeFromStage: run.resumeFromStage,
+          }),
+          resumeFromStage: run.resumeFromStage,
+          executionState: "resuming" as const,
+        })),
+      ],
+      WORKER_QUEUE_CAPACITY,
+    );
+
+    return {
+      ...summary,
+      pendingReviewCount: pendingReviewRuns.length,
+      queuedRuns: queuedRuns.map((run) => toRunDiagnostics(run, "queued")),
+      activeRuns,
+      pendingReviewRuns: pendingReviewRuns.map((run) =>
+        toRunDiagnostics(run, "pending_review"),
+      ),
+    };
   },
 });
 

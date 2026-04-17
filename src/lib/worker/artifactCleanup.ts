@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 import { mutateInternal, queryInternal } from '@/lib/convex';
+import { getOutputsBaseDir, isPathInsideOutputsBase } from '@/lib/paths/outputs';
 import { deletePrefix } from '@/lib/r2/r2';
 import { parseRunResult } from '@/schemas/runResultSchema';
 import { internal } from '../../../convex/_generated/api';
@@ -20,7 +21,7 @@ export interface ArtifactCleanupSummary {
   failed: number;
 }
 
-const OUTPUTS_BASE_DIR = path.resolve(process.cwd(), 'outputs');
+const OUTPUTS_BASE_DIR = getOutputsBaseDir();
 
 function describeError(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -33,17 +34,14 @@ function resolveRunOutputDir(run: PendingArtifactCleanupRun): string | null {
     return runResult.outputDir;
   }
   if (runResult?.dataset && runResult?.pipelineId) {
-    return path.join(process.cwd(), 'outputs', runResult.dataset, runResult.pipelineId);
+    return path.join(OUTPUTS_BASE_DIR, runResult.dataset, runResult.pipelineId);
   }
   return null;
 }
 
 function resolveSafeOutputDir(outputDir: string): string | null {
   const resolved = path.resolve(outputDir);
-  if (
-    resolved === OUTPUTS_BASE_DIR
-    || (!resolved.startsWith(`${OUTPUTS_BASE_DIR}${path.sep}`))
-  ) {
+  if (!isPathInsideOutputsBase(resolved)) {
     return null;
   }
   return resolved;
