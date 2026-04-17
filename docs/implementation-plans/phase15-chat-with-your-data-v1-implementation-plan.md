@@ -1,6 +1,6 @@
 # Phase 15 V1 Implementation Plan — Chat With Your Data
 
-**Status:** Draft for implementation.
+**Status:** In progress.
 
 **Purpose:** Convert the Phase 15 background thinking into a concrete v1 execution plan that matches the current TabulateAI codebase, preserves a strong AI experience, and avoids a retrofit when we add richer compute later.
 
@@ -78,7 +78,7 @@ The AI SDK is the best fit for v1 because it gives us:
 - resumable streams later if we need them
 - compatibility with our existing TypeScript/Next.js stack
 
-It is already partially present in the repo through the core `ai` package, but the chat UI layer is not wired yet.
+It is already present in the repo through the core `ai` package, and the TabulateAI analysis chat surface is now wired for run-scoped streaming conversations.
 
 ### assistant-ui
 
@@ -105,6 +105,29 @@ It is **not** a direct UI model for TabulateAI. Thunderbolt is a general AI clie
 - Inline data table cards with provenance
 - Follow-up suggestions after data-backed responses
 - Guardrails that repair unsupported dataset-specific claims before they reach the user
+
+## Current Build State
+
+### Implemented
+
+- **Slice 0:** run-scoped analysis route, Convex persistence tables, session creation flow, empty-state workspace
+- **Slice 1:** streaming chat shell, persisted user/assistant messages, loading and error states
+- **Slice 2:** grounded lookup tools against run artifacts with inline grounded table cards
+- analysis chat model selection is now isolated from the pipeline model path, so the analysis surface can use Anthropic while the pipeline remains on OpenAI/Azure
+
+### Working now
+
+- the analysis workspace route exists at `/projects/[projectId]/runs/[runId]/analysis`
+- sessions persist and reload
+- assistant responses stream into the thread
+- simple run-specific questions can be answered from validated run artifacts
+- inline table cards render in-thread and persist as analysis artifacts
+
+### Still missing before V1 feels usable in-product
+
+- a surfaced entry point from the main project/run experience into the analysis workspace
+- the Slice 3 trust layer that repairs unsupported dataset-specific claims before display
+- follow-up polish so the workspace feels productized rather than developer-accessible
 
 ### Explicitly out of scope for initial v1
 
@@ -535,6 +558,8 @@ Not needed in the first implementation slice:
 
 ### Slice 0: Schema and route scaffolding
 
+Status: Implemented
+
 Deliver:
 - Convex tables for sessions/messages/artifacts
 - run-scoped analysis page route
@@ -546,6 +571,8 @@ Exit criteria:
 - no AI yet
 
 ### Slice 1: Streaming chat shell
+
+Status: Implemented
 
 Deliver:
 - AI SDK chat transport
@@ -560,6 +587,8 @@ Exit criteria:
 
 ### Slice 2: Grounded lookup tools
 
+Status: Implemented
+
 Deliver:
 - `searchRunCatalog`
 - `getTableCard`
@@ -572,6 +601,8 @@ Exit criteria:
 
 ### Slice 3: Claim-check and repair lane
 
+Status: Next implementation slice after the analysis workspace is surfaced in the main product flow
+
 Deliver:
 - dataset-claim detection
 - repair pass for unsupported numeric claims
@@ -581,7 +612,20 @@ Exit criteria:
 - unsupported numerical answers are revised before display
 - methodology conversation remains natural
 
+### Intermediate step before Slice 3: Surface the analysis workspace
+
+Deliver:
+- visible CTA or navigation path from the main run/project UI into `/projects/[projectId]/runs/[runId]/analysis`
+- copy and status handling that makes it obvious when analysis is available for a run
+- enough discoverability that the workspace can be exercised and critiqued before trust-layer work continues
+
+Exit criteria:
+- a user can reach the analysis workspace naturally from the product without typing the URL
+- Jason can start using the real analysis surface to tune UX and interaction flow
+
 ### Slice 4: Session polish
+
+Status: High-level follow-on after Slice 3
 
 Deliver:
 - session titles
@@ -594,6 +638,8 @@ Exit criteria:
 
 ### Slice 5: Durable artifact polish
 
+Status: High-level follow-on
+
 Deliver:
 - richer `analysisArtifacts`
 - copy/export hooks for table cards
@@ -603,6 +649,8 @@ Exit criteria:
 - the assistant's structured outputs feel reusable, not ephemeral
 
 ### Slice 6: Compute-lane design checkpoint
+
+Status: Deliberately deferred
 
 Deliver:
 - decision memo after actual usage of slices 1-5
@@ -621,14 +669,12 @@ Questions to answer before building compute:
 
 ## Recommended Next Step
 
-Start with **Slice 0 + Slice 1** and do not intermingle compute design yet.
+Implement the **analysis workspace surfacing step** next, then use that live product path to tune the conversation experience before adding Slice 3.
 
 That gives us:
-- the real route
-- the real persistence model
-- the real streaming shell
-
-Once that exists, Slice 2 becomes straightforward and we can evaluate the actual feel of the product before deciding how much more machinery the compute lane deserves.
+- a real user path into the feature
+- direct feedback on the workspace feel and prompting UX
+- a stronger base for the trust layer, because we will be validating it against actual usage rather than a hidden route
 
 ## Sources Consulted
 
