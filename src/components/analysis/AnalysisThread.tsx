@@ -6,6 +6,10 @@ import { useChat } from "@ai-sdk/react";
 import { AlertCircle } from "lucide-react";
 
 import { AnalysisMessage } from "@/components/analysis/AnalysisMessage";
+import {
+  scrollAnalysisThreadToBottom,
+  scrollAnalysisThreadToMessageStart,
+} from "@/components/analysis/analysisThreadScroll";
 import { PromptComposer } from "@/components/analysis/PromptComposer";
 import { GridLoader } from "@/components/ui/grid-loader";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -23,7 +27,9 @@ export function AnalysisThread({
   initialMessages,
 }: AnalysisThreadProps) {
   const [input, setInput] = useState("");
-  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const lastMessageRef = useRef<HTMLDivElement | null>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const prevMessageCountRef = useRef(initialMessages.length);
   const transport = useMemo(
     () => new DefaultChatTransport<UIMessage>({
       api: `/api/runs/${encodeURIComponent(runId)}/analysis`,
@@ -46,7 +52,22 @@ export function AnalysisThread({
   const isBusy = status === "submitted" || status === "streaming";
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      if (messages.length > prevMessageCountRef.current && lastMessageRef.current) {
+        scrollAnalysisThreadToMessageStart(viewport, lastMessageRef.current);
+        prevMessageCountRef.current = messages.length;
+        return;
+      }
+
+      if (status === "streaming") {
+        scrollAnalysisThreadToBottom(viewport);
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frame);
   }, [messages, status]);
 
   async function handleSubmit() {
@@ -60,9 +81,9 @@ export function AnalysisThread({
   }
 
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <ScrollArea className="min-h-0 min-w-0 flex-1">
-        <div className="min-w-0 space-y-4 px-5 py-2 pb-28">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <ScrollArea className="min-h-0 min-w-0 flex-1" viewportRef={viewportRef}>
+        <div className="min-w-0 space-y-4 px-5 py-3">
           {messages.length === 0 ? (
             <div className="py-8 text-center">
               <p className="text-sm text-muted-foreground">
@@ -70,8 +91,10 @@ export function AnalysisThread({
               </p>
             </div>
           ) : (
-            messages.map((message) => (
-              <AnalysisMessage key={message.id} message={message} />
+            messages.map((message, index) => (
+              <div key={message.id} ref={index === messages.length - 1 ? lastMessageRef : undefined}>
+                <AnalysisMessage message={message} />
+              </div>
             ))
           )}
 
@@ -99,21 +122,17 @@ export function AnalysisThread({
               </div>
             </div>
           )}
-
-          <div ref={bottomRef} />
         </div>
       </ScrollArea>
 
-      <div className="pointer-events-none absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white/80 to-transparent px-5 pb-4 pt-10 dark:from-card dark:via-card/80">
-        <div className="pointer-events-auto">
-          <PromptComposer
-            value={input}
-            onChange={setInput}
-            onSubmit={handleSubmit}
-            onStop={stop}
-            isBusy={isBusy}
-          />
-        </div>
+      <div className="shrink-0 border-t border-border/60 bg-white/95 px-5 py-4 backdrop-blur supports-[backdrop-filter]:bg-white/80 dark:bg-card/95 dark:supports-[backdrop-filter]:bg-card/80">
+        <PromptComposer
+          value={input}
+          onChange={setInput}
+          onSubmit={handleSubmit}
+          onStop={stop}
+          isBusy={isBusy}
+        />
       </div>
     </div>
   );

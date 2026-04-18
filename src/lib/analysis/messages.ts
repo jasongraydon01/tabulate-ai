@@ -1,4 +1,4 @@
-import { isTextUIPart, isToolUIPart, type UIMessage } from "ai";
+import { isTextUIPart, type UIMessage } from "ai";
 
 import { isAnalysisTableCard, type AnalysisTableCard } from "@/lib/analysis/types";
 
