@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, MessageSquarePlus } from "lucide-react";
+import { Loader2, MessageSquarePlus, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -19,6 +19,8 @@ interface AnalysisSessionListProps {
   selectedSessionId: string | null;
   isLoading: boolean;
   isCreating: boolean;
+  isOpen: boolean;
+  onToggle: () => void;
   onCreateSession: () => Promise<void>;
   onSelectSession: (sessionId: string) => void;
 }
@@ -35,47 +37,79 @@ export function AnalysisSessionList({
   selectedSessionId,
   isLoading,
   isCreating,
+  isOpen,
+  onToggle,
   onCreateSession,
   onSelectSession,
 }: AnalysisSessionListProps) {
+  if (!isOpen) {
+    return (
+      <div className="flex w-12 shrink-0 flex-col items-center gap-2 border-r border-border/60 py-3">
+        <Button
+          variant="ghost"
+          size="xs"
+          className="h-8 w-8 p-0"
+          onClick={onToggle}
+        >
+          <PanelLeftOpen className="h-4 w-4" />
+          <span className="sr-only">Open chat list</span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="xs"
+          className="h-8 w-8 p-0"
+          onClick={() => { void onCreateSession(); }}
+          disabled={isCreating}
+        >
+          {isCreating ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <MessageSquarePlus className="h-4 w-4" />
+          )}
+          <span className="sr-only">New chat</span>
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    <aside className="rounded-2xl border border-border/80 bg-card/80 backdrop-blur">
-      <div className="border-b border-border/80 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium">Sessions</p>
-            <p className="text-xs text-muted-foreground">
-              Durable run-scoped threads for this analysis workspace.
-            </p>
-          </div>
-          <Button
-            size="sm"
-            onClick={() => {
-              void onCreateSession();
-            }}
-            disabled={isCreating}
-          >
-            {isCreating ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <MessageSquarePlus className="mr-2 h-4 w-4" />
-            )}
-            New Session
-          </Button>
-        </div>
+    <aside className="flex w-[260px] shrink-0 flex-col border-r border-border/60">
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+        <Button
+          variant="ghost"
+          size="xs"
+          className="h-7 w-7 p-0"
+          onClick={onToggle}
+        >
+          <PanelLeftClose className="h-4 w-4" />
+          <span className="sr-only">Close chat list</span>
+        </Button>
+        <Button
+          size="sm"
+          className="h-7 gap-1.5 px-2.5 text-xs"
+          onClick={() => { void onCreateSession(); }}
+          disabled={isCreating}
+        >
+          {isCreating ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <MessageSquarePlus className="h-3.5 w-3.5" />
+          )}
+          New Chat
+        </Button>
       </div>
 
-      <ScrollArea className="h-[420px]">
-        <div className="p-2">
+      <ScrollArea className="flex-1">
+        <div className="px-2 pb-2">
           {isLoading ? (
-            <div className="flex items-center gap-2 rounded-xl border border-dashed border-border/80 px-3 py-4 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading analysis sessions...
+            <div className="flex items-center gap-2 px-2 py-4 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Loading chats...
             </div>
           ) : sessions.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border/80 px-3 py-4 text-sm text-muted-foreground">
-              No sessions yet. Create the first session for this run.
-            </div>
+            <p className="px-2 py-4 text-xs text-muted-foreground">
+              No chats yet. Start one to explore your data.
+            </p>
           ) : (
             sessions.map((session) => {
               const isSelected = session._id === selectedSessionId;
@@ -85,23 +119,16 @@ export function AnalysisSessionList({
                   type="button"
                   onClick={() => onSelectSession(session._id)}
                   className={cn(
-                    "mb-2 w-full rounded-xl border px-3 py-3 text-left transition-colors",
+                    "mb-1 w-full rounded-lg px-2.5 py-2 text-left transition-colors",
                     isSelected
-                      ? "border-primary/40 bg-primary/8"
-                      : "border-transparent bg-muted/35 hover:border-border hover:bg-muted/55",
+                      ? "bg-primary/8"
+                      : "hover:bg-muted/50",
                   )}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{session.title}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Updated {formatSessionTime(session.lastMessageAt)}
-                      </p>
-                    </div>
-                    <span className="rounded-full border border-border/80 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-                      {session.status}
-                    </span>
-                  </div>
+                  <p className="truncate text-sm font-medium">{session.title}</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    {formatSessionTime(session.lastMessageAt)}
+                  </p>
                 </button>
               );
             })

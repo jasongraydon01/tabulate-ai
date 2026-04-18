@@ -7,8 +7,6 @@ import { AlertCircle } from "lucide-react";
 
 import { AnalysisMessage } from "@/components/analysis/AnalysisMessage";
 import { PromptComposer } from "@/components/analysis/PromptComposer";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GridLoader } from "@/components/ui/grid-loader";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -22,7 +20,6 @@ interface AnalysisThreadProps {
 export function AnalysisThread({
   runId,
   sessionId,
-  sessionTitle,
   initialMessages,
 }: AnalysisThreadProps) {
   const [input, setInput] = useState("");
@@ -64,79 +61,48 @@ export function AnalysisThread({
 
   return (
     <div className="flex min-h-[680px] min-w-0 flex-col gap-4">
-      <Card className="min-w-0 border-border/80 bg-card/90">
-        <CardHeader className="border-b border-border/80">
-          <div className="flex items-center justify-between gap-4">
-            <div className="space-y-1">
-              <CardTitle className="font-serif text-2xl tracking-tight">
-                {sessionTitle}
-              </CardTitle>
+      <ScrollArea className="min-w-0 flex-1">
+        <div className="min-w-0 space-y-4 px-1 py-2">
+          {messages.length === 0 ? (
+            <div className="py-8 text-center">
               <p className="text-sm text-muted-foreground">
-                Persistent conversation for this run with grounded lookup against the published artifacts.
+                Ask a question about your data to get started.
               </p>
             </div>
-            <Badge variant="outline" className="font-mono">
-              {messages.length} {messages.length === 1 ? "message" : "messages"}
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="min-w-0 p-0">
-          <ScrollArea className="h-[520px] min-w-0">
-            <div className="min-w-0 space-y-4 p-6">
-              {messages.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-border/80 bg-muted/20 p-6">
-                  <Badge variant="outline" className="mb-3 border-tab-blue/30 text-tab-blue">
-                    New session
-                  </Badge>
-                  <h2 className="font-serif text-2xl tracking-tight">
-                    Start the conversation
-                  </h2>
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                    Ask for interpretation help, how to approach a subgroup cut, how to explain a finding,
-                    or how to frame the next analytical question for this run.
+          ) : (
+            messages.map((message) => (
+              <AnalysisMessage key={message.id} message={message} />
+            ))
+          )}
+
+          {isBusy && (
+            <div className="flex w-full justify-start">
+              <div className="px-1 py-2">
+                <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                  <GridLoader size="sm" />
+                  Thinking...
+                </div>
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded-2xl border border-tab-rose/30 bg-tab-rose/10 p-4 text-sm text-tab-rose">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>
+                  <p className="font-medium">Analysis response failed</p>
+                  <p className="mt-1 text-sm/6 text-foreground/80">
+                    {error.message}
                   </p>
                 </div>
-              ) : (
-                messages.map((message) => (
-                  <AnalysisMessage key={message.id} message={message} />
-                ))
-              )}
-
-              {isBusy && (
-                <div className="flex w-full justify-start">
-                  <div className="rounded-2xl border border-border/80 bg-card/80 px-4 py-3">
-                    <div className="mb-2 flex items-center gap-2">
-                      <Badge variant="outline" className="text-[10px] uppercase tracking-[0.16em]">
-                        TabulateAI
-                      </Badge>
-                    </div>
-                    <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                      <GridLoader size="sm" />
-                      Thinking through the response...
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {error && (
-                <div className="rounded-2xl border border-tab-rose/30 bg-tab-rose/10 p-4 text-sm text-tab-rose">
-                  <div className="flex items-start gap-2">
-                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <div>
-                      <p className="font-medium">Analysis response failed</p>
-                      <p className="mt-1 text-sm/6 text-foreground/80">
-                        {error.message}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div ref={bottomRef} />
+              </div>
             </div>
-          </ScrollArea>
-        </CardContent>
-      </Card>
+          )}
+
+          <div ref={bottomRef} />
+        </div>
+      </ScrollArea>
 
       <PromptComposer
         value={input}

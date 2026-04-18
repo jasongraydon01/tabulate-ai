@@ -12,8 +12,6 @@ import { AppBreadcrumbs } from "@/components/app-breadcrumbs";
 import { AnalysisEmptyState } from "@/components/analysis/AnalysisEmptyState";
 import { AnalysisSessionList } from "@/components/analysis/AnalysisSessionList";
 import { AnalysisThread } from "@/components/analysis/AnalysisThread";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { persistedAnalysisMessagesToUIMessages } from "@/lib/analysis/messages";
 import { useAuthContext } from "@/providers/auth-provider";
 
@@ -24,52 +22,17 @@ interface AnalysisWorkspaceProps {
   runStatus: string;
 }
 
-function statusLabel(status: string): string {
-  switch (status) {
-    case "success":
-      return "Complete";
-    case "partial":
-      return "Partial";
-    case "pending_review":
-      return "Pending review";
-    case "in_progress":
-      return "In progress";
-    case "resuming":
-      return "Resuming";
-    case "error":
-      return "Error";
-    case "cancelled":
-      return "Cancelled";
-    default:
-      return status;
-  }
-}
-
-function statusBadgeClass(status: string): string {
-  switch (status) {
-    case "success":
-      return "border-tab-teal/30 bg-tab-teal/10 text-tab-teal";
-    case "partial":
-    case "pending_review":
-      return "border-tab-amber/30 bg-tab-amber/10 text-tab-amber";
-    case "error":
-      return "border-tab-rose/30 bg-tab-rose/10 text-tab-rose";
-    default:
-      return "border-tab-blue/30 bg-tab-blue/10 text-tab-blue";
-  }
-}
-
 export function AnalysisWorkspace({
   projectId,
   projectName,
   runId,
-  runStatus,
 }: AnalysisWorkspaceProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { convexOrgId } = useAuthContext();
   const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   const sessions = useQuery(
     api.analysisSessions.listByRun,
@@ -118,9 +81,9 @@ export function AnalysisWorkspace({
       startTransition(() => {
         router.replace(`${pathname}?sessionId=${encodeURIComponent(payload.sessionId as string)}`);
       });
-      toast.success("Analysis session created");
+      toast.success("Chat created");
     } catch (error) {
-      toast.error("Failed to create analysis session", {
+      toast.error("Failed to create chat", {
         description: error instanceof Error ? error.message : "Unknown error",
       });
     } finally {
@@ -134,41 +97,69 @@ export function AnalysisWorkspace({
     });
   }
 
-  return (
-    <div className="space-y-6 py-8">
-      <div className="space-y-4">
-        <AppBreadcrumbs
-          segments={[
-            { label: "Projects", href: "/dashboard" },
-            { label: projectName, href: `/projects/${encodeURIComponent(projectId)}` },
-            { label: "Analysis" },
-          ]}
-        />
-
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div className="space-y-2">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-              Run-scoped analysis
-            </p>
-            <h1 className="font-serif text-4xl tracking-tight">Chat with your data</h1>
-            <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-              Analysis sessions are attached to this run so TabulateAI can keep durable history,
-              grounded messages, and rendered artifacts in one place.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline" className="font-mono">
-              Run {runId}
-            </Badge>
-            <Badge variant="outline" className={statusBadgeClass(runStatus)}>
-              {statusLabel(runStatus)}
-            </Badge>
-          </div>
+  function renderThreadContent() {
+    if (sessions === undefined) {
+      return (
+        <div className="flex min-h-[520px] items-center justify-center gap-3 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading...
         </div>
-      </div>
+      );
+    }
 
-      <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+    if (!selectedSession) {
+      return <AnalysisEmptyState hasSession={false} />;
+    }
+
+    if (messages === undefined || artifacts === undefined) {
+      return (
+        <div className="flex min-h-[520px] items-center justify-center gap-3 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading...
+        </div>
+      );
+    }
+
+    return (
+      <AnalysisThread
+        key={String(selectedSession._id)}
+        runId={runId}
+        sessionId={String(selectedSession._id)}
+        sessionTitle={selectedSession.title}
+        initialMessages={persistedAnalysisMessagesToUIMessages(
+          messages.map((message) => ({
+            _id: String(message._id),
+            role: message.role,
+            content: message.content,
+            parts: message.parts?.map((part) => ({
+              type: part.type,
+              text: part.text,
+              state: part.state,
+              artifactId: part.artifactId ? String(part.artifactId) : undefined,
+              label: part.label,
+            })),
+          })),
+          artifacts.map((artifact) => ({
+            _id: String(artifact._id),
+            artifactType: artifact.artifactType,
+            payload: artifact.payload,
+          })),
+        )}
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-4 py-6">
+      <AppBreadcrumbs
+        segments={[
+          { label: "Projects", href: "/dashboard" },
+          { label: projectName, href: `/projects/${encodeURIComponent(projectId)}` },
+          { label: "Analysis" },
+        ]}
+      />
+
+      <div className="flex min-h-[700px] overflow-hidden rounded-xl border border-border/70 bg-white dark:bg-card">
         <AnalysisSessionList
           sessions={(sessions ?? []).map((session) => ({
             _id: String(session._id),
@@ -180,55 +171,15 @@ export function AnalysisWorkspace({
           selectedSessionId={selectedSession ? String(selectedSession._id) : null}
           isLoading={sessions === undefined}
           isCreating={isCreatingSession}
+          isOpen={isSidebarOpen}
+          onToggle={() => setIsSidebarOpen((open) => !open)}
           onCreateSession={handleCreateSession}
           onSelectSession={handleSelectSession}
         />
 
-        {sessions === undefined ? (
-          <Card className="border-border/80 bg-card/90">
-            <CardContent className="flex min-h-[420px] items-center justify-center gap-3 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading analysis workspace...
-            </CardContent>
-          </Card>
-        ) : selectedSession ? (
-          messages === undefined || artifacts === undefined ? (
-            <Card className="border-border/80 bg-card/90">
-              <CardContent className="flex min-h-[420px] items-center justify-center gap-3 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading session state...
-              </CardContent>
-            </Card>
-          ) : (
-            <AnalysisThread
-              key={String(selectedSession._id)}
-              runId={runId}
-              sessionId={String(selectedSession._id)}
-              sessionTitle={selectedSession.title}
-              initialMessages={persistedAnalysisMessagesToUIMessages(
-                messages.map((message) => ({
-                  _id: String(message._id),
-                  role: message.role,
-                  content: message.content,
-                  parts: message.parts?.map((part) => ({
-                    type: part.type,
-                    text: part.text,
-                    state: part.state,
-                    artifactId: part.artifactId ? String(part.artifactId) : undefined,
-                    label: part.label,
-                  })),
-                })),
-                artifacts.map((artifact) => ({
-                  _id: String(artifact._id),
-                  artifactType: artifact.artifactType,
-                  payload: artifact.payload,
-                })),
-              )}
-            />
-          )
-        ) : (
-          <AnalysisEmptyState hasSession={false} />
-        )}
+        <div className="flex min-w-0 flex-1 flex-col p-4">
+          {renderThreadContent()}
+        </div>
       </div>
     </div>
   );
