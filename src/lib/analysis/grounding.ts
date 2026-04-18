@@ -12,6 +12,7 @@ import type {
   AnalysisSourceRef,
   AnalysisTableCardCell,
   AnalysisTableCardColumn,
+  AnalysisTableCardColumnGroup,
   AnalysisTableCardResult,
   AnalysisValueMode,
 } from "@/lib/analysis/types";
@@ -19,9 +20,10 @@ import type {
 const TABLES_JSON_PATH = "results/tables.json";
 const QUESTION_ID_FINAL_PATH = "enrichment/12-questionid-final.json";
 const CROSSTAB_PLAN_PATH = "planning/21-crosstab-plan.json";
-const DEFAULT_CARD_ROW_LIMIT = 12;
-const DEFAULT_CARD_COLUMN_LIMIT = 8;
 const DEFAULT_QUESTION_ITEM_LIMIT = 12;
+const DEFAULT_CARD_PREVIEW_ROW_LIMIT = 8;
+const DEFAULT_CARD_PREVIEW_GROUP_LIMIT = 1;
+const TOTAL_GROUP_KEY = "__total__";
 
 type BuiltQuestionContext = ReturnType<typeof buildQuestionContext>[number];
 
@@ -72,6 +74,17 @@ interface AnalysisTablesMetadata {
   significanceTest: string | null;
   significanceLevel: number | null;
   comparisonGroups: string[];
+}
+
+interface SelectedCut {
+  cutKey: string;
+  cutName: string;
+  groupKey: string;
+  groupName: string | null;
+  statLetter: string | null;
+  baseN: number | null;
+  isTotal: boolean;
+  cut: RawTableCut;
 }
 
 export interface AnalysisGroundingContext {
@@ -139,9 +152,9 @@ function formatCellValue(value: number | null, valueMode: AnalysisValueMode): st
 
   switch (valueMode) {
     case "pct":
-      return `${formatNumber(value, 1)}%`;
+      return `${formatNumber(value, 0)}%`;
     case "mean":
-      return formatNumber(value, 2);
+      return formatNumber(value, 1);
     case "count":
     case "n":
       return formatNumber(value, 0);
@@ -158,6 +171,29 @@ function normalizeSigHigherThan(value: string[] | string | null | undefined): st
 
 function isRawTableRow(value: unknown): value is RawTableRow {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function parsePositiveInteger(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt((value ?? "").trim(), 10);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+
+  return fallback;
+}
+
+function getAnalysisCardPreviewRowLimit(): number {
+  return parsePositiveInteger(
+    process.env.ANALYSIS_TABLE_CARD_VISIBLE_ROWS,
+    DEFAULT_CARD_PREVIEW_ROW_LIMIT,
+  );
+}
+
+function getAnalysisCardPreviewGroupLimit(): number {
+  return parsePositiveInteger(
+    process.env.ANALYSIS_TABLE_CARD_VISIBLE_GROUPS,
+    DEFAULT_CARD_PREVIEW_GROUP_LIMIT,
+  );
 }
 
 function deriveAvailability(missingArtifacts: string[], hasAnyArtifact: boolean): AnalysisAvailabilityStatus {
@@ -205,6 +241,162 @@ function resolveCutBaseN(cut: RawTableCut): number | null {
   }
 
   return null;
+}
+
+function isTotalCut(cutName: string, cut: RawTableCut): boolean {
+  if (normalizeText(cutName) === "total") return true;
+
+  const firstRow = Object.values(cut).find(isRawTableRow);
+  if (!firstRow) return false;
+
+  return normalizeText(firstRow.groupName) === "total";
+}
+
+function deriveCutGroupName(
+  cutName: string,
+  cut: RawTableCut,
+  bannerGroupLookup?: Map<string, string>,
+): string | null {
+  if (isTotalCut(cutName, cut)) return "Total";
+
+  const rowGroupName = Object.values(cut).find(isRawTableRow)?.groupName ?? null;
+  if (rowGroupName) return rowGroupName;
+
+  return bannerGroupLookup?.get(normalizeText(cutName)) ?? null;
+}
+
+function deriveCutGroupKey(groupName: string | null, cutName: string, isTotal: boolean): string {
+  if (isTotal) return TOTAL_GROUP_KEY;
+
+  const normalizedGroup = normalizeText(groupName);
+  if (normalizedGroup) return `group:${normalizedGroup}`;
+
+  return `cut:${normalizeText(cutName) || cutName.toLowerCase()}`;
+}
+
+function deriveCutKey(groupKey: string, cutName: string): string {
+  return `${groupKey}::${normalizeText(cutName) || cutName.toLowerCase()}`;
+}
+
+function buildBannerGroupLookup(bannerGroups: RawBannerGroup[]): Map<string, string> {
+  const lookup = new Map<string, string>();
+  for (const group of bannerGroups) {
+    for (const column of group.columns) {
+      lookup.set(normalizeText(column.name), group.groupName);
+    }
+  }
+  return lookup;
+}
+
+function buildSelectedCuts(
+  table: RawTableEntry,
+  cutFilter: string | null,
+  bannerGroups: RawBannerGroup[],
+): {
+  cuts: SelectedCut[];
+  columnGroups: AnalysisTableCardColumnGroup[];
+  defaultScope: "total_only" | "matched_groups";
+  initialVisibleGroupCount: number;
+  hiddenGroupCount: number;
+  hiddenCutCount: number;
+} {
+  const bannerGroupLookup = buildBannerGroupLookup(bannerGroups);
+  const allCuts = Object.entries(table.data ?? {})
+    .map(([cutName, cut]): SelectedCut => {
+      const isTotal = isTotalCut(cutName, cut);
+      const groupName = deriveCutGroupName(cutName, cut, bannerGroupLookup);
+      const groupKey = deriveCutGroupKey(groupName, cutName, isTotal);
+
+      return {
+        cutKey: deriveCutKey(groupKey, cutName),
+        cutName,
+        groupKey,
+        groupName,
+        statLetter: typeof cut.stat_letter === "string" ? cut.stat_letter : null,
+        baseN: resolveCutBaseN(cut),
+        isTotal,
+        cut,
+      };
+    });
+
+  const totalCuts = allCuts.filter((cut) => cut.isTotal);
+  const groupsByKey = new Map<string, SelectedCut[]>();
+  const orderedGroups: Array<{ groupKey: string; groupName: string | null; cuts: SelectedCut[] }> = [];
+
+  for (const cut of allCuts.filter((entry) => !entry.isTotal)) {
+    const existing = groupsByKey.get(cut.groupKey);
+    if (existing) {
+      existing.push(cut);
+      continue;
+    }
+
+    const nextCuts = [cut];
+    groupsByKey.set(cut.groupKey, nextCuts);
+    orderedGroups.push({
+      groupKey: cut.groupKey,
+      groupName: cut.groupName,
+      cuts: nextCuts,
+    });
+  }
+
+  const matchedGroups = cutFilter
+    ? orderedGroups.filter((group) =>
+        group.cuts.some((cut) =>
+          scoreMatch(cutFilter, group.groupName, cut.cutName, cut.statLetter) > 0,
+        ) || scoreMatch(cutFilter, group.groupName) > 0)
+    : orderedGroups;
+
+  const selectedNonTotalGroups = matchedGroups.length > 0 ? matchedGroups : orderedGroups;
+  const selectedGroups: AnalysisTableCardColumnGroup[] = [];
+
+  if (totalCuts.length > 0) {
+    selectedGroups.push({
+      groupKey: TOTAL_GROUP_KEY,
+      groupName: "Total",
+      columns: totalCuts.map((cut) => ({
+        cutKey: cut.cutKey,
+        cutName: cut.cutName,
+        groupName: cut.groupName,
+        statLetter: cut.statLetter,
+        baseN: cut.baseN,
+        isTotal: true,
+      })),
+    });
+  }
+
+  for (const group of selectedNonTotalGroups) {
+    selectedGroups.push({
+      groupKey: group.groupKey,
+      groupName: group.groupName,
+      columns: group.cuts.map((cut) => ({
+        cutKey: cut.cutKey,
+        cutName: cut.cutName,
+        groupName: cut.groupName,
+        statLetter: cut.statLetter,
+        baseN: cut.baseN,
+        isTotal: false,
+      })),
+    });
+  }
+
+  const defaultScope = totalCuts.length > 0 && !cutFilter ? "total_only" : "matched_groups";
+  const initialVisibleGroupCount = defaultScope === "matched_groups"
+    ? Math.min(getAnalysisCardPreviewGroupLimit(), selectedNonTotalGroups.length)
+    : 0;
+
+  return {
+    cuts: [
+      ...totalCuts,
+      ...selectedNonTotalGroups.flatMap((group) => group.cuts),
+    ],
+    columnGroups: selectedGroups,
+    defaultScope,
+    initialVisibleGroupCount,
+    hiddenGroupCount: Math.max(selectedNonTotalGroups.length - initialVisibleGroupCount, 0),
+    hiddenCutCount: selectedNonTotalGroups
+      .slice(initialVisibleGroupCount)
+      .reduce((sum, group) => sum + group.cuts.length, 0),
+  };
 }
 
 function resolvePreferredValueMode(tableType: string | null | undefined, requested: AnalysisValueMode | undefined): AnalysisValueMode {
@@ -617,48 +809,48 @@ export function getTableCard(
   const rowFilter = args.rowFilter?.trim() || null;
   const cutFilter = args.cutFilter?.trim() || null;
   const valueMode = resolvePreferredValueMode(table.tableType, args.valueMode);
-
   const rowKeys = collectRowKeys(table);
-  const selectedCuts = Object.entries(table.data ?? {})
-    .map(([cutName, cut]): [string, RawTableCut] => [cutName, cut])
-    .filter(([cutName, cut]) => {
-      if (!cutFilter) return true;
-      const groupName = Object.values(cut).find(isRawTableRow)?.groupName ?? null;
-      return scoreMatch(cutFilter, cutName, groupName, typeof cut.stat_letter === "string" ? cut.stat_letter : null) > 0;
-    });
+  const {
+    cuts: selectedCuts,
+    columnGroups,
+    defaultScope,
+    initialVisibleGroupCount,
+    hiddenGroupCount,
+    hiddenCutCount,
+  } = buildSelectedCuts(table, cutFilter, context.bannerGroups);
+  const columns: AnalysisTableCardColumn[] = columnGroups.flatMap((group) => group.columns);
 
-  const visibleCuts = selectedCuts.slice(0, DEFAULT_CARD_COLUMN_LIMIT);
-  const columns: AnalysisTableCardColumn[] = visibleCuts.map(([cutName, cut]) => ({
-    cutName,
-    groupName: Object.values(cut).find(isRawTableRow)?.groupName ?? null,
-    statLetter: typeof cut.stat_letter === "string" ? cut.stat_letter : null,
-    baseN: resolveCutBaseN(cut),
-  }));
+  const prioritizedRowKeys = rowFilter
+    ? (() => {
+        const matching = rowKeys.filter((rowKey) => {
+          for (const cut of selectedCuts) {
+            const row = cut.cut[rowKey];
+            if (isRawTableRow(row) && scoreMatch(rowFilter, row.label, rowKey, row.groupName) > 0) {
+              return true;
+            }
+          }
+          return false;
+        });
 
-  const filteredRowKeys = rowKeys.filter((rowKey) => {
-    if (!rowFilter) return true;
-    for (const [, cut] of selectedCuts) {
-      const row = cut[rowKey];
-      if (isRawTableRow(row) && scoreMatch(rowFilter, row.label, rowKey, row.groupName) > 0) {
-        return true;
-      }
-    }
-    return false;
-  });
+        const matchingSet = new Set(matching);
+        const remaining = rowKeys.filter((rowKey) => !matchingSet.has(rowKey));
+        return [...matching, ...remaining];
+      })()
+    : rowKeys;
 
-  const visibleRowKeys = filteredRowKeys.slice(0, DEFAULT_CARD_ROW_LIMIT);
-  const rows = visibleRowKeys.map((rowKey) => {
-    const firstRow = visibleCuts
-      .map(([, cut]) => cut[rowKey])
+  const rows = prioritizedRowKeys.map((rowKey) => {
+    const firstRow = selectedCuts
+      .map((cut) => cut.cut[rowKey])
       .find(isRawTableRow);
 
-    const values: AnalysisTableCardCell[] = visibleCuts.map(([cutName, cut]) => {
-      const row = cut[rowKey];
+    const values: AnalysisTableCardCell[] = selectedCuts.map((cut) => {
+      const row = cut.cut[rowKey];
       const rawRow = isRawTableRow(row) ? row : {};
       const rawValue = resolveValueForMode(rawRow, valueMode);
 
       return {
-        cutName,
+        cutKey: cut.cutKey,
+        cutName: cut.cutName,
         rawValue,
         displayValue: formatCellValue(rawValue, valueMode),
         count: typeof rawRow.count === "number" ? rawRow.count : null,
@@ -676,10 +868,13 @@ export function getTableCard(
       indent: typeof firstRow?.indent === "number" ? firstRow.indent : 0,
       isNet: Boolean(firstRow?.isNet),
       values,
+      cellsByCutKey: Object.fromEntries(values.map((value) => [value.cutKey ?? value.cutName, value])),
     };
   });
 
   const title = deriveTitle(table, args.tableId);
+  const initialVisibleRowCount = Math.min(getAnalysisCardPreviewRowLimit(), rows.length);
+  const hiddenRowCount = Math.max(rows.length - initialVisibleRowCount, 0);
 
   return {
     status: "available",
@@ -694,11 +889,19 @@ export function getTableCard(
     userNote: table.userNote ?? null,
     valueMode,
     columns,
+    columnGroups,
     rows,
-    totalRows: filteredRowKeys.length,
+    totalRows: rows.length,
     totalColumns: selectedCuts.length,
-    truncatedRows: Math.max(filteredRowKeys.length - rows.length, 0),
-    truncatedColumns: Math.max(selectedCuts.length - columns.length, 0),
+    truncatedRows: hiddenRowCount,
+    truncatedColumns: hiddenCutCount,
+    defaultScope,
+    initialVisibleRowCount,
+    initialVisibleGroupCount,
+    hiddenRowCount,
+    hiddenGroupCount,
+    hiddenCutCount,
+    isExpandable: hiddenRowCount > 0 || hiddenGroupCount > 0,
     requestedRowFilter: rowFilter,
     requestedCutFilter: cutFilter,
     significanceTest: context.tablesMetadata.significanceTest,

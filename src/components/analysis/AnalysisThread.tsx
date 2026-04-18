@@ -63,8 +63,8 @@ export function AnalysisThread({
   }
 
   return (
-    <div className="flex min-h-[680px] flex-col gap-4">
-      <Card className="border-border/80 bg-card/90">
+    <div className="flex min-h-[680px] min-w-0 flex-col gap-4">
+      <Card className="min-w-0 border-border/80 bg-card/90">
         <CardHeader className="border-b border-border/80">
           <div className="flex items-center justify-between gap-4">
             <div className="space-y-1">
@@ -80,9 +80,9 @@ export function AnalysisThread({
             </Badge>
           </div>
         </CardHeader>
-        <CardContent className="p-0">
-          <ScrollArea className="h-[520px]">
-            <div className="space-y-4 p-6">
+        <CardContent className="min-w-0 p-0">
+          <ScrollArea className="h-[520px] min-w-0">
+            <div className="min-w-0 space-y-4 p-6">
               {messages.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-border/80 bg-muted/20 p-6">
                   <Badge variant="outline" className="mb-3 border-tab-blue/30 text-tab-blue">

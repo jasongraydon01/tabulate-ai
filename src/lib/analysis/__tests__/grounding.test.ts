@@ -8,6 +8,22 @@ import {
   type AnalysisGroundingContext,
 } from "@/lib/analysis/grounding";
 
+function buildLongTableRows() {
+  return Object.fromEntries(
+    Array.from({ length: 10 }, (_, index) => [
+      `row_${index}_${index + 1}`,
+      {
+        label: `Option ${index + 1}`,
+        n: 120,
+        count: 12 - index,
+        pct: 12 - index,
+        isNet: false,
+        indent: 0,
+      },
+    ]),
+  );
+}
+
 const context: AnalysisGroundingContext = {
   availability: "available",
   missingArtifacts: [],
@@ -39,6 +55,76 @@ const context: AnalysisGroundingContext = {
           stat_letter: "B",
           row_0_1: { label: "Very satisfied", groupName: "Gender", n: 50, count: 16, pct: 32, isNet: false, indent: 0, sig_vs_total: "lower" },
           row_1_2: { label: "Somewhat satisfied", groupName: "Gender", n: 50, count: 24, pct: 48, isNet: false, indent: 0 },
+        },
+        East: {
+          stat_letter: "C",
+          row_0_1: { label: "Very satisfied", groupName: "Region", n: 60, count: 31, pct: 51.2, isNet: false, indent: 0 },
+          row_1_2: { label: "Somewhat satisfied", groupName: "Region", n: 60, count: 21, pct: 34.8, isNet: false, indent: 0 },
+        },
+        West: {
+          stat_letter: "D",
+          row_0_1: { label: "Very satisfied", groupName: "Region", n: 60, count: 23, pct: 39.1, isNet: false, indent: 0 },
+          row_1_2: { label: "Somewhat satisfied", groupName: "Region", n: 60, count: 20, pct: 33.9, isNet: false, indent: 0 },
+        },
+      },
+    },
+    q2_mean: {
+      tableId: "q2_mean",
+      questionId: "Q2",
+      questionText: "Mean agreement score",
+      tableType: "mean rows",
+      baseText: "All respondents",
+      data: {
+        Total: {
+          stat_letter: "T",
+          row_0_1: { label: "Mean", n: 120, mean: 3.46, isNet: false, indent: 0 },
+        },
+      },
+    },
+    q3_long: {
+      tableId: "q3_long",
+      questionId: "Q3",
+      questionText: "Long option list",
+      tableType: "frequency",
+      baseText: "All respondents",
+      data: {
+        Total: {
+          stat_letter: "T",
+          ...buildLongTableRows(),
+        },
+        Female: {
+          stat_letter: "A",
+          ...Object.fromEntries(
+            Array.from({ length: 10 }, (_, index) => [
+              `row_${index}_${index + 1}`,
+              {
+                label: `Option ${index + 1}`,
+                groupName: "Gender",
+                n: 70,
+                count: 10 - index,
+                pct: 10 - index,
+                isNet: false,
+                indent: 0,
+              },
+            ]),
+          ),
+        },
+        Male: {
+          stat_letter: "B",
+          ...Object.fromEntries(
+            Array.from({ length: 10 }, (_, index) => [
+              `row_${index}_${index + 1}`,
+              {
+                label: `Option ${index + 1}`,
+                groupName: "Gender",
+                n: 50,
+                count: 8 - index,
+                pct: 8 - index,
+                isNet: false,
+                indent: 0,
+              },
+            ]),
+          ),
         },
       },
     },
@@ -83,6 +169,13 @@ const context: AnalysisGroundingContext = {
         { name: "Male", statLetter: "B", expression: "gender == 2" },
       ],
     },
+    {
+      groupName: "Region",
+      columns: [
+        { name: "East", statLetter: "C", expression: "region == 1" },
+        { name: "West", statLetter: "D", expression: "region == 2" },
+      ],
+    },
   ],
 };
 
@@ -96,7 +189,27 @@ describe("analysis grounding helpers", () => {
     expect(result.cuts[0]).toEqual(expect.objectContaining({ cutName: "Female" }));
   });
 
-  it("builds a renderable table card with filtered cuts", () => {
+  it("defaults to total-first preview while keeping grouped payload data available", () => {
+    const card = getTableCard(context, {
+      tableId: "q1_overall",
+      valueMode: "pct",
+    });
+
+    expect(card.status).toBe("available");
+    if (card.status !== "available") {
+      throw new Error("expected table card");
+    }
+
+    expect(card.defaultScope).toBe("total_only");
+    expect(card.initialVisibleGroupCount).toBe(0);
+    expect(card.hiddenGroupCount).toBe(2);
+    expect(card.hiddenCutCount).toBe(4);
+    expect(card.columnGroups?.map((group) => group.groupName)).toEqual(["Total", "Gender", "Region"]);
+    expect(card.columns.map((column) => column.cutName)).toEqual(["Total", "Female", "Male", "East", "West"]);
+    expect(card.rows[0]?.cellsByCutKey?.["__total__::total"]?.displayValue).toBe("45%");
+  });
+
+  it("returns full matching groups when a cut filter is applied", () => {
     const card = getTableCard(context, {
       tableId: "q1_overall",
       cutFilter: "female",
@@ -108,17 +221,69 @@ describe("analysis grounding helpers", () => {
       throw new Error("expected table card");
     }
 
-    expect(card.columns).toEqual([
+    expect(card.defaultScope).toBe("matched_groups");
+    expect(card.columnGroups?.map((group) => group.groupName)).toEqual(["Total", "Gender"]);
+    expect(card.columns.map((column) => column.cutName)).toEqual(["Total", "Female", "Male"]);
+    expect(card.rows[0]?.values.find((value) => value.cutName === "Female")).toEqual(
       expect.objectContaining({
-        cutName: "Female",
-        statLetter: "A",
+        displayValue: "54%",
+        sigHigherThan: ["B"],
       }),
+    );
+  });
+
+  it("prioritizes matched rows without dropping the rest of the table", () => {
+    const card = getTableCard(context, {
+      tableId: "q1_overall",
+      rowFilter: "somewhat",
+      valueMode: "pct",
+    });
+
+    expect(card.status).toBe("available");
+    if (card.status !== "available") {
+      throw new Error("expected table card");
+    }
+
+    expect(card.rows.map((row) => row.label)).toEqual([
+      "Somewhat satisfied",
+      "Very satisfied",
     ]);
-    expect(card.rows[0]?.values[0]).toEqual(expect.objectContaining({
-      displayValue: "54.3%",
-      sigHigherThan: ["B"],
-    }));
-    expect(card.significanceTest).toBe("unpooled z-test for column proportions");
+    expect(card.totalRows).toBe(2);
+  });
+
+  it("reports preview metadata for long tables", () => {
+    const card = getTableCard(context, {
+      tableId: "q3_long",
+      valueMode: "pct",
+    });
+
+    expect(card.status).toBe("available");
+    if (card.status !== "available") {
+      throw new Error("expected table card");
+    }
+
+    expect(card.initialVisibleRowCount).toBe(8);
+    expect(card.hiddenRowCount).toBe(2);
+    expect(card.isExpandable).toBe(true);
+    expect(card.truncatedRows).toBe(2);
+  });
+
+  it("uses whole numbers for percent values and one decimal for mean values by default", () => {
+    const percentCard = getTableCard(context, {
+      tableId: "q1_overall",
+    });
+    const meanCard = getTableCard(context, {
+      tableId: "q2_mean",
+    });
+
+    expect(percentCard.status).toBe("available");
+    expect(meanCard.status).toBe("available");
+    if (percentCard.status !== "available" || meanCard.status !== "available") {
+      throw new Error("expected table cards");
+    }
+
+    expect(percentCard.rows[0]?.values[0]?.displayValue).toBe("45%");
+    expect(meanCard.rows[0]?.values[0]?.displayValue).toBe("3.5");
   });
 
   it("returns grounded question context with related tables", () => {

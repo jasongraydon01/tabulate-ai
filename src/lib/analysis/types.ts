@@ -42,13 +42,22 @@ export interface AnalysisCatalogSearchResult {
 export type AnalysisValueMode = "pct" | "count" | "n" | "mean";
 
 export interface AnalysisTableCardColumn {
+  cutKey?: string;
   cutName: string;
   groupName: string | null;
   statLetter: string | null;
   baseN: number | null;
+  isTotal?: boolean;
+}
+
+export interface AnalysisTableCardColumnGroup {
+  groupKey: string;
+  groupName: string | null;
+  columns: AnalysisTableCardColumn[];
 }
 
 export interface AnalysisTableCardCell {
+  cutKey?: string;
   cutName: string;
   rawValue: number | null;
   displayValue: string;
@@ -66,6 +75,7 @@ export interface AnalysisTableCardRow {
   indent: number;
   isNet: boolean;
   values: AnalysisTableCardCell[];
+  cellsByCutKey?: Record<string, AnalysisTableCardCell>;
 }
 
 export interface AnalysisTableCard {
@@ -81,11 +91,19 @@ export interface AnalysisTableCard {
   userNote: string | null;
   valueMode: AnalysisValueMode;
   columns: AnalysisTableCardColumn[];
+  columnGroups?: AnalysisTableCardColumnGroup[];
   rows: AnalysisTableCardRow[];
   totalRows: number;
   totalColumns: number;
   truncatedRows: number;
   truncatedColumns: number;
+  defaultScope?: "total_only" | "matched_groups";
+  initialVisibleRowCount?: number;
+  initialVisibleGroupCount?: number;
+  hiddenRowCount?: number;
+  hiddenGroupCount?: number;
+  hiddenCutCount?: number;
+  isExpandable?: boolean;
   requestedRowFilter: string | null;
   requestedCutFilter: string | null;
   significanceTest: string | null;

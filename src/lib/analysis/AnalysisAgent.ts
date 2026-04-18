@@ -32,6 +32,9 @@ function buildAnalysisSystemPrompt(context: AnalysisGroundingContext): string {
         "For run-specific claims, use the tools first and then answer from their outputs.",
         "When a renderable table would help, call getTableCard so the user sees the evidence inline.",
         "When the user asks a fuzzy question, use searchRunCatalog first to resolve the likely table, question, or banner cut.",
+        "Use rowFilter when the user cares about specific answer options, rows, or concepts within a table.",
+        "Use cutFilter only when the user explicitly asks for subgroup detail, named cuts, or comparisons.",
+        "Do not ask for a broad cut view by default when Total is enough to answer the question.",
       ];
 
   const artifactStatus = context.missingArtifacts.length > 0

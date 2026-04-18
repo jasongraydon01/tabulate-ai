@@ -1,9 +1,33 @@
 "use client";
 
+import { useState } from "react";
+import { ChevronDown, Expand } from "lucide-react";
+
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import type { AnalysisTableCard } from "@/lib/analysis/types";
+import type {
+  AnalysisTableCard,
+  AnalysisTableCardCell,
+  AnalysisTableCardColumn,
+  AnalysisTableCardColumnGroup,
+  AnalysisTableCardRow,
+} from "@/lib/analysis/types";
+
+const TOTAL_GROUP_KEY = "__total__";
 
 function valueModeLabel(valueMode: AnalysisTableCard["valueMode"]): string {
   switch (valueMode) {
@@ -20,16 +44,433 @@ function valueModeLabel(valueMode: AnalysisTableCard["valueMode"]): string {
   }
 }
 
+function buildQuestionHeading(card: AnalysisTableCard): string {
+  if (card.questionId && card.questionText) {
+    const questionId = card.questionId.replace(/[.:]\s*$/, "").trim();
+    return `${questionId}. ${card.questionText}`;
+  }
+
+  return card.questionText ?? card.title;
+}
+
+function getColumnHeaderLabel(column: AnalysisTableCardColumn): string {
+  return column.cutName;
+}
+
+function normalizeText(value: string | null | undefined): string {
+  return (value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function deriveLegacyGroupKey(column: AnalysisTableCardColumn): string {
+  const isTotal = column.isTotal ?? normalizeText(column.cutName) === "total";
+  if (isTotal) return TOTAL_GROUP_KEY;
+
+  const normalizedGroup = normalizeText(column.groupName);
+  if (normalizedGroup) return `group:${normalizedGroup}`;
+
+  return `cut:${normalizeText(column.cutName) || column.cutName.toLowerCase()}`;
+}
+
+function deriveLegacyCutKey(column: AnalysisTableCardColumn): string {
+  return `${deriveLegacyGroupKey(column)}::${normalizeText(column.cutName) || column.cutName.toLowerCase()}`;
+}
+
+export function normalizeGroundedTableCardGroups(card: AnalysisTableCard): AnalysisTableCardColumnGroup[] {
+  if (card.columnGroups && card.columnGroups.length > 0) {
+    return card.columnGroups.map((group) => ({
+      ...group,
+      columns: group.columns.map((column) => ({
+        ...column,
+        cutKey: column.cutKey ?? deriveLegacyCutKey(column),
+        isTotal: column.isTotal ?? group.groupKey === TOTAL_GROUP_KEY,
+      })),
+    }));
+  }
+
+  const groups: AnalysisTableCardColumnGroup[] = [];
+  let currentGroup: AnalysisTableCardColumnGroup | null = null;
+
+  for (const column of card.columns) {
+    const groupKey = deriveLegacyGroupKey(column);
+    if (!currentGroup || currentGroup.groupKey !== groupKey) {
+      currentGroup = {
+        groupKey,
+        groupName: groupKey === TOTAL_GROUP_KEY ? "Total" : column.groupName,
+        columns: [],
+      };
+      groups.push(currentGroup);
+    }
+
+    currentGroup.columns.push({
+      ...column,
+      cutKey: column.cutKey ?? deriveLegacyCutKey(column),
+      isTotal: column.isTotal ?? groupKey === TOTAL_GROUP_KEY,
+    });
+  }
+
+  return groups;
+}
+
+export function getGroundedTableCardVisibleGroups(
+  card: AnalysisTableCard,
+  showAllGroups: boolean,
+): AnalysisTableCardColumnGroup[] {
+  const groups = normalizeGroundedTableCardGroups(card);
+  const hasPreviewState = typeof card.initialVisibleGroupCount === "number"
+    || typeof card.hiddenGroupCount === "number"
+    || typeof card.defaultScope === "string";
+
+  if (showAllGroups || !hasPreviewState) {
+    return groups;
+  }
+
+  const totalGroups = groups.filter((group) => group.groupKey === TOTAL_GROUP_KEY);
+  const nonTotalGroups = groups.filter((group) => group.groupKey !== TOTAL_GROUP_KEY);
+  const defaultScope = card.defaultScope ?? "matched_groups";
+  const visibleNonTotalCount = defaultScope === "total_only"
+    ? 0
+    : Math.max(card.initialVisibleGroupCount ?? 1, 0);
+
+  return [
+    ...totalGroups,
+    ...nonTotalGroups.slice(0, visibleNonTotalCount),
+  ];
+}
+
+export function getGroundedTableCardVisibleRows(
+  card: AnalysisTableCard,
+  showAllRows: boolean,
+): AnalysisTableCardRow[] {
+  const hasPreviewState = typeof card.initialVisibleRowCount === "number"
+    || typeof card.hiddenRowCount === "number";
+
+  if (showAllRows || !hasPreviewState) {
+    return card.rows;
+  }
+
+  const visibleCount = Math.max(card.initialVisibleRowCount ?? card.rows.length, 0);
+  return card.rows.slice(0, visibleCount);
+}
+
+export function getGroundedTableCardCell(
+  row: AnalysisTableCardRow,
+  column: AnalysisTableCardColumn,
+): AnalysisTableCardCell | null {
+  const cutKey = column.cutKey ?? deriveLegacyCutKey(column);
+  if (row.cellsByCutKey?.[cutKey]) {
+    return row.cellsByCutKey[cutKey];
+  }
+
+  return row.values.find((value) =>
+    (value.cutKey && value.cutKey === cutKey)
+    || value.cutName === column.cutName) ?? null;
+}
+
+export function getGroundedTableCardSignificanceMarkers(cell: AnalysisTableCardCell): string[] {
+  const markers = [...cell.sigHigherThan];
+
+  if (cell.sigVsTotal) {
+    markers.push("T");
+  }
+
+  return [...new Set(markers.filter((marker) => marker.trim().length > 0))];
+}
+
 export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [isDiveDeeperOpen, setIsDiveDeeperOpen] = useState(false);
+
+  const allGroups = normalizeGroundedTableCardGroups(card);
+  const visibleGroups = getGroundedTableCardVisibleGroups(card, false);
+  const visibleRows = getGroundedTableCardVisibleRows(card, false);
+  const hiddenRowCount = card.hiddenRowCount ?? card.truncatedRows;
+  const hiddenGroupCount = card.hiddenGroupCount ?? 0;
+  const nonTotalColumnGroups = allGroups.filter((group) => group.groupKey !== TOTAL_GROUP_KEY);
+  const questionHeading = buildQuestionHeading(card);
+  const hasMetadata = Boolean(
+    card.tableId
+    || card.baseText
+    || card.tableSubtitle
+    || card.userNote
+    || card.significanceTest
+    || card.comparisonGroups.length > 0
+    || nonTotalColumnGroups.length > 0,
+  );
+  const hasDiveDeeper = hiddenRowCount > 0 || hiddenGroupCount > 0 || (card.hiddenCutCount ?? card.truncatedColumns) > 0;
+
+  function renderTableContent({
+    groups,
+    rows,
+    density = "comfortable",
+    rowFilter,
+    baseText,
+  }: {
+    groups: AnalysisTableCardColumnGroup[];
+    rows: AnalysisTableCardRow[];
+    density?: "compact" | "comfortable";
+    rowFilter?: string | null;
+    baseText?: string | null;
+  }) {
+    const columns = groups.flatMap((group) => group.columns);
+    const showGroupHeaderInTable = groups.some((group) => group.groupKey !== TOTAL_GROUP_KEY);
+    const isCompact = density === "compact";
+    const rowHeaderLabel = isCompact ? "" : "Row";
+
+    return (
+      <div className="w-full overflow-x-auto">
+        <table className={cn("w-max min-w-full border-collapse", isCompact ? "text-[13px]" : "text-sm")}>
+          <thead>
+            {showGroupHeaderInTable ? (
+              <>
+                <tr className="border-b border-border/60 bg-muted/10 text-left">
+                  <th
+                    rowSpan={2}
+                    className={cn(
+                      "font-medium text-foreground/90",
+                      isCompact ? "min-w-[200px] px-3 py-1.5" : "min-w-[220px] px-4 py-3",
+                    )}
+                  >
+                    {rowHeaderLabel ? rowHeaderLabel : <span className="sr-only">Row</span>}
+                  </th>
+                  {groups.map((group) => (
+                    <th
+                      key={group.groupKey}
+                      colSpan={group.columns.length}
+                      className={cn(
+                        "uppercase tracking-[0.14em] text-muted-foreground",
+                        isCompact ? "px-2.5 py-1 text-[10px]" : "px-3 py-2 text-xs",
+                      )}
+                    >
+                      {group.groupName ?? "Cuts"}
+                    </th>
+                  ))}
+                </tr>
+                <tr className="border-b border-border/60 bg-muted/5 text-left">
+                  {columns.map((column) => (
+                    <th
+                      key={column.cutKey ?? column.cutName}
+                      className={cn(
+                        "font-medium",
+                        isCompact ? "min-w-[112px] px-2.5 py-1.5" : "min-w-[132px] px-3 py-3",
+                      )}
+                    >
+                      {getColumnHeaderLabel(column)}
+                    </th>
+                  ))}
+                </tr>
+              </>
+            ) : (
+              <tr className="border-b border-border/60 bg-muted/10 text-left">
+                <th
+                  className={cn(
+                    "font-medium text-foreground/90",
+                    isCompact ? "min-w-[200px] px-3 py-1.5" : "min-w-[220px] px-4 py-3",
+                  )}
+                >
+                  {rowHeaderLabel ? rowHeaderLabel : <span className="sr-only">Row</span>}
+                </th>
+                {columns.map((column) => (
+                  <th
+                    key={column.cutKey ?? column.cutName}
+                    className={cn(
+                      "font-medium",
+                      isCompact ? "min-w-[112px] px-2.5 py-1.5" : "min-w-[132px] px-3 py-3",
+                    )}
+                  >
+                    {getColumnHeaderLabel(column)}
+                  </th>
+                ))}
+              </tr>
+            )}
+          </thead>
+          <tbody>
+            <tr className="border-b border-border/60 bg-muted/5">
+              <td className={cn("align-middle text-muted-foreground", isCompact ? "px-3 py-1" : "px-4 py-2")}>
+                <div className={cn(isCompact ? "text-xs" : "text-sm")}>
+                  {baseText ? `Base: ${baseText}` : "Base"}
+                </div>
+              </td>
+              {columns.map((column) => (
+                <td key={`base-${column.cutKey ?? column.cutName}`} className={cn("align-middle font-mono text-muted-foreground", isCompact ? "px-2.5 py-1 text-xs" : "px-3 py-2 text-[13px]")}>
+                  {column.baseN !== null ? `n=${column.baseN}` : "—"}
+                </td>
+              ))}
+            </tr>
+            {rows.map((row) => {
+              const isHighlighted = rowFilter && normalizeText(row.label).includes(normalizeText(rowFilter));
+
+              return (
+                <tr key={row.rowKey} className={cn("border-b border-border/40 last:border-b-0", isHighlighted && "bg-emerald-500/5")}>
+                  <td className={cn("align-middle", isCompact ? "px-3 py-1.5" : "px-4 py-3", isHighlighted && "border-l-2 border-emerald-500/40")}>
+                    <div
+                      className={cn(
+                        isCompact ? "leading-[1.125rem]" : "leading-6",
+                        row.isNet ? "font-medium text-foreground" : "text-foreground/90",
+                      )}
+                      style={{ paddingLeft: `${row.indent * 0.875}rem` }}
+                    >
+                      {row.label}
+                    </div>
+                  </td>
+                  {columns.map((column) => {
+                    const cell = getGroundedTableCardCell(row, column);
+                    const markers = cell ? getGroundedTableCardSignificanceMarkers(cell) : [];
+
+                    return (
+                      <td
+                        key={`${row.rowKey}-${column.cutKey ?? column.cutName}`}
+                        className={cn("align-middle", isCompact ? "px-2.5 py-1.5" : "px-3 py-3")}
+                      >
+                        {cell ? (
+                          <div
+                            className={cn(
+                              "inline-flex items-center gap-0.5 font-mono",
+                              isCompact ? "text-xs" : "text-[13px]",
+                              markers.length > 0
+                                ? "font-semibold text-tab-teal"
+                                : "text-foreground",
+                            )}
+                          >
+                            <span>{cell.displayValue}</span>
+                            {markers.length > 0 ? (
+                              <sup className={cn("font-mono leading-none text-tab-teal", isCompact ? "text-[9px]" : "text-[10px]")}>
+                                {markers.join("")}
+                              </sup>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <div className={cn("font-mono text-muted-foreground", isCompact ? "text-xs" : "text-[13px]")}>—</div>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
   return (
-    <Card className="mt-3 overflow-hidden border-border/80 bg-background/60">
-      <CardHeader className="gap-3 border-b border-border/70 bg-muted/20">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-2">
-            <CardTitle className="font-serif text-xl tracking-tight">
-              {card.title}
+    <>
+      <Card className="mt-3 max-w-full overflow-hidden border-border/70 bg-background/70">
+        <CardHeader className="gap-0 px-5 pb-0 pt-1.5">
+          <Collapsible open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
+            <CardTitle className="font-serif text-lg font-normal leading-snug tracking-tight text-foreground/90">
+              {questionHeading}
             </CardTitle>
-            <div className="flex flex-wrap gap-2">
+
+            {hasMetadata ? (
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="xs" className="h-5 px-1.5 text-[11px]">
+                  Details
+                  <ChevronDown
+                    className={cn("h-3.5 w-3.5 transition-transform", isDetailsOpen && "rotate-180")}
+                  />
+                </Button>
+              </CollapsibleTrigger>
+            ) : null}
+
+            {hasMetadata ? (
+              <CollapsibleContent className="mt-1.5 space-y-3 rounded-xl border border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
+                <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    {card.baseText ? <p><span className="text-foreground/80">Base:</span> {card.baseText}</p> : null}
+                    {card.userNote ? <p className="leading-6"><span className="text-foreground/80">Note:</span> {card.userNote}</p> : null}
+                    {card.tableSubtitle ? <p><span className="text-foreground/80">Subtitle:</span> {card.tableSubtitle}</p> : null}
+                  </div>
+                  <div className="space-y-2">
+                    {card.tableId ? <p><span className="text-foreground/80">Source table:</span> {card.tableId}</p> : null}
+                    <p><span className="text-foreground/80">Value type:</span> {valueModeLabel(card.valueMode)}</p>
+                    {card.significanceTest ? <p><span className="text-foreground/80">Significance:</span> {card.significanceTest}</p> : null}
+                    {card.comparisonGroups.length > 0 ? (
+                      <p className="leading-6">
+                        <span className="text-foreground/80">Comparison groups:</span> {card.comparisonGroups.join(", ")}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+
+                {allGroups.length > 0 ? (
+                  <div className="space-y-2">
+                    <p className="text-xs uppercase tracking-[0.16em] text-foreground/70">
+                      Column Details
+                    </p>
+                    <div className="overflow-x-auto rounded-lg border border-border/50 bg-background/60">
+                      <table className="w-full border-collapse text-sm">
+                        <thead>
+                          <tr className="border-b border-border/50 bg-muted/10 text-left">
+                            <th className="px-3 py-1.5 text-[11px] uppercase tracking-[0.14em] text-foreground/70">Group</th>
+                            <th className="px-3 py-1.5 text-[11px] uppercase tracking-[0.14em] text-foreground/70">Cut</th>
+                            <th className="px-3 py-1.5 text-[11px] uppercase tracking-[0.14em] text-foreground/70">Letter</th>
+                            <th className="px-3 py-1.5 text-[11px] uppercase tracking-[0.14em] text-foreground/70">n</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {allGroups.map((group) =>
+                            group.columns.map((column, columnIndex) => (
+                              <tr key={column.cutKey ?? column.cutName} className="border-b border-border/40 last:border-b-0">
+                                {columnIndex === 0 ? (
+                                  <td
+                                    rowSpan={group.columns.length}
+                                    className="border-r border-border/40 px-3 py-1.5 align-top font-medium text-foreground/80"
+                                  >
+                                    {group.groupName ?? "—"}
+                                  </td>
+                                ) : null}
+                                <td className="px-3 py-1.5 text-foreground">{column.cutName}</td>
+                                <td className="px-3 py-1.5 font-mono text-xs text-muted-foreground">{column.statLetter ?? "—"}</td>
+                                <td className="px-3 py-1.5 font-mono text-xs text-muted-foreground">{column.baseN !== null ? column.baseN : "—"}</td>
+                              </tr>
+                            )),
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : null}
+              </CollapsibleContent>
+            ) : null}
+          </Collapsible>
+        </CardHeader>
+
+        <CardContent className="p-0">
+          {renderTableContent({
+            groups: visibleGroups,
+            rows: visibleRows,
+            density: "compact",
+            rowFilter: card.requestedRowFilter,
+            baseText: card.baseText,
+          })}
+
+          {hasDiveDeeper ? (
+            <div className="border-t border-border/40 px-2 py-1">
+              <Button variant="ghost" size="xs" className="h-auto gap-1.5 px-2 py-0.5 text-[11px] italic text-muted-foreground" onClick={() => setIsDiveDeeperOpen(true)}>
+                <Expand className="h-3 w-3 shrink-0" />
+                {hiddenRowCount > 0 ? "Answer options truncated. " : ""}
+                Expand table for deeper analysis.
+              </Button>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Dialog open={isDiveDeeperOpen} onOpenChange={setIsDiveDeeperOpen}>
+        <DialogContent className="flex h-[90vh] w-[96vw] max-w-[96vw] flex-col overflow-hidden p-0 sm:h-[88vh] sm:w-[82vw] sm:max-w-[82vw] xl:w-[78vw] xl:max-w-[78vw]">
+          <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-5">
+            <DialogTitle className="font-serif text-2xl tracking-tight">
+              {questionHeading}
+            </DialogTitle>
+            <DialogDescription>
+              Full table view for this grounded result. This is a rendering-only drill-in and does not change the conversation context.
+            </DialogDescription>
+            <div className="flex flex-wrap gap-2 pt-1">
               <Badge variant="outline" className="font-mono">
                 {card.tableId}
               </Badge>
@@ -42,94 +483,35 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
                 {valueModeLabel(card.valueMode)}
               </Badge>
             </div>
-          </div>
+          </DialogHeader>
 
-          <div className="text-right text-xs text-muted-foreground">
-            <div>{card.totalRows} row{card.totalRows === 1 ? "" : "s"}</div>
-            <div>{card.totalColumns} cut{card.totalColumns === 1 ? "" : "s"}</div>
-          </div>
-        </div>
+          <div className="flex min-h-0 flex-1 flex-col gap-4 px-6 py-5">
+            {hasMetadata ? (
+              <div className="shrink-0 grid gap-x-6 gap-y-2 rounded-xl border border-border/60 bg-muted/10 p-4 text-sm text-muted-foreground md:grid-cols-2">
+                <div className="space-y-2">
+                  {card.baseText ? <p><span className="text-foreground/80">Base:</span> {card.baseText}</p> : null}
+                  {card.userNote ? <p><span className="text-foreground/80">Note:</span> {card.userNote}</p> : null}
+                  {card.tableSubtitle ? <p><span className="text-foreground/80">Subtitle:</span> {card.tableSubtitle}</p> : null}
+                </div>
+                <div className="space-y-2">
+                  {card.significanceTest ? <p><span className="text-foreground/80">Significance:</span> {card.significanceTest}</p> : null}
+                  {card.comparisonGroups.length > 0 ? <p><span className="text-foreground/80">Comparison groups:</span> {card.comparisonGroups.join(", ")}</p> : null}
+                </div>
+              </div>
+            ) : null}
 
-        {(card.baseText || card.tableSubtitle || card.userNote) ? (
-          <div className="space-y-1 text-sm text-muted-foreground">
-            {card.baseText ? <p>{card.baseText}</p> : null}
-            {card.tableSubtitle ? <p>{card.tableSubtitle}</p> : null}
-            {card.userNote ? <p>{card.userNote}</p> : null}
+            <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-border/60">
+              {renderTableContent({
+                groups: allGroups,
+                rows: card.rows,
+                density: "comfortable",
+                rowFilter: card.requestedRowFilter,
+                baseText: card.baseText,
+              })}
+            </div>
           </div>
-        ) : null}
-      </CardHeader>
-
-      <CardContent className="p-0">
-        <div className="overflow-x-auto">
-          <table className="min-w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-border/70 bg-muted/10 text-left">
-                <th className="min-w-[220px] px-4 py-3 font-medium text-foreground/90">Row</th>
-                {card.columns.map((column) => (
-                  <th key={column.cutName} className="min-w-[138px] px-3 py-3 align-bottom">
-                    <div className="space-y-1">
-                      <div className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
-                        {column.groupName ?? "Cut"}
-                      </div>
-                      <div className="font-medium leading-5">{column.cutName}</div>
-                      <div className="font-mono text-xs text-muted-foreground">
-                        {column.statLetter ? `${column.statLetter} · ` : ""}
-                        {column.baseN !== null ? `n=${column.baseN}` : "n=—"}
-                      </div>
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {card.rows.map((row) => (
-                <tr key={row.rowKey} className="border-b border-border/50 last:border-b-0">
-                  <td className="px-4 py-3 align-top">
-                    <div
-                      className={cn(
-                        "leading-6",
-                        row.isNet ? "font-medium text-foreground" : "text-foreground/90",
-                      )}
-                      style={{ paddingLeft: `${row.indent * 0.875}rem` }}
-                    >
-                      {row.label}
-                    </div>
-                  </td>
-                  {row.values.map((value) => (
-                    <td key={`${row.rowKey}-${value.cutName}`} className="px-3 py-3 align-top">
-                      <div className="font-mono text-[13px]">{value.displayValue}</div>
-                      {(value.sigHigherThan.length > 0 || value.sigVsTotal) ? (
-                        <div className="mt-1 text-[11px] text-muted-foreground">
-                          {value.sigHigherThan.length > 0 ? `>${value.sigHigherThan.join(", ")}` : ""}
-                          {value.sigHigherThan.length > 0 && value.sigVsTotal ? " · " : ""}
-                          {value.sigVsTotal ? `vs total: ${value.sigVsTotal}` : ""}
-                        </div>
-                      ) : null}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="border-t border-border/70 bg-muted/10 px-4 py-3 text-xs text-muted-foreground">
-          <div className="flex flex-wrap gap-x-4 gap-y-1">
-            {card.significanceTest ? (
-              <span>{card.significanceTest}</span>
-            ) : null}
-            {card.significanceLevel !== null ? (
-              <span>alpha {card.significanceLevel}</span>
-            ) : null}
-            {card.truncatedRows > 0 ? (
-              <span>+{card.truncatedRows} more row{card.truncatedRows === 1 ? "" : "s"} not shown</span>
-            ) : null}
-            {card.truncatedColumns > 0 ? (
-              <span>+{card.truncatedColumns} more cut{card.truncatedColumns === 1 ? "" : "s"} not shown</span>
-            ) : null}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
