@@ -128,6 +128,22 @@ const context: AnalysisGroundingContext = {
         },
       },
     },
+    q4_frequency_stats: {
+      tableId: "q4_frequency_stats",
+      questionId: "Q4",
+      questionText: "Bank consideration",
+      tableType: "frequency",
+      tableSubtitle: "Overall",
+      baseText: "Respondents shown this item",
+      data: {
+        Total: {
+          stat_letter: "T",
+          row_0_1: { label: "Top 2 Box", rowKind: "net", n: 245, count: 49, pct: 20, isNet: true, indent: 0 },
+          row_1_2: { label: "Std Dev", rowKind: "stat", statType: "stddev", n: 245, pct: 1.07, isNet: false, indent: 0 },
+          row_2_3: { label: "Std Err", rowKind: "stat", statType: "stderr", n: 245, pct: 0.07, isNet: false, indent: 0 },
+        },
+      },
+    },
   },
   questions: [
     {
@@ -284,6 +300,28 @@ describe("analysis grounding helpers", () => {
 
     expect(percentCard.rows[0]?.values[0]?.displayValue).toBe("45%");
     expect(meanCard.rows[0]?.values[0]?.displayValue).toBe("3.5");
+  });
+
+  it("preserves row kind metadata for grounded table cards", () => {
+    const card = getTableCard(context, {
+      tableId: "q4_frequency_stats",
+      valueMode: "pct",
+    });
+
+    expect(card.status).toBe("available");
+    if (card.status !== "available") {
+      throw new Error("expected table card");
+    }
+
+    expect(card.rows.map((row) => ({
+      label: row.label,
+      rowKind: row.rowKind,
+      statType: row.statType,
+    }))).toEqual([
+      { label: "Top 2 Box", rowKind: "net", statType: null },
+      { label: "Std Dev", rowKind: "stat", statType: "stddev" },
+      { label: "Std Err", rowKind: "stat", statType: "stderr" },
+    ]);
   });
 
   it("returns grounded question context with related tables", () => {

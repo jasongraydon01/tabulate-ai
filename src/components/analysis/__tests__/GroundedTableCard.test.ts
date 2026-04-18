@@ -138,6 +138,87 @@ const legacyCard: AnalysisTableCard = {
   isExpandable: undefined,
 };
 
+const frequencyCardWithStats: AnalysisTableCard = {
+  ...groupedCard,
+  tableSubtitle: "Bank consideration",
+  rows: [
+    {
+      rowKey: "row_top2",
+      label: "Top 2 Box",
+      rowKind: "net",
+      statType: null,
+      indent: 0,
+      isNet: true,
+      values: [
+        { cutKey: "__total__::total", cutName: "Total", rawValue: 20, displayValue: "20%", count: 24, pct: 20, n: 120, mean: null, sigHigherThan: [], sigVsTotal: null },
+      ],
+      cellsByCutKey: {
+        "__total__::total": { cutKey: "__total__::total", cutName: "Total", rawValue: 20, displayValue: "20%", count: 24, pct: 20, n: 120, mean: null, sigHigherThan: [], sigVsTotal: null },
+      },
+    },
+    {
+      rowKey: "row_stddev",
+      label: "Std Dev",
+      rowKind: "stat",
+      statType: "stddev",
+      indent: 0,
+      isNet: false,
+      values: [
+        { cutKey: "__total__::total", cutName: "Total", rawValue: 1.07, displayValue: "1%", count: null, pct: null, n: 120, mean: null, sigHigherThan: [], sigVsTotal: null },
+      ],
+      cellsByCutKey: {
+        "__total__::total": { cutKey: "__total__::total", cutName: "Total", rawValue: 1.07, displayValue: "1%", count: null, pct: null, n: 120, mean: null, sigHigherThan: [], sigVsTotal: null },
+      },
+    },
+    {
+      rowKey: "row_mid",
+      label: "Probably would not consider this bank",
+      rowKind: "value",
+      statType: null,
+      indent: 1,
+      isNet: false,
+      values: [
+        { cutKey: "__total__::total", cutName: "Total", rawValue: 16, displayValue: "16%", count: 19, pct: 16, n: 120, mean: null, sigHigherThan: [], sigVsTotal: null },
+      ],
+      cellsByCutKey: {
+        "__total__::total": { cutKey: "__total__::total", cutName: "Total", rawValue: 16, displayValue: "16%", count: 19, pct: 16, n: 120, mean: null, sigHigherThan: [], sigVsTotal: null },
+      },
+    },
+    {
+      rowKey: "row_stderr",
+      label: "Std Err",
+      rowKind: "stat",
+      statType: "stderr",
+      indent: 0,
+      isNet: false,
+      values: [
+        { cutKey: "__total__::total", cutName: "Total", rawValue: 0.07, displayValue: "0%", count: null, pct: null, n: 120, mean: null, sigHigherThan: [], sigVsTotal: null },
+      ],
+      cellsByCutKey: {
+        "__total__::total": { cutKey: "__total__::total", cutName: "Total", rawValue: 0.07, displayValue: "0%", count: null, pct: null, n: 120, mean: null, sigHigherThan: [], sigVsTotal: null },
+      },
+    },
+    {
+      rowKey: "row_bottom2",
+      label: "Bottom 2 Box",
+      rowKind: "net",
+      statType: null,
+      indent: 0,
+      isNet: true,
+      values: [
+        { cutKey: "__total__::total", cutName: "Total", rawValue: 43, displayValue: "43%", count: 52, pct: 43, n: 120, mean: null, sigHigherThan: [], sigVsTotal: null },
+      ],
+      cellsByCutKey: {
+        "__total__::total": { cutKey: "__total__::total", cutName: "Total", rawValue: 43, displayValue: "43%", count: 52, pct: 43, n: 120, mean: null, sigHigherThan: [], sigVsTotal: null },
+      },
+    },
+  ],
+  totalRows: 5,
+  initialVisibleRowCount: 8,
+  hiddenRowCount: 0,
+  truncatedRows: 0,
+};
+
 describe("GroundedTableCard helpers", () => {
   it("normalizes legacy column groups", () => {
     const groups = normalizeGroundedTableCardGroups(legacyCard);
@@ -156,6 +237,21 @@ describe("GroundedTableCard helpers", () => {
   it("respects row preview counts until expanded", () => {
     expect(getGroundedTableCardVisibleRows(groupedCard, false)).toHaveLength(8);
     expect(getGroundedTableCardVisibleRows(groupedCard, true)).toHaveLength(9);
+  });
+
+  it("hides stat rows from compact frequency previews while preserving them in expanded view", () => {
+    expect(getGroundedTableCardVisibleRows(frequencyCardWithStats, false).map((row) => row.label)).toEqual([
+      "Top 2 Box",
+      "Probably would not consider this bank",
+      "Bottom 2 Box",
+    ]);
+    expect(getGroundedTableCardVisibleRows(frequencyCardWithStats, true).map((row) => row.label)).toEqual([
+      "Top 2 Box",
+      "Std Dev",
+      "Probably would not consider this bank",
+      "Std Err",
+      "Bottom 2 Box",
+    ]);
   });
 
   it("builds inline significance markers including total comparisons", () => {
@@ -178,5 +274,16 @@ describe("GroundedTableCard helpers", () => {
     expect(markup).toContain("Expand table for deeper analysis");
     expect(markup).toContain("Base: All respondents");
     expect(markup).not.toContain("vs total");
+  });
+
+  it("renders the subtitle inline and omits stat rows from the compact frequency card", () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(GroundedTableCard, { card: frequencyCardWithStats }),
+    );
+
+    expect(markup).toContain("Bank consideration");
+    expect(markup).toContain("Additional rows available. Expand table for deeper analysis.");
+    expect(markup).not.toContain("Std Dev");
+    expect(markup).not.toContain("Std Err");
   });
 });

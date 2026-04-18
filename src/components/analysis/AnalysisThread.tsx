@@ -83,7 +83,7 @@ export function AnalysisThread({
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <ScrollArea className="min-h-0 min-w-0 flex-1" viewportRef={viewportRef}>
-        <div className="min-w-0 space-y-4 px-5 py-3">
+        <div className="min-w-0 space-y-4 px-5 py-3 pb-24">
           {messages.length === 0 ? (
             <div className="py-8 text-center">
               <p className="text-sm text-muted-foreground">
@@ -125,14 +125,17 @@ export function AnalysisThread({
         </div>
       </ScrollArea>
 
-      <div className="shrink-0 border-t border-border/60 bg-white/95 px-5 py-4 backdrop-blur supports-[backdrop-filter]:bg-white/80 dark:bg-card/95 dark:supports-[backdrop-filter]:bg-card/80">
-        <PromptComposer
-          value={input}
-          onChange={setInput}
-          onSubmit={handleSubmit}
-          onStop={stop}
-          isBusy={isBusy}
-        />
+      <div className="relative z-10 -mt-10 shrink-0 px-5 pb-4 pt-8">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 top-0 bg-gradient-to-t from-white via-white/88 to-transparent dark:from-card dark:via-card/84" />
+        <div className="relative">
+          <PromptComposer
+            value={input}
+            onChange={setInput}
+            onSubmit={handleSubmit}
+            onStop={stop}
+            isBusy={isBusy}
+          />
+        </div>
       </div>
     </div>
   );

@@ -145,15 +145,18 @@ export function getGroundedTableCardVisibleRows(
   card: AnalysisTableCard,
   showAllRows: boolean,
 ): AnalysisTableCardRow[] {
+  const previewEligibleRows = card.tableType === "frequency"
+    ? card.rows.filter((row) => row.rowKind !== "stat")
+    : card.rows;
   const hasPreviewState = typeof card.initialVisibleRowCount === "number"
     || typeof card.hiddenRowCount === "number";
 
   if (showAllRows || !hasPreviewState) {
-    return card.rows;
+    return showAllRows ? card.rows : previewEligibleRows;
   }
 
-  const visibleCount = Math.max(card.initialVisibleRowCount ?? card.rows.length, 0);
-  return card.rows.slice(0, visibleCount);
+  const visibleCount = Math.max(card.initialVisibleRowCount ?? previewEligibleRows.length, 0);
+  return previewEligibleRows.slice(0, visibleCount);
 }
 
 export function getGroundedTableCardCell(
@@ -188,6 +191,7 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
   const visibleGroups = getGroundedTableCardVisibleGroups(card, false);
   const visibleRows = getGroundedTableCardVisibleRows(card, false);
   const hiddenRowCount = card.hiddenRowCount ?? card.truncatedRows;
+  const previewHiddenRowCount = Math.max(card.rows.length - visibleRows.length, 0);
   const hiddenGroupCount = card.hiddenGroupCount ?? 0;
   const nonTotalColumnGroups = allGroups.filter((group) => group.groupKey !== TOTAL_GROUP_KEY);
   const questionHeading = buildQuestionHeading(card);
@@ -200,7 +204,7 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
     || card.comparisonGroups.length > 0
     || nonTotalColumnGroups.length > 0,
   );
-  const hasDiveDeeper = hiddenRowCount > 0 || hiddenGroupCount > 0 || (card.hiddenCutCount ?? card.truncatedColumns) > 0;
+  const hasDiveDeeper = previewHiddenRowCount > 0 || hiddenGroupCount > 0 || (card.hiddenCutCount ?? card.truncatedColumns) > 0;
 
   function renderTableContent({
     groups,
@@ -365,6 +369,11 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
             <CardTitle className="font-serif text-lg font-normal leading-snug tracking-tight text-foreground/90">
               {questionHeading}
             </CardTitle>
+            {card.tableSubtitle ? (
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                {card.tableSubtitle}
+              </p>
+            ) : null}
 
             {hasMetadata ? (
               <CollapsibleTrigger asChild>
@@ -454,6 +463,7 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
               <Button variant="ghost" size="xs" className="h-auto gap-1.5 px-2 py-0.5 text-[11px] italic text-muted-foreground" onClick={() => setIsDiveDeeperOpen(true)}>
                 <Expand className="h-3 w-3 shrink-0" />
                 {hiddenRowCount > 0 ? "Answer options truncated. " : ""}
+                {hiddenRowCount === 0 && previewHiddenRowCount > 0 ? "Additional rows available. " : ""}
                 Expand table for deeper analysis.
               </Button>
             </div>

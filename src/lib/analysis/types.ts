@@ -72,6 +72,8 @@ export interface AnalysisTableCardCell {
 export interface AnalysisTableCardRow {
   rowKey: string;
   label: string;
+  rowKind?: string;
+  statType?: string | null;
   indent: number;
   isNet: boolean;
   values: AnalysisTableCardCell[];

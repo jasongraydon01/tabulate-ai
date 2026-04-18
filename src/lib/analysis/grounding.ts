@@ -30,6 +30,8 @@ type BuiltQuestionContext = ReturnType<typeof buildQuestionContext>[number];
 interface RawTableRow {
   label?: string;
   groupName?: string;
+  rowKind?: string;
+  statType?: string;
   n?: number;
   count?: number;
   pct?: number;
@@ -865,6 +867,8 @@ export function getTableCard(
     return {
       rowKey,
       label: firstRow?.label ?? rowKey,
+      rowKind: typeof firstRow?.rowKind === "string" ? firstRow.rowKind : undefined,
+      statType: typeof firstRow?.statType === "string" ? firstRow.statType : null,
       indent: typeof firstRow?.indent === "number" ? firstRow.indent : 0,
       isNet: Boolean(firstRow?.isNet),
       values,
