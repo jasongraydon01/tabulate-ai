@@ -177,7 +177,7 @@ export function AnalysisWorkspace({
           onSelectSession={handleSelectSession}
         />
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col p-4">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {renderThreadContent()}
         </div>
       </div>
