@@ -150,7 +150,7 @@ export function AnalysisWorkspace({
   }
 
   return (
-    <div className="space-y-4 py-6">
+    <div className="space-y-2 py-2">
       <AppBreadcrumbs
         segments={[
           { label: "Projects", href: "/dashboard" },
@@ -159,7 +159,7 @@ export function AnalysisWorkspace({
         ]}
       />
 
-      <div className="flex min-h-[700px] overflow-hidden rounded-xl border border-border/70 bg-white dark:bg-card">
+      <div className="flex overflow-hidden rounded-xl border border-border/70 bg-white dark:bg-card" style={{ height: "calc(100vh - 10rem)" }}>
         <AnalysisSessionList
           sessions={(sessions ?? []).map((session) => ({
             _id: String(session._id),
@@ -177,7 +177,7 @@ export function AnalysisWorkspace({
           onSelectSession={handleSelectSession}
         />
 
-        <div className="flex min-w-0 flex-1 flex-col p-4">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col p-4">
           {renderThreadContent()}
         </div>
       </div>

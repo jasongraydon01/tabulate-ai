@@ -127,7 +127,7 @@ describe("analysis message helpers", () => {
     ]);
   });
 
-  it("keeps persisted grounded table cards in sanitized model messages", () => {
+  it("strips tool parts from sanitized model messages to avoid tool_use/tool_result pairing issues", () => {
     const sanitized = getSanitizedConversationMessagesForModel([
       {
         id: "assistant-1",
@@ -148,40 +148,6 @@ describe("analysis message helpers", () => {
               status: "available",
               tableId: "q1",
               title: "Q1 overall",
-              questionId: "Q1",
-              questionText: "How satisfied are you?",
-              tableType: "frequency",
-              surveySection: null,
-              baseText: "All respondents",
-              tableSubtitle: null,
-              userNote: null,
-              valueMode: "pct",
-              columns: [],
-              columnGroups: [
-                {
-                  groupKey: "__total__",
-                  groupName: "Total",
-                  columns: [],
-                },
-              ],
-              rows: [],
-              totalRows: 0,
-              totalColumns: 0,
-              truncatedRows: 0,
-              truncatedColumns: 0,
-              defaultScope: "total_only",
-              initialVisibleRowCount: 0,
-              initialVisibleGroupCount: 0,
-              hiddenRowCount: 0,
-              hiddenGroupCount: 0,
-              hiddenCutCount: 0,
-              isExpandable: false,
-              requestedRowFilter: null,
-              requestedCutFilter: null,
-              significanceTest: null,
-              significanceLevel: null,
-              comparisonGroups: [],
-              sourceRefs: [],
             },
           },
         ],
@@ -190,10 +156,6 @@ describe("analysis message helpers", () => {
 
     expect(sanitized[0].parts).toEqual([
       { type: "text", text: "bSummary/b" },
-      expect.objectContaining({
-        type: "tool-getTableCard",
-        state: "output-available",
-      }),
     ]);
   });
 });

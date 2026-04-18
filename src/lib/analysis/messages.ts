@@ -115,10 +115,6 @@ export function getSanitizedConversationMessagesForModel(
         return acc;
       }
 
-      if (message.role === "assistant" && isToolUIPart(part) && part.type === "tool-getTableCard" && part.state === "output-available") {
-        acc.push(part);
-      }
-
       return acc;
     }, []);
 

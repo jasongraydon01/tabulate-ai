@@ -44,7 +44,7 @@ export function AnalysisSessionList({
 }: AnalysisSessionListProps) {
   if (!isOpen) {
     return (
-      <div className="flex w-12 shrink-0 flex-col items-center gap-2 border-r border-border/60 py-3">
+      <div className="flex h-full w-12 shrink-0 flex-col items-center gap-2 border-r border-border/60 py-3">
         <Button
           variant="ghost"
           size="xs"
@@ -73,7 +73,7 @@ export function AnalysisSessionList({
   }
 
   return (
-    <aside className="flex w-[260px] shrink-0 flex-col border-r border-border/60">
+    <aside className="flex h-full w-[260px] shrink-0 flex-col overflow-hidden border-r border-border/60">
       <div className="flex items-center justify-between gap-2 px-3 py-2.5">
         <Button
           variant="ghost"
