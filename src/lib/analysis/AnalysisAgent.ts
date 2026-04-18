@@ -17,39 +17,10 @@ import {
   searchRunCatalog,
   type AnalysisGroundingContext,
 } from "@/lib/analysis/grounding";
+import { createAnalysisScratchpadTool } from "@/lib/analysis/scratchpad";
+import { buildAnalysisInstructions } from "@/prompts/analysis";
 import { recordAgentMetrics } from "@/lib/observability";
 import { retryWithPolicyHandling } from "@/lib/retryWithPolicyHandling";
-
-function buildAnalysisSystemPrompt(context: AnalysisGroundingContext): string {
-  const groundedHeader = context.availability === "unavailable"
-    ? [
-        "Grounded run artifacts are not available in this session.",
-        "Do not invent run-specific numbers, percentages, subgroup findings, or banner availability.",
-        "You can still help with methodology, interpretation approach, and next analytical steps.",
-      ]
-    : [
-        "You have grounded access to this run's validated artifacts through tools.",
-        "For run-specific claims, use the tools first and then answer from their outputs.",
-        "When a renderable table would help, call getTableCard so the user sees the evidence inline.",
-        "When the user asks a fuzzy question, use searchRunCatalog first to resolve the likely table, question, or banner cut.",
-        "Use rowFilter when the user cares about specific answer options, rows, or concepts within a table.",
-        "Use cutFilter only when the user explicitly asks for subgroup detail, named cuts, or comparisons.",
-        "Do not ask for a broad cut view by default when Total is enough to answer the question.",
-      ];
-
-  const artifactStatus = context.missingArtifacts.length > 0
-    ? `Artifact gaps: ${context.missingArtifacts.join(", ")}.`
-    : "All Slice 2 grounding artifacts are available.";
-
-  return [
-    "You are TabulateAI's analysis assistant for survey and crosstab work.",
-    "Be concise, methodologically sound, and practical.",
-    ...groundedHeader,
-    artifactStatus,
-    "Do not mention internal implementation details unless the user asks.",
-    "Prefer plain-language summaries, but keep technical terminology precise.",
-  ].join("\n");
-}
 
 export async function streamAnalysisResponse({
   messages,
@@ -62,17 +33,22 @@ export async function streamAnalysisResponse({
 }) {
   const startTime = Date.now();
   const sanitizedMessages = getSanitizedConversationMessagesForModel(messages);
+  const { tool: scratchpad } = createAnalysisScratchpadTool();
 
   const retryResult = await retryWithPolicyHandling(
     async () =>
       streamText({
         model: getAnalysisModel(),
-        system: buildAnalysisSystemPrompt(groundingContext),
+        system: buildAnalysisInstructions({
+          availability: groundingContext.availability,
+          missingArtifacts: groundingContext.missingArtifacts,
+        }),
         messages: await convertToModelMessages(sanitizedMessages),
-        stopWhen: stepCountIs(6),
+        stopWhen: stepCountIs(12),
         abortSignal,
         ...(getAnalysisProviderOptions() ? { providerOptions: getAnalysisProviderOptions() } : {}),
         tools: {
+          scratchpad,
           searchRunCatalog: tool({
             description: "Search the current run's catalog of questions, tables, and banner cuts from grounded artifacts.",
             inputSchema: z.object({

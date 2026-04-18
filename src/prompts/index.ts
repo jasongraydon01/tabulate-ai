@@ -13,3 +13,4 @@ export { getStructureGatePrompt } from './structuregate';
 export { getSurveyCleanupPrompt } from './surveyCleanup';
 export { getTableContextPrompt } from './tableContext';
 export { getNetEnrichmentPrompt } from './netEnrichment';
+export { getAnalysisPrompt, buildAnalysisInstructions } from './analysis';
