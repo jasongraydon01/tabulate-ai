@@ -56,8 +56,23 @@ export async function streamAnalysisResponse({
             }),
             execute: async ({ query }) => searchRunCatalog(groundingContext, query),
           }),
+          viewTable: tool({
+            description: "Inspect a table's data without showing it to the user. Use this to check whether a table is the right one before rendering it. Returns the same data as getTableCard but does not render inline.",
+            inputSchema: z.object({
+              tableId: z.string().min(1).max(200),
+              rowFilter: z.string().min(1).max(200).nullable().optional(),
+              cutFilter: z.string().min(1).max(200).nullable().optional(),
+              valueMode: z.enum(["pct", "count", "n", "mean"]).optional(),
+            }),
+            execute: async ({ tableId, rowFilter, cutFilter, valueMode }) => getTableCard(groundingContext, {
+              tableId,
+              rowFilter,
+              cutFilter,
+              valueMode,
+            }),
+          }),
           getTableCard: tool({
-            description: "Load a renderable table card for a specific run table from grounded results.",
+            description: "Render a table card inline for the user to see. Only call this when you have confirmed the table is the one the user needs.",
             inputSchema: z.object({
               tableId: z.string().min(1).max(200),
               rowFilter: z.string().min(1).max(200).nullable().optional(),

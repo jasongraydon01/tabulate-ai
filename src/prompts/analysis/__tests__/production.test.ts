@@ -22,10 +22,11 @@ describe("analysis agent production prompt", () => {
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("table card");
   });
 
-  it("contains the tool usage protocol with search-first workflow", () => {
+  it("contains the tool usage protocol with exploration workflow", () => {
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("<tool_usage_protocol>");
-    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("SEARCH FIRST");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("EXPLORATION WORKFLOW");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("searchRunCatalog");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("viewTable");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("getTableCard");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("getQuestionContext");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("listBannerCuts");
