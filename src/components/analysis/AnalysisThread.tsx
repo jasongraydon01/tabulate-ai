@@ -91,17 +91,23 @@ export function AnalysisThread({
               </p>
             </div>
           ) : (
-            messages.map((message, index) => (
-              <div key={message.id} ref={index === messages.length - 1 ? lastMessageRef : undefined}>
-                <AnalysisMessage message={message} />
-              </div>
-            ))
+            messages.map((message, index) => {
+              const isLastMessage = index === messages.length - 1;
+              return (
+                <div key={message.id} ref={isLastMessage ? lastMessageRef : undefined}>
+                  <AnalysisMessage
+                    message={message}
+                    isStreaming={isLastMessage && isBusy}
+                  />
+                </div>
+              );
+            })
           )}
 
-          {isBusy && (
+          {isBusy && status === "submitted" && (
             <div className="flex w-full justify-start">
               <div className="px-1 py-2">
-                <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <GridLoader size="sm" />
                   Thinking...
                 </div>
