@@ -24,6 +24,8 @@ Clusters 1 and 2 are paired: the card is the most visible surface, and its look 
 
 ## Cluster 1. Table card — visual language
 
+Status: Done
+
 What binds this cluster: how the grounded table card looks. Density, typography, significance notation, and numeric formatting. These changes are purely about rendering; they do not change what the card contains.
 
 Related in other clusters: cluster 2 item (17) also touches the cut header, because showing the group name visually depends on the shaping layer exposing group info in the first place.
@@ -51,6 +53,8 @@ The card currently shows values like 15.6% and 44.0% directly from the artifact.
 Open question: what is the right default rounding policy by value mode — whole numbers for percent and count, one decimal for mean, and an explicit "show precise values" affordance when the user wants the raw figures?
 
 ## Cluster 2. Table card — data and shaping
+
+Status: Done
 
 What binds this cluster: what actually ends up inside the card. Row and cut selection, prioritization, defaults, truncation behavior, and how cuts relate to their banner groups. These observations are about the tool contract between the model and the card, not about rendering.
 
@@ -83,6 +87,8 @@ Open question: should the card fetch and render cuts grouped by banner group wit
 
 ## Cluster 3. Thread and assistant behavior
 
+Status: Done
+
 What binds this cluster: how the assistant's work reads inside the thread itself, independent of card rendering. These are mostly prompt-level and small inline UI changes.
 
 ### (10) The assistant should not produce faux text tables when a grounded card is already rendering.
@@ -94,6 +100,8 @@ The experience would likely feel more legible if the interface showed what the a
 Open question: should tool calls appear as inline status steps, collapsed activity chips, or some other low-noise activity pattern?
 
 ## Cluster 4. Workspace frame — layout and copy
+
+Status: Done
 
 What binds this cluster: the chrome around the thread. Page headings, copy tone, container weight, session-list styling, and overall design language. No change to the card itself or to the agent behavior.
 

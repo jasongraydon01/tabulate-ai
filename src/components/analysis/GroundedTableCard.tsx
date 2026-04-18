@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { ChevronDown, Expand } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -14,7 +13,6 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -514,22 +512,6 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
             <DialogTitle className="font-serif text-2xl tracking-tight">
               {questionHeading}
             </DialogTitle>
-            <DialogDescription>
-              Full table view for this grounded result. This is a rendering-only drill-in and does not change the conversation context.
-            </DialogDescription>
-            <div className="flex flex-wrap gap-2 pt-1">
-              <Badge variant="outline" className="font-mono">
-                {card.tableId}
-              </Badge>
-              {card.questionId ? (
-                <Badge variant="outline" className="font-mono">
-                  {card.questionId}
-                </Badge>
-              ) : null}
-              <Badge variant="secondary">
-                {valueModeLabel(card.valueMode)}
-              </Badge>
-            </div>
           </DialogHeader>
 
           <div className="flex min-h-0 flex-1 flex-col gap-4 px-6 py-5">

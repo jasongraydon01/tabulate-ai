@@ -295,4 +295,14 @@ describe("GroundedTableCard helpers", () => {
     expect(markup).not.toContain("Std Dev");
     expect(markup).not.toContain("Std Err");
   });
+
+  it("keeps the expanded dialog header minimal without duplicate pills or helper copy", () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(GroundedTableCard, { card: groupedCard }),
+    );
+
+    expect(markup).not.toContain("Full table view for this grounded result");
+    expect(markup).not.toContain("Percent");
+    expect(markup).not.toContain("data-slot=\"badge\"");
+  });
 });

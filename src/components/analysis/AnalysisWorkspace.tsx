@@ -97,6 +97,45 @@ export function AnalysisWorkspace({
     });
   }
 
+  async function handleRenameSession(sessionId: string, title: string) {
+    const response = await fetch(
+      `/api/runs/${encodeURIComponent(runId)}/analysis/sessions/${encodeURIComponent(sessionId)}`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ title }),
+      },
+    );
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+    if (!response.ok) {
+      throw new Error(payload.error ?? "Failed to rename analysis session");
+    }
+
+    toast.success("Chat renamed");
+  }
+
+  async function handleDeleteSession(sessionId: string) {
+    const response = await fetch(
+      `/api/runs/${encodeURIComponent(runId)}/analysis/sessions/${encodeURIComponent(sessionId)}`,
+      {
+        method: "DELETE",
+      },
+    );
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+    if (!response.ok) {
+      throw new Error(payload.error ?? "Failed to delete analysis session");
+    }
+
+    const remainingSessions = (sessions ?? []).filter((session) => String(session._id) !== sessionId);
+    const nextSessionId = remainingSessions[0] ? String(remainingSessions[0]._id) : null;
+    startTransition(() => {
+      router.replace(nextSessionId ? `${pathname}?sessionId=${encodeURIComponent(nextSessionId)}` : pathname);
+    });
+    toast.success("Chat deleted");
+  }
+
   function renderThreadContent() {
     if (sessions === undefined) {
       return (
@@ -175,6 +214,26 @@ export function AnalysisWorkspace({
           onToggle={() => setIsSidebarOpen((open) => !open)}
           onCreateSession={handleCreateSession}
           onSelectSession={handleSelectSession}
+          onRenameSession={async (sessionId, title) => {
+            try {
+              await handleRenameSession(sessionId, title);
+            } catch (error) {
+              toast.error("Failed to rename chat", {
+                description: error instanceof Error ? error.message : "Unknown error",
+              });
+              throw error;
+            }
+          }}
+          onDeleteSession={async (sessionId) => {
+            try {
+              await handleDeleteSession(sessionId);
+            } catch (error) {
+              toast.error("Failed to delete chat", {
+                description: error instanceof Error ? error.message : "Unknown error",
+              });
+              throw error;
+            }
+          }}
         />
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">

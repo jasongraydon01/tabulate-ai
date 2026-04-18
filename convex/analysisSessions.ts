@@ -84,3 +84,63 @@ export const create = internalMutation({
     });
   },
 });
+
+export const rename = internalMutation({
+  args: {
+    orgId: v.id("organizations"),
+    sessionId: v.id("analysisSessions"),
+    title: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session || session.orgId !== args.orgId) {
+      throw new Error("Analysis session not found");
+    }
+
+    const title = args.title.trim();
+    if (!title) {
+      throw new Error("Session title is required");
+    }
+
+    await ctx.db.patch(args.sessionId, { title });
+  },
+});
+
+export const deleteCascade = internalMutation({
+  args: {
+    orgId: v.id("organizations"),
+    sessionId: v.id("analysisSessions"),
+  },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session || session.orgId !== args.orgId) {
+      throw new Error("Analysis session not found");
+    }
+
+    const [messages, artifacts] = await Promise.all([
+      ctx.db
+        .query("analysisMessages")
+        .withIndex("by_session_created", (q) => q.eq("sessionId", args.sessionId))
+        .collect(),
+      ctx.db
+        .query("analysisArtifacts")
+        .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+        .collect(),
+    ]);
+
+    for (const message of messages) {
+      await ctx.db.delete(message._id);
+    }
+
+    for (const artifact of artifacts) {
+      await ctx.db.delete(artifact._id);
+    }
+
+    await ctx.db.delete(args.sessionId);
+
+    return {
+      deletedMessages: messages.length,
+      deletedArtifacts: artifacts.length,
+    };
+  },
+});
