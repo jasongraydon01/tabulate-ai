@@ -57,6 +57,14 @@ function getColumnHeaderLabel(column: AnalysisTableCardColumn): string {
   return column.cutName;
 }
 
+function getColumnHeaderStatLetter(column: AnalysisTableCardColumn): string | null {
+  if (!column.statLetter || column.statLetter.trim().length === 0) {
+    return null;
+  }
+
+  return `(${column.statLetter})`;
+}
+
 function normalizeText(value: string | null | undefined): string {
   return (value ?? "")
     .toLowerCase()
@@ -173,10 +181,28 @@ export function getGroundedTableCardCell(
     || value.cutName === column.cutName) ?? null;
 }
 
-export function getGroundedTableCardSignificanceMarkers(cell: AnalysisTableCardCell): string[] {
+export function getGroundedTableCardSignificanceMarkers(
+  row: AnalysisTableCardRow,
+  column: AnalysisTableCardColumn,
+  columns: AnalysisTableCardColumn[],
+): string[] {
+  const cell = getGroundedTableCardCell(row, column);
+  if (!cell) return [];
+
   const markers = [...cell.sigHigherThan];
 
-  if (cell.sigVsTotal) {
+  if (column.isTotal) {
+    for (const comparisonColumn of columns) {
+      if ((comparisonColumn.cutKey ?? comparisonColumn.cutName) === (column.cutKey ?? column.cutName)) {
+        continue;
+      }
+
+      const comparisonCell = getGroundedTableCardCell(row, comparisonColumn);
+      if (comparisonCell?.sigVsTotal === "lower" && comparisonColumn.statLetter) {
+        markers.push(comparisonColumn.statLetter);
+      }
+    }
+  } else if (cell.sigVsTotal === "higher") {
     markers.push("T");
   }
 
@@ -211,13 +237,11 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
     rows,
     density = "comfortable",
     rowFilter,
-    baseText,
   }: {
     groups: AnalysisTableCardColumnGroup[];
     rows: AnalysisTableCardRow[];
     density?: "compact" | "comfortable";
     rowFilter?: string | null;
-    baseText?: string | null;
   }) {
     const columns = groups.flatMap((group) => group.columns);
     const showGroupHeaderInTable = groups.some((group) => group.groupKey !== TOTAL_GROUP_KEY);
@@ -262,7 +286,14 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
                         isCompact ? "min-w-[112px] px-2.5 py-1.5" : "min-w-[132px] px-3 py-3",
                       )}
                     >
-                      {getColumnHeaderLabel(column)}
+                      <div className="space-y-0.5">
+                        <div>{getColumnHeaderLabel(column)}</div>
+                        {getColumnHeaderStatLetter(column) ? (
+                          <div className={cn("font-mono text-tab-teal", isCompact ? "text-[10px]" : "text-xs")}>
+                            {getColumnHeaderStatLetter(column)}
+                          </div>
+                        ) : null}
+                      </div>
                     </th>
                   ))}
                 </tr>
@@ -285,7 +316,14 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
                       isCompact ? "min-w-[112px] px-2.5 py-1.5" : "min-w-[132px] px-3 py-3",
                     )}
                   >
-                    {getColumnHeaderLabel(column)}
+                    <div className="space-y-0.5">
+                      <div>{getColumnHeaderLabel(column)}</div>
+                      {getColumnHeaderStatLetter(column) ? (
+                        <div className={cn("font-mono text-tab-teal", isCompact ? "text-[10px]" : "text-xs")}>
+                          {getColumnHeaderStatLetter(column)}
+                        </div>
+                      ) : null}
+                    </div>
                   </th>
                 ))}
               </tr>
@@ -295,7 +333,7 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
             <tr className="border-b border-border/60 bg-muted/5">
               <td className={cn("align-middle text-muted-foreground", isCompact ? "px-3 py-1" : "px-4 py-2")}>
                 <div className={cn(isCompact ? "text-xs" : "text-sm")}>
-                  {baseText ? `Base: ${baseText}` : "Base"}
+                  Base
                 </div>
               </td>
               {columns.map((column) => (
@@ -322,7 +360,7 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
                   </td>
                   {columns.map((column) => {
                     const cell = getGroundedTableCardCell(row, column);
-                    const markers = cell ? getGroundedTableCardSignificanceMarkers(cell) : [];
+                    const markers = getGroundedTableCardSignificanceMarkers(row, column, columns);
 
                     return (
                       <td
@@ -391,8 +429,8 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
                 <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
                   <div className="space-y-2">
                     {card.baseText ? <p><span className="text-foreground/80">Base:</span> {card.baseText}</p> : null}
-                    {card.userNote ? <p className="leading-6"><span className="text-foreground/80">Note:</span> {card.userNote}</p> : null}
                     {card.tableSubtitle ? <p><span className="text-foreground/80">Subtitle:</span> {card.tableSubtitle}</p> : null}
+                    {card.userNote ? <p className="leading-6"><span className="text-foreground/80">Note:</span> {card.userNote}</p> : null}
                   </div>
                   <div className="space-y-2">
                     {card.tableId ? <p><span className="text-foreground/80">Source table:</span> {card.tableId}</p> : null}
@@ -455,7 +493,6 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
             rows: visibleRows,
             density: "compact",
             rowFilter: card.requestedRowFilter,
-            baseText: card.baseText,
           })}
 
           {hasDiveDeeper ? (
@@ -500,8 +537,8 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
               <div className="shrink-0 grid gap-x-6 gap-y-2 rounded-xl border border-border/60 bg-muted/10 p-4 text-sm text-muted-foreground md:grid-cols-2">
                 <div className="space-y-2">
                   {card.baseText ? <p><span className="text-foreground/80">Base:</span> {card.baseText}</p> : null}
-                  {card.userNote ? <p><span className="text-foreground/80">Note:</span> {card.userNote}</p> : null}
                   {card.tableSubtitle ? <p><span className="text-foreground/80">Subtitle:</span> {card.tableSubtitle}</p> : null}
+                  {card.userNote ? <p><span className="text-foreground/80">Note:</span> {card.userNote}</p> : null}
                 </div>
                 <div className="space-y-2">
                   {card.significanceTest ? <p><span className="text-foreground/80">Significance:</span> {card.significanceTest}</p> : null}
@@ -516,7 +553,6 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
                 rows: card.rows,
                 density: "comfortable",
                 rowFilter: card.requestedRowFilter,
-                baseText: card.baseText,
               })}
             </div>
           </div>

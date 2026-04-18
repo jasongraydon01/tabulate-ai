@@ -255,24 +255,33 @@ describe("GroundedTableCard helpers", () => {
   });
 
   it("builds inline significance markers including total comparisons", () => {
-    const femaleCell = groupedCard.rows[0]?.values[1];
-    const maleCell = groupedCard.rows[0]?.values[2];
+    const row = groupedCard.rows[0];
+    const totalColumn = groupedCard.columns[0];
+    const femaleColumn = groupedCard.columns[1];
+    const maleColumn = groupedCard.columns[2];
 
-    expect(femaleCell && getGroundedTableCardSignificanceMarkers(femaleCell)).toEqual(["B"]);
-    expect(maleCell && getGroundedTableCardSignificanceMarkers(maleCell)).toEqual(["T"]);
+    expect(row && femaleColumn && getGroundedTableCardSignificanceMarkers(row, femaleColumn, groupedCard.columns)).toEqual(["B"]);
+    expect(row && maleColumn && getGroundedTableCardSignificanceMarkers(row, maleColumn, groupedCard.columns)).toEqual([]);
+    expect(row && totalColumn && getGroundedTableCardSignificanceMarkers(row, totalColumn, groupedCard.columns)).toEqual(["B"]);
   });
 
   it("renders the collapsed card without inline metadata prose or vs-total text", () => {
     const markup = renderToStaticMarkup(
       React.createElement(GroundedTableCard, { card: groupedCard }),
     );
+    const expandedColumnsMarkup = renderToStaticMarkup(
+      React.createElement(GroundedTableCard, { card: legacyCard }),
+    );
 
     expect(markup).toContain("Q1. How satisfied are you?");
     expect(markup).toContain("Total");
+    expect(markup).toContain("(T)");
+    expect(expandedColumnsMarkup).toContain("(A)");
     expect(markup).not.toContain("Total (Percent)");
     expect(markup).toContain("Details");
     expect(markup).toContain("Expand table for deeper analysis");
-    expect(markup).toContain("Base: All respondents");
+    expect(markup).toContain(">Base<");
+    expect(markup).not.toContain("Base: All respondents");
     expect(markup).not.toContain("vs total");
   });
 
