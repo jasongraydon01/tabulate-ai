@@ -127,7 +127,6 @@ It is **not** a direct UI model for TabulateAI. Thunderbolt is a general AI clie
 
 - the Slice 3 trust layer that repairs unsupported dataset-specific claims before display
 - follow-up polish so the workspace feels productized rather than developer-accessible
-- resolution of the additional observations captured in the feedback doc (default-to-Total adherence, horizontal overflow containment, tool activity nesting under the thinking disclosure)
 
 ### Explicitly out of scope for initial v1
 
@@ -673,12 +672,20 @@ Questions to answer before building compute:
 
 ## Recommended Next Step
 
-The workspace is now surfaced from the project page, and clusters 1–6 of the Phase 15 feedback doc are closed. Two live tracks remain, and either is a reasonable next move:
+**Slice 3 — claim-check and repair lane.**
 
-- **Continue the slice path → Slice 3 (claim-check and repair lane).** This is the durable trust-layer work: dataset-claim detection, a repair pass for unsupported numeric claims, and grounding refs persisted on assistant messages. Good choice when the priority is hardening what the assistant says before layering more surface polish on top.
-- **Continue the additional observations (21, 22, 23).** These are smaller, user-visible polish items from real usage: default-to-Total adherence, horizontal overflow containment inside grounded cards, and nesting tool activity under the thinking disclosure. Good choice when the priority is tightening the feel of the workspace before committing to Slice 3 scope.
+The Phase 15 interface feedback pass is closed. The workspace is surfaced from the project page, clusters 1–6 have landed, and the additional observations (default-to-Total adherence, horizontal overflow containment, tool activity nesting, and full thinking-trace persistence) are all in. What remains is the durable trust layer.
 
-Pick one track based on whether the next lesson we want to learn is about *trust* (Slice 3) or *feel* (observations 21–23). The other track remains queued either way.
+Slice 3 delivers:
+- dataset-claim detection on the assistant's draft response
+- a repair pass that either strips unsupported numeric specifics or forces a lookup-backed rewrite
+- `groundingRefs` persisted on assistant messages so the trust decision is auditable and available to future UI
+
+Exit criteria (restated from the slice plan):
+- unsupported numerical answers are revised before display
+- methodology conversation remains natural — no wall of disclaimers
+
+This is the right moment: the conversational surface feels coherent enough that trust becomes the next felt gap rather than polish.
 
 ## Sources Consulted
 
