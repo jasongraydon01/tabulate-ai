@@ -21,8 +21,9 @@ import {
   type AnalysisGroundingContext,
 } from "@/lib/analysis/grounding";
 import { createAnalysisScratchpadTool } from "@/lib/analysis/scratchpad";
+import type { AnalysisTraceRetryEvent } from "@/lib/analysis/trace";
 import { buildAnalysisInstructions } from "@/prompts/analysis";
-import { recordAgentMetrics } from "@/lib/observability";
+import { calculateCostSync, recordAgentMetrics } from "@/lib/observability";
 import { retryWithPolicyHandling } from "@/lib/retryWithPolicyHandling";
 
 export async function streamAnalysisResponse({
@@ -36,7 +37,12 @@ export async function streamAnalysisResponse({
 }) {
   const startTime = Date.now();
   const sanitizedMessages = getSanitizedConversationMessagesForModel(messages);
-  const { tool: scratchpad } = createAnalysisScratchpadTool();
+  const { tool: scratchpad, getEntries } = createAnalysisScratchpadTool();
+  const retryEvents: AnalysisTraceRetryEvent[] = [];
+  let usage = {
+    inputTokens: 0,
+    outputTokens: 0,
+  };
 
   const retryResult = await retryWithPolicyHandling(
     async () =>
@@ -137,12 +143,16 @@ export async function streamAnalysisResponse({
           }),
         },
         onFinish: ({ totalUsage }) => {
+          usage = {
+            inputTokens: totalUsage.inputTokens ?? 0,
+            outputTokens: totalUsage.outputTokens ?? 0,
+          };
           recordAgentMetrics(
             "AnalysisAgent",
             getAnalysisModelName(),
             {
-              input: totalUsage.inputTokens ?? 0,
-              output: totalUsage.outputTokens ?? 0,
+              input: usage.inputTokens,
+              output: usage.outputTokens,
             },
             Date.now() - startTime,
           );
@@ -151,6 +161,17 @@ export async function streamAnalysisResponse({
     {
       maxAttempts: 3,
       abortSignal,
+      onRetryWithContext: (context, _error, nextDelayMs) => {
+        retryEvents.push({
+          attempt: context.attempt,
+          maxAttempts: context.maxAttempts,
+          nextDelayMs,
+          lastClassification: context.lastClassification,
+          lastErrorSummary: context.lastErrorSummary,
+          shouldUsePolicySafeVariant: context.shouldUsePolicySafeVariant,
+          possibleTruncation: context.possibleTruncation,
+        });
+      },
     },
   );
 
@@ -160,5 +181,25 @@ export async function streamAnalysisResponse({
     throw new Error(retryResult.error ?? `Failed to stream analysis response for: ${latestText || "analysis request"}`);
   }
 
-  return retryResult.result;
+  return {
+    streamResult: retryResult.result,
+    getTraceCapture: () => ({
+      usage: {
+        model: getAnalysisModelName(),
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        totalTokens: usage.inputTokens + usage.outputTokens,
+        durationMs: Date.now() - startTime,
+        estimatedCostUsd: calculateCostSync(getAnalysisModelName(), {
+          input: usage.inputTokens,
+          output: usage.outputTokens,
+        }).totalCost,
+      },
+      scratchpadEntries: getEntries().map((entry) => ({ ...entry })),
+      retryEvents: retryEvents.map((event) => ({ ...event })),
+      retryAttempts: retryResult.attempts,
+      finalClassification: retryResult.finalClassification ?? retryEvents.at(-1)?.lastClassification ?? null,
+      terminalError: retryResult.success ? null : (retryResult.error ?? null),
+    }),
+  };
 }

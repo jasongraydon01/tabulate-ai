@@ -46,6 +46,8 @@ const mocks = vi.hoisted(() => ({
     convexUserId: "user-1",
     role: "admin",
   })),
+  writeAnalysisTurnTrace: vi.fn(async () => "agents/analysis/sessions/session-1/turn-1.json"),
+  writeAnalysisTurnErrorTrace: vi.fn(async () => "agents/analysis/sessions/session-1/turn-error.json"),
 }));
 
 vi.mock("@/lib/requireConvexAuth", () => ({
@@ -69,6 +71,70 @@ vi.mock("@/lib/analysis/AnalysisAgent", () => ({
 vi.mock("@/lib/analysis/grounding", () => ({
   loadAnalysisGroundingContext: mocks.loadAnalysisGroundingContext,
 }));
+
+vi.mock("@/lib/analysis/trace", () => ({
+  writeAnalysisTurnTrace: mocks.writeAnalysisTurnTrace,
+  writeAnalysisTurnErrorTrace: mocks.writeAnalysisTurnErrorTrace,
+}));
+
+function makeTraceCapture(overrides: Partial<{
+  usage: {
+    model: string;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    durationMs: number;
+    estimatedCostUsd: number;
+  };
+  scratchpadEntries: unknown[];
+  retryEvents: unknown[];
+  retryAttempts: number;
+  finalClassification: string | null;
+  terminalError: string | null;
+}> = {}) {
+  return {
+    usage: {
+      model: "gpt-analysis",
+      inputTokens: 120,
+      outputTokens: 45,
+      totalTokens: 165,
+      durationMs: 850,
+      estimatedCostUsd: 0.0123,
+      ...(overrides.usage ?? {}),
+    },
+    scratchpadEntries: overrides.scratchpadEntries ?? [],
+    retryEvents: overrides.retryEvents ?? [],
+    retryAttempts: overrides.retryAttempts ?? 1,
+    finalClassification: overrides.finalClassification ?? null,
+    terminalError: overrides.terminalError ?? null,
+  };
+}
+
+function makeStreamResult(options: {
+  responseMessage?: { parts: Array<Record<string, unknown>> };
+  onError?: Error;
+}) {
+  return {
+    toUIMessageStreamResponse: ({ onFinish, onError }: {
+      onFinish?: (event: {
+        responseMessage: { parts: Array<Record<string, unknown>> };
+        isAborted: boolean;
+      }) => Promise<void>;
+      onError?: (error: Error) => string;
+    }) => {
+      if (options.onError) {
+        onError?.(options.onError);
+      }
+      if (options.responseMessage) {
+        void onFinish?.({
+          responseMessage: options.responseMessage,
+          isAborted: false,
+        });
+      }
+      return new Response("stream");
+    },
+  };
+}
 
 describe("analysis chat route", () => {
   let POST: typeof import("@/app/api/runs/[runId]/analysis/route").POST;
@@ -122,26 +188,18 @@ describe("analysis chat route", () => {
   it("persists the user and assistant messages around a streamed response", async () => {
     mocks.query
       .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
-      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1" })
+      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Audit Session" })
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
     mocks.mutateInternal.mockResolvedValueOnce("user-msg-1").mockResolvedValueOnce("assistant-msg-1");
     mocks.streamAnalysisResponse.mockResolvedValueOnce({
-      toUIMessageStreamResponse: ({ onFinish }: {
-        onFinish?: (event: {
-          responseMessage: { parts: Array<{ type: string; text?: string }> };
-          isAborted: boolean;
-        }) => Promise<void>;
-      }) => {
-        void onFinish?.({
-          responseMessage: {
-            parts: [{ type: "text", text: "Here is a careful next step." }],
-          },
-          isAborted: false,
-        });
-        return new Response("stream");
-      },
+      streamResult: makeStreamResult({
+        responseMessage: {
+          parts: [{ type: "text", text: "Here is a careful next step." }],
+        },
+      }),
+      getTraceCapture: () => makeTraceCapture(),
     });
 
     const response = await POST(
@@ -173,7 +231,22 @@ describe("analysis chat route", () => {
       parts: [
         { type: "text", text: "Here is a careful next step." },
       ],
+      agentMetrics: {
+        model: "gpt-analysis",
+        inputTokens: 120,
+        outputTokens: 45,
+        durationMs: 850,
+      },
     });
+    expect(mocks.writeAnalysisTurnTrace).toHaveBeenCalledWith(expect.objectContaining({
+      runResultValue: {},
+      runId: "run-1",
+      projectId: "project-1",
+      sessionId: "session-1",
+      sessionTitle: "Audit Session",
+      messageId: "assistant-msg-1",
+      assistantText: "Here is a careful next step.",
+    }));
     expect(mocks.streamAnalysisResponse).toHaveBeenCalledTimes(1);
     expect(mocks.loadAnalysisGroundingContext).toHaveBeenCalledWith({
       runResultValue: {},
@@ -187,7 +260,7 @@ describe("analysis chat route", () => {
   it("persists grounded table cards as analysis artifacts", async () => {
     mocks.query
       .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
-      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1" })
+      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Audit Session" })
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
@@ -196,98 +269,50 @@ describe("analysis chat route", () => {
       .mockResolvedValueOnce("artifact-1")
       .mockResolvedValueOnce("assistant-msg-1");
     mocks.streamAnalysisResponse.mockResolvedValueOnce({
-      toUIMessageStreamResponse: ({ onFinish }: {
-        onFinish?: (event: {
-          responseMessage: {
-            parts: Array<
-              | { type: "text"; text: string }
-              | {
-                  type: "tool-getTableCard";
-                  toolCallId: string;
-                  state: "output-available";
-                  input: {
-                    tableId: string;
-                    rowFilter: null;
-                    cutFilter: null;
-                    valueMode: "pct";
-                  };
-                  output: {
-                    status: "available";
-                    tableId: string;
-                    title: string;
-                    questionId: string;
-                    questionText: string;
-                    tableType: string;
-                    surveySection: null;
-                    baseText: string;
-                    tableSubtitle: null;
-                    userNote: null;
-                    valueMode: "pct";
-                    columns: [];
-                    rows: [];
-                    totalRows: number;
-                    totalColumns: number;
-                    truncatedRows: number;
-                    truncatedColumns: number;
-                    requestedRowFilter: null;
-                    requestedCutFilter: null;
-                    significanceTest: null;
-                    significanceLevel: null;
-                    comparisonGroups: [];
-                    sourceRefs: [];
-                  };
-                }
-            >;
-          };
-          isAborted: boolean;
-        }) => Promise<void>;
-      }) => {
-        void onFinish?.({
-          responseMessage: {
-            parts: [
-              { type: "text", text: "Here is the grounded table." },
-              {
-                type: "tool-getTableCard",
-                toolCallId: "tool-1",
-                state: "output-available",
-                input: {
-                  tableId: "q1",
-                  rowFilter: null,
-                  cutFilter: null,
-                  valueMode: "pct",
-                },
-                output: {
-                  status: "available",
-                  tableId: "q1",
-                  title: "Q1 overall",
-                  questionId: "Q1",
-                  questionText: "How satisfied are you?",
-                  tableType: "frequency",
-                  surveySection: null,
-                  baseText: "All respondents",
-                  tableSubtitle: null,
-                  userNote: null,
-                  valueMode: "pct",
-                  columns: [],
-                  rows: [],
-                  totalRows: 0,
-                  totalColumns: 0,
-                  truncatedRows: 0,
-                  truncatedColumns: 0,
-                  requestedRowFilter: null,
-                  requestedCutFilter: null,
-                  significanceTest: null,
-                  significanceLevel: null,
-                  comparisonGroups: [],
-                  sourceRefs: [],
-                },
+      streamResult: makeStreamResult({
+        responseMessage: {
+          parts: [
+            { type: "text", text: "Here is the grounded table." },
+            {
+              type: "tool-getTableCard",
+              toolCallId: "tool-1",
+              state: "output-available",
+              input: {
+                tableId: "q1",
+                rowFilter: null,
+                cutFilter: null,
+                valueMode: "pct",
               },
-            ],
-          },
-          isAborted: false,
-        });
-        return new Response("stream");
-      },
+              output: {
+                status: "available",
+                tableId: "q1",
+                title: "Q1 overall",
+                questionId: "Q1",
+                questionText: "How satisfied are you?",
+                tableType: "frequency",
+                surveySection: null,
+                baseText: "All respondents",
+                tableSubtitle: null,
+                userNote: null,
+                valueMode: "pct",
+                columns: [],
+                rows: [],
+                totalRows: 0,
+                totalColumns: 0,
+                truncatedRows: 0,
+                truncatedColumns: 0,
+                requestedRowFilter: null,
+                requestedCutFilter: null,
+                significanceTest: null,
+                significanceLevel: null,
+                comparisonGroups: [],
+                sourceRefs: [],
+              },
+            },
+          ],
+        },
+      }),
+      getTraceCapture: () => makeTraceCapture(),
     });
 
     const response = await POST(
@@ -335,6 +360,104 @@ describe("analysis chat route", () => {
           label: "Q1 overall",
         },
       ],
+      agentMetrics: {
+        model: "gpt-analysis",
+        inputTokens: 120,
+        outputTokens: 45,
+        durationMs: 850,
+      },
     });
+  });
+
+  it("does not fail the response when writing the success trace throws", async () => {
+    mocks.query
+      .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: { outputDir: "/tmp/out" } })
+      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Audit Session" })
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
+    mocks.mutateInternal.mockResolvedValueOnce("user-msg-1").mockResolvedValueOnce("assistant-msg-1");
+    mocks.writeAnalysisTurnTrace.mockRejectedValueOnce(new Error("disk full"));
+    mocks.streamAnalysisResponse.mockResolvedValueOnce({
+      streamResult: makeStreamResult({
+        responseMessage: {
+          parts: [{ type: "text", text: "Still returned." }],
+        },
+      }),
+      getTraceCapture: () => makeTraceCapture({
+        usage: {
+          model: "gpt-analysis",
+          inputTokens: 12,
+          outputTokens: 4,
+          totalTokens: 16,
+          durationMs: 90,
+          estimatedCostUsd: 0.001,
+        },
+      }),
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/runs/run-1/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          messages: [{ id: "user-1", role: "user", parts: [{ type: "text", text: "Hello" }] }],
+        }),
+      }),
+      { params: Promise.resolve({ runId: "run-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mocks.mutateInternal).toHaveBeenCalledTimes(2);
+  });
+
+  it("writes an error trace when the stream reports an error", async () => {
+    mocks.query
+      .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: { outputDir: "/tmp/out" } })
+      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Audit Session" })
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
+    mocks.mutateInternal.mockResolvedValueOnce("user-msg-1");
+    mocks.streamAnalysisResponse.mockResolvedValueOnce({
+      streamResult: makeStreamResult({
+        onError: new Error("stream exploded"),
+      }),
+      getTraceCapture: () => makeTraceCapture({
+        usage: {
+          model: "gpt-analysis",
+          inputTokens: 12,
+          outputTokens: 0,
+          totalTokens: 12,
+          durationMs: 90,
+          estimatedCostUsd: 0.001,
+        },
+        retryAttempts: 2,
+        finalClassification: "transient",
+        terminalError: "stream exploded",
+      }),
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/runs/run-1/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          messages: [{ id: "user-1", role: "user", parts: [{ type: "text", text: "Why did this fail?" }] }],
+        }),
+      }),
+      { params: Promise.resolve({ runId: "run-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mocks.writeAnalysisTurnErrorTrace).toHaveBeenCalledWith(expect.objectContaining({
+      runResultValue: { outputDir: "/tmp/out" },
+      latestUserPrompt: "Why did this fail?",
+      errorMessage: "stream exploded",
+    }));
   });
 });

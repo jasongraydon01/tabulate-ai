@@ -13,6 +13,10 @@ import {
   buildPersistedAnalysisParts,
   type PersistedAnalysisPart,
 } from "@/lib/analysis/persistence";
+import {
+  writeAnalysisTurnErrorTrace,
+  writeAnalysisTurnTrace,
+} from "@/lib/analysis/trace";
 import { TABLE_CARD_TOOL_TYPE } from "@/lib/analysis/toolLabels";
 import { getConvexClient, mutateInternal } from "@/lib/convex";
 import { requireConvexAuth, AuthenticationError } from "@/lib/requireConvexAuth";
@@ -198,23 +202,44 @@ export async function POST(
       projectIntake: project.intake,
     });
 
-    const result = await streamAnalysisResponse({
+    const { streamResult, getTraceCapture } = await streamAnalysisResponse({
       messages: conversationMessages,
       groundingContext,
       abortSignal: request.signal,
     });
 
-    return result.toUIMessageStreamResponse({
+    let errorTraceWritten = false;
+
+    return streamResult.toUIMessageStreamResponse({
       originalMessages: conversationMessages,
       sendReasoning: true,
       onError: (error) => {
         console.error("[Analysis Chat POST] Stream error:", error);
+        if (!errorTraceWritten) {
+          errorTraceWritten = true;
+          const createdAt = new Date().toISOString();
+          void writeAnalysisTurnErrorTrace({
+            runResultValue: run.result,
+            orgId: String(auth.convexOrgId),
+            projectId: String(session.projectId),
+            runId: String(session.runId),
+            sessionId: String(session._id),
+            sessionTitle: session.title,
+            createdAt,
+            latestUserPrompt: latestUserText,
+            errorMessage: error instanceof Error ? error.message : String(error),
+            traceCapture: getTraceCapture(),
+          }).catch((traceError) => {
+            console.warn("[Analysis Chat POST] Failed to write analysis error trace:", traceError);
+          });
+        }
         return "Analysis response failed. Please try again.";
       },
       onFinish: async ({ responseMessage, isAborted }) => {
         if (isAborted) return;
 
         const assistantText = sanitizeAnalysisMessageContent(getAnalysisUIMessageText(responseMessage));
+        const traceCapture = getTraceCapture();
         const persistedParts = await persistAssistantMessageParts({
           parts: responseMessage.parts,
           sessionId: session._id,
@@ -225,13 +250,38 @@ export async function POST(
         });
         if (!assistantText && persistedParts.length === 0) return;
 
-        await mutateInternal(internal.analysisMessages.create, {
+        const createdAt = new Date().toISOString();
+        const assistantMessageId = await mutateInternal(internal.analysisMessages.create, {
           sessionId: session._id,
           orgId: auth.convexOrgId,
           role: "assistant",
           content: assistantText,
           ...(persistedParts.length > 0 ? { parts: persistedParts } : {}),
+          agentMetrics: {
+            model: traceCapture.usage.model,
+            inputTokens: traceCapture.usage.inputTokens,
+            outputTokens: traceCapture.usage.outputTokens,
+            durationMs: traceCapture.usage.durationMs,
+          },
         });
+
+        try {
+          await writeAnalysisTurnTrace({
+            runResultValue: run.result,
+            orgId: String(auth.convexOrgId),
+            projectId: String(session.projectId),
+            runId: String(session.runId),
+            sessionId: String(session._id),
+            sessionTitle: session.title,
+            messageId: String(assistantMessageId),
+            createdAt,
+            assistantText,
+            responseParts: responseMessage.parts,
+            traceCapture,
+          });
+        } catch (traceError) {
+          console.warn("[Analysis Chat POST] Failed to write analysis turn trace:", traceError);
+        }
       },
     });
   } catch (error) {
