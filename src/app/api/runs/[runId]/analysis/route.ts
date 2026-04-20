@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isTextUIPart, isToolUIPart, type UIMessage } from "ai";
+import { type UIMessage } from "ai";
 
 import { getApiErrorDetails } from "@/lib/api/errorDetails";
 import { streamAnalysisResponse } from "@/lib/analysis/AnalysisAgent";
@@ -9,7 +9,11 @@ import {
   persistedAnalysisMessagesToUIMessages,
   sanitizeAnalysisMessageContent,
 } from "@/lib/analysis/messages";
-import { isAnalysisTableCard } from "@/lib/analysis/types";
+import {
+  buildPersistedAnalysisParts,
+  type PersistedAnalysisPart,
+} from "@/lib/analysis/persistence";
+import { TABLE_CARD_TOOL_TYPE } from "@/lib/analysis/toolLabels";
 import { getConvexClient, mutateInternal } from "@/lib/convex";
 import { requireConvexAuth, AuthenticationError } from "@/lib/requireConvexAuth";
 import { applyRateLimit } from "@/lib/withRateLimit";
@@ -22,6 +26,10 @@ function isAnalysisMessageCandidate(value: unknown): value is UIMessage[] {
   return Array.isArray(value);
 }
 
+type PersistedPartForCreate = PersistedAnalysisPart & {
+  artifactId?: Id<"analysisArtifacts">;
+};
+
 async function persistAssistantMessageParts(params: {
   parts: UIMessage["parts"];
   sessionId: Id<"analysisSessions">;
@@ -29,50 +37,36 @@ async function persistAssistantMessageParts(params: {
   projectId: Id<"projects">;
   runId: Id<"runs">;
   createdBy: Id<"users">;
-}) {
-  const persistedParts: Array<{
-    type: string;
-    text?: string;
-    state?: string;
-    artifactId?: Id<"analysisArtifacts">;
-    label?: string;
-  }> = [];
+}): Promise<PersistedPartForCreate[]> {
+  const pending = buildPersistedAnalysisParts(params.parts);
+  const persistedParts: PersistedPartForCreate[] = [];
 
-  for (const part of params.parts) {
-    if (isTextUIPart(part)) {
-      const text = sanitizeAnalysisMessageContent(part.text);
-      if (text) {
-        persistedParts.push({
-          type: "text",
-          text,
-          ...(part.state ? { state: part.state } : {}),
-        });
-      }
+  for (const entry of pending) {
+    if (entry.kind === "ready") {
+      persistedParts.push(entry.part);
       continue;
     }
 
-    if (isToolUIPart(part) && part.type === "tool-getTableCard" && part.state === "output-available" && isAnalysisTableCard(part.output)) {
-      const artifactId = await mutateInternal(internal.analysisArtifacts.create, {
-        sessionId: params.sessionId,
-        orgId: params.orgId,
-        projectId: params.projectId,
-        runId: params.runId,
-        artifactType: "table_card",
-        sourceClass: "from_tabs",
-        title: part.output.title,
-        sourceTableIds: [part.output.tableId],
-        sourceQuestionIds: part.output.questionId ? [part.output.questionId] : [],
-        payload: part.output,
-        createdBy: params.createdBy,
-      });
+    const artifactId = await mutateInternal(internal.analysisArtifacts.create, {
+      sessionId: params.sessionId,
+      orgId: params.orgId,
+      projectId: params.projectId,
+      runId: params.runId,
+      artifactType: "table_card",
+      sourceClass: "from_tabs",
+      title: entry.artifact.title,
+      sourceTableIds: [entry.artifact.tableId],
+      sourceQuestionIds: entry.artifact.questionId ? [entry.artifact.questionId] : [],
+      payload: entry.artifact.payload,
+      createdBy: params.createdBy,
+    });
 
-      persistedParts.push({
-        type: "tool-getTableCard",
-        state: part.state,
-        artifactId,
-        label: part.output.title,
-      });
-    }
+    persistedParts.push({
+      type: TABLE_CARD_TOOL_TYPE,
+      state: entry.template.state,
+      artifactId,
+      label: entry.template.label,
+    });
   }
 
   return persistedParts;
@@ -159,6 +153,7 @@ export async function POST(
           state: part.state,
           artifactId: part.artifactId ? String(part.artifactId) : undefined,
           label: part.label,
+          toolCallId: part.toolCallId,
         })),
       })),
       persistedArtifacts.map((artifact) => ({

@@ -20,6 +20,7 @@ const messagePartValidator = v.object({
   state: v.optional(v.string()),
   artifactId: v.optional(v.id("analysisArtifacts")),
   label: v.optional(v.string()),
+  toolCallId: v.optional(v.string()),
 });
 
 export const listBySession = query({

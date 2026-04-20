@@ -127,6 +127,104 @@ describe("analysis message helpers", () => {
     ]);
   });
 
+  it("rehydrates persisted reasoning parts as reasoning UI parts", () => {
+    const messages = persistedAnalysisMessagesToUIMessages([
+      {
+        _id: "msg-1",
+        role: "assistant",
+        content: "",
+        parts: [
+          { type: "reasoning", text: "Thinking through base sizes first." },
+          { type: "text", text: "Base looks solid." },
+        ],
+      },
+    ]);
+
+    expect(messages[0].parts).toEqual([
+      { type: "reasoning", text: "Thinking through base sizes first.", state: "done" },
+      { type: "text", text: "Base looks solid." },
+    ]);
+  });
+
+  it("rehydrates persisted non-getTableCard tool parts when allowlisted and toolCallId is present", () => {
+    const messages = persistedAnalysisMessagesToUIMessages([
+      {
+        _id: "msg-1",
+        role: "assistant",
+        content: "",
+        parts: [
+          { type: "tool-searchRunCatalog", toolCallId: "call-abc", state: "output-available" },
+          { type: "text", text: "Found the table." },
+        ],
+      },
+    ]);
+
+    expect(messages[0].parts).toEqual([
+      {
+        type: "tool-searchRunCatalog",
+        toolCallId: "call-abc",
+        state: "output-available",
+        input: {},
+        output: undefined,
+      },
+      { type: "text", text: "Found the table." },
+    ]);
+  });
+
+  it("skips persisted reasoning with empty text", () => {
+    const messages = persistedAnalysisMessagesToUIMessages([
+      {
+        _id: "msg-1",
+        role: "assistant",
+        content: "Final answer.",
+        parts: [
+          { type: "reasoning", text: "" },
+          { type: "text", text: "Final answer." },
+        ],
+      },
+    ]);
+
+    expect(messages[0].parts).toEqual([
+      { type: "text", text: "Final answer." },
+    ]);
+  });
+
+  it("skips persisted tool parts with unknown tool types", () => {
+    const messages = persistedAnalysisMessagesToUIMessages([
+      {
+        _id: "msg-1",
+        role: "assistant",
+        content: "Answer.",
+        parts: [
+          { type: "tool-newExperimentalThing", toolCallId: "call-x", state: "output-available" },
+          { type: "text", text: "Answer." },
+        ],
+      },
+    ]);
+
+    expect(messages[0].parts).toEqual([
+      { type: "text", text: "Answer." },
+    ]);
+  });
+
+  it("skips persisted tool parts that are missing a toolCallId", () => {
+    const messages = persistedAnalysisMessagesToUIMessages([
+      {
+        _id: "msg-1",
+        role: "assistant",
+        content: "Answer.",
+        parts: [
+          { type: "tool-searchRunCatalog", state: "output-available" },
+          { type: "text", text: "Answer." },
+        ],
+      },
+    ]);
+
+    expect(messages[0].parts).toEqual([
+      { type: "text", text: "Answer." },
+    ]);
+  });
+
   it("strips tool parts from sanitized model messages to avoid tool_use/tool_result pairing issues", () => {
     const sanitized = getSanitizedConversationMessagesForModel([
       {

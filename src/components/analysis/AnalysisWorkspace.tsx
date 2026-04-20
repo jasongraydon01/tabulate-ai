@@ -182,6 +182,7 @@ export function AnalysisWorkspace({
               state: part.state,
               artifactId: part.artifactId ? String(part.artifactId) : undefined,
               label: part.label,
+              toolCallId: part.toolCallId,
             })),
           })),
           artifacts.map((artifact) => ({

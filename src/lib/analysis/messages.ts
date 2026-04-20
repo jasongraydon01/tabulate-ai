@@ -1,5 +1,6 @@
 import { isTextUIPart, type UIMessage } from "ai";
 
+import { isRenderableAnalysisToolType, TABLE_CARD_TOOL_TYPE } from "@/lib/analysis/toolLabels";
 import { isAnalysisTableCard, type AnalysisTableCard } from "@/lib/analysis/types";
 
 export const MAX_ANALYSIS_MESSAGE_CHARS = 4000;
@@ -14,6 +15,7 @@ interface PersistedAnalysisMessageRecord {
     state?: string;
     artifactId?: string;
     label?: string;
+    toolCallId?: string;
   }>;
 }
 
@@ -68,28 +70,52 @@ export function persistedAnalysisMessagesToUIMessages(
     id: String(message._id),
     role: message.role,
     parts: (() => {
-      const parts = [];
+      const parts: UIMessage["parts"] = [];
 
       for (const part of message.parts ?? []) {
         if (part.type === "text" && part.text) {
           parts.push({
-            type: "text" as const,
+            type: "text",
             text: part.text,
           });
           continue;
         }
 
-        if (part.type === "tool-getTableCard" && part.artifactId) {
+        if (part.type === "reasoning" && part.text) {
+          parts.push({
+            type: "reasoning",
+            text: part.text,
+            state: "done",
+          });
+          continue;
+        }
+
+        if (part.type === TABLE_CARD_TOOL_TYPE && part.artifactId) {
           const artifact = artifactLookup.get(part.artifactId);
           if (artifact?.artifactType === "table_card" && isAnalysisTableCard(artifact.payload)) {
             parts.push(persistedTableCardPart(String(artifact._id), artifact.payload));
           }
+          continue;
+        }
+
+        if (
+          part.type.startsWith("tool-")
+          && isRenderableAnalysisToolType(part.type)
+          && part.toolCallId
+        ) {
+          parts.push({
+            type: part.type,
+            toolCallId: part.toolCallId,
+            state: "output-available",
+            input: {},
+            output: undefined,
+          } as UIMessage["parts"][number]);
         }
       }
 
       if (parts.length === 0 && message.content) {
         parts.push({
-          type: "text" as const,
+          type: "text",
           text: message.content,
         });
       }

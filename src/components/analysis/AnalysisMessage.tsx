@@ -11,23 +11,9 @@ import {
 import { ChevronDown } from "lucide-react";
 
 import { GroundedTableCard } from "@/components/analysis/GroundedTableCard";
+import { getAnalysisToolActivityLabel } from "@/lib/analysis/toolLabels";
 import { isAnalysisTableCard } from "@/lib/analysis/types";
 import { cn } from "@/lib/utils";
-
-const TOOL_ACTIVITY_LABELS: Record<string, string> = {
-  "tool-searchRunCatalog": "Searching run catalog",
-  "tool-viewTable": "Inspecting table",
-  "tool-getQuestionContext": "Checking question metadata",
-  "tool-getSurveyQuestion": "Reading survey wording",
-  "tool-listBannerCuts": "Listing available cuts",
-  "tool-getBannerPlanContext": "Reviewing banner plan",
-  "tool-getRunContext": "Loading run context",
-  "tool-scratchpad": "Reasoning",
-};
-
-function getToolActivityLabel(toolType: string): string | null {
-  return TOOL_ACTIVITY_LABELS[toolType] ?? null;
-}
 
 function truncateReasoning(text: string, maxLength = 120): string {
   const firstLine = text.split("\n")[0].trim();
@@ -62,7 +48,7 @@ export function AnalysisMessage({
           }];
         }
         if (isToolUIPart(part) && part.type !== "tool-getTableCard") {
-          const label = getToolActivityLabel(part.type);
+          const label = getAnalysisToolActivityLabel(part.type);
           if (!label) return [];
           return [{
             kind: "tool",
