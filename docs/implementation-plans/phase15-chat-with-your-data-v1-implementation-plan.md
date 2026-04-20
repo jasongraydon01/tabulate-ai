@@ -125,9 +125,9 @@ It is **not** a direct UI model for TabulateAI. Thunderbolt is a general AI clie
 
 ### Still missing before V1 feels usable in-product
 
-- a surfaced entry point from the main project/run experience into the analysis workspace
 - the Slice 3 trust layer that repairs unsupported dataset-specific claims before display
 - follow-up polish so the workspace feels productized rather than developer-accessible
+- resolution of the additional observations captured in the feedback doc (default-to-Total adherence, horizontal overflow containment, tool activity nesting under the thinking disclosure)
 
 ### Explicitly out of scope for initial v1
 
@@ -599,20 +599,9 @@ Exit criteria:
 - assistant can answer simple run-specific questions from actual artifacts
 - inline table cards render in-thread
 
-### Slice 3: Claim-check and repair lane
-
-Status: Next implementation slice after the analysis workspace is surfaced in the main product flow
-
-Deliver:
-- dataset-claim detection
-- repair pass for unsupported numeric claims
-- grounding refs stored on assistant messages
-
-Exit criteria:
-- unsupported numerical answers are revised before display
-- methodology conversation remains natural
-
 ### Intermediate step before Slice 3: Surface the analysis workspace
+
+Status: Implemented
 
 Deliver:
 - visible CTA or navigation path from the main run/project UI into `/projects/[projectId]/runs/[runId]/analysis`
@@ -622,6 +611,21 @@ Deliver:
 Exit criteria:
 - a user can reach the analysis workspace naturally from the product without typing the URL
 - Jason can start using the real analysis surface to tune UX and interaction flow
+
+The "Chat with your data" CTA on the project page (`src/app/(product)/projects/[projectId]/page.tsx`) routes the user into the analysis workspace for the latest eligible run.
+
+### Slice 3: Claim-check and repair lane
+
+Status: Next implementation slice
+
+Deliver:
+- dataset-claim detection
+- repair pass for unsupported numeric claims
+- grounding refs stored on assistant messages
+
+Exit criteria:
+- unsupported numerical answers are revised before display
+- methodology conversation remains natural
 
 ### Slice 4: Session polish
 
@@ -669,12 +673,12 @@ Questions to answer before building compute:
 
 ## Recommended Next Step
 
-Implement the **analysis workspace surfacing step** next, then use that live product path to tune the conversation experience before adding Slice 3.
+The workspace is now surfaced from the project page, and clusters 1–6 of the Phase 15 feedback doc are closed. Two live tracks remain, and either is a reasonable next move:
 
-That gives us:
-- a real user path into the feature
-- direct feedback on the workspace feel and prompting UX
-- a stronger base for the trust layer, because we will be validating it against actual usage rather than a hidden route
+- **Continue the slice path → Slice 3 (claim-check and repair lane).** This is the durable trust-layer work: dataset-claim detection, a repair pass for unsupported numeric claims, and grounding refs persisted on assistant messages. Good choice when the priority is hardening what the assistant says before layering more surface polish on top.
+- **Continue the additional observations (21, 22, 23).** These are smaller, user-visible polish items from real usage: default-to-Total adherence, horizontal overflow containment inside grounded cards, and nesting tool activity under the thinking disclosure. Good choice when the priority is tightening the feel of the workspace before committing to Slice 3 scope.
+
+Pick one track based on whether the next lesson we want to learn is about *trust* (Slice 3) or *feel* (observations 21–23). The other track remains queued either way.
 
 ## Sources Consulted
 
