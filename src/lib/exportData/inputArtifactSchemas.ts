@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { BannerPlanInputSchema } from '@/schemas/bannerPlanSchema';
 
 export const SortedFinalRowSchema = z.object({
   variable: z.string().optional(),
@@ -60,6 +61,57 @@ export const CrosstabRawArtifactSchema = z.object({
     }).passthrough()
   ),
 });
+
+export const BannerPlanArtifactSchema = BannerPlanInputSchema;
+
+export const BannerRouteMetadataArtifactSchema = z.object({
+  routeUsed: z.union([z.literal('banner_agent'), z.literal('banner_generate')]),
+  bannerFile: z.string().nullable(),
+  generatedAt: z.string(),
+  groupCount: z.number(),
+  columnCount: z.number(),
+  sourceConfidence: z.number(),
+  usedFallbackFromBannerAgent: z.boolean(),
+  bannerGenerateInputSource: z.union([
+    z.literal('questionid_reportable'),
+    z.literal('sav_verbose_datamap'),
+    z.null(),
+  ]),
+}).passthrough();
+
+const ParsedSurveyAnswerOptionSchema = z.object({
+  code: z.union([z.number(), z.string()]),
+  text: z.string(),
+  isOther: z.boolean(),
+  anchor: z.boolean(),
+  routing: z.string().nullable(),
+  progNote: z.string().nullable(),
+}).passthrough();
+
+const ParsedSurveyQuestionSchema = z.object({
+  questionId: z.string(),
+  rawText: z.string(),
+  questionText: z.string(),
+  instructionText: z.string().nullable(),
+  answerOptions: z.array(ParsedSurveyAnswerOptionSchema),
+  scaleLabels: z.array(
+    z.object({
+      value: z.number(),
+      label: z.string(),
+    }).passthrough()
+  ).nullable(),
+  questionType: z.string(),
+  format: z.string(),
+  progNotes: z.array(z.string()),
+  strikethroughSegments: z.array(z.string()),
+  sectionHeader: z.string().nullable(),
+}).passthrough();
+
+export const SurveyParsedCleanupArtifactSchema = z.object({
+  metadata: z.record(z.unknown()).optional(),
+  stats: z.record(z.unknown()).optional(),
+  surveyParsed: z.array(ParsedSurveyQuestionSchema),
+}).passthrough();
 
 const LoopSummaryVariableSchema = z.object({
   baseName: z.string(),

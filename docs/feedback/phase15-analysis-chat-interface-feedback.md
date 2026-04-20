@@ -123,6 +123,8 @@ Open question: should it be removed outright, or replaced with something that ac
 
 ## Cluster 5. Session lifecycle
 
+Status: Done
+
 What binds this cluster: creating, renaming, deleting, and archiving sessions. Small but real usability gap.
 
 ### (19) Sessions can be created but not managed.
@@ -131,11 +133,27 @@ Open question: what is the minimum viable session-management surface for v1 — 
 
 ## Cluster 6. Grounding sources
 
+Status: Done
+
 What binds this cluster: expanding what the model can reach beyond the current three artifacts. The largest net-new capability in the list, because it touches tool design, artifact access, and potentially project-level materials that do not exist as uploads today.
 
 ### (16) The model is missing access to research materials beyond the crosstab artifacts.
 When doing research or reporting, the natural workflow is to move back and forth between the data and the supporting research materials — the survey document, the banner plan, message testing inputs, and any project brief. The current grounding layer only exposes `results/tables.json`, the final questionid artifact, and the crosstab plan. The banner plan (`planning/20-banner-plan.json`), the cleaned survey document, and project-level research materials are not surfaced to the model. That means the assistant can describe what a table shows but cannot easily talk about how a question was asked, why a particular banner was chosen, or what the project was trying to learn.
 Open question: what is the right shape for exposing survey document, banner plan, and broader project materials — a dedicated grounding tool per artifact, a unified "research context" lookup, or a lightweight project-materials attachment model that lives alongside the run?
+
+## Additional Observations
+
+### (21) The agent can still render subgroup cuts when the user is asking for overall results.
+There are still cases where a broad question such as awareness, familiarity, or consideration leads the assistant to render a grounded table with subgroup cuts instead of staying on Total. That makes the first answer denser than necessary and suggests the prompt/tool guidance around default cut scope is still not strong enough in practice.
+Open question: do we need stronger agent instructions, stricter shaping defaults in the tool layer, or both, so overall questions consistently render Total-only unless the user explicitly asks for subgroup comparison?
+
+### (22) Horizontal overflow should be contained inside the grounded table card rather than shifting the whole chat surface.
+When a grounded table renders with enough cuts to exceed the available width, the horizontal overflow currently feels like it escapes the card and pushes the broader chat layout rather than staying self-contained. That makes the result harder to inspect and creates ambiguity about whether the full table is actually visible.
+Open question: should grounded table cards use their own internal horizontal scroll region with a fixed outer width, similar to how vertical overflow is already handled through the card's expandable structure?
+
+### (23) Tool activity appears visually detached from the thinking disclosure.
+The surfaced tool-call activity is now visible, which is directionally right, but it does not read as fully nested under the thinking disclosure. It feels like the tool activity is floating outside that container rather than being part of the same expandable reasoning block.
+Open question: should tool activity be rendered inside the same disclosure body as the reasoning trace so the relationship between thinking and tool usage is visually explicit?
 
 ## Meta
 

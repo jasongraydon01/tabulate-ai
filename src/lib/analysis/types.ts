@@ -1,7 +1,16 @@
 export type AnalysisAvailabilityStatus = "available" | "partial" | "unavailable";
 
 export interface AnalysisSourceRef {
-  refType: "table" | "question" | "banner_group" | "banner_cut";
+  refType:
+    | "table"
+    | "question"
+    | "banner_group"
+    | "banner_cut"
+    | "banner_plan"
+    | "survey_question"
+    | "survey_document"
+    | "project"
+    | "run";
   refId: string;
   label?: string;
 }
@@ -181,6 +190,85 @@ export interface AnalysisBannerCutsResult {
   groups: AnalysisBannerGroupResult[];
   totalGroups: number;
   totalCuts: number;
+  message?: string;
+}
+
+export interface AnalysisRunContextResult {
+  status: AnalysisAvailabilityStatus;
+  projectName: string | null;
+  runStatus: string | null;
+  studyMethodology: string | null;
+  analysisMethod: string | null;
+  bannerSource: "uploaded" | "auto_generated" | null;
+  bannerMode: "upload" | "auto_generate" | null;
+  tableCount: number | null;
+  bannerGroupCount: number | null;
+  totalCuts: number | null;
+  bannerGroupNames: string[];
+  researchObjectives: string | null;
+  bannerHints: string | null;
+  intakeFiles: {
+    dataFile: string | null;
+    survey: string | null;
+    bannerPlan: string | null;
+    messageList: string | null;
+  };
+  sourceRefs: AnalysisSourceRef[];
+  message?: string;
+}
+
+export interface AnalysisBannerPlanColumnResult {
+  name: string;
+  original: string;
+}
+
+export interface AnalysisBannerPlanGroupResult {
+  groupName: string;
+  columns: AnalysisBannerPlanColumnResult[];
+}
+
+export interface AnalysisBannerPlanContextResult {
+  status: AnalysisAvailabilityStatus | "not_found";
+  filter: string | null;
+  routeUsed: "banner_agent" | "banner_generate" | null;
+  bannerSource: "uploaded" | "auto_generated" | null;
+  usedFallbackFromBannerAgent: boolean | null;
+  researchObjectives: string | null;
+  bannerHints: string | null;
+  groups: AnalysisBannerPlanGroupResult[];
+  totalGroups: number;
+  totalCuts: number;
+  sourceRefs: AnalysisSourceRef[];
+  message?: string;
+}
+
+export interface AnalysisSurveyAnswerOption {
+  code: string | number;
+  text: string;
+  routing: string | null;
+  progNote: string | null;
+}
+
+export interface AnalysisSurveyScaleLabel {
+  value: number;
+  label: string;
+}
+
+export interface AnalysisSurveyQuestionResult {
+  status: AnalysisAvailabilityStatus | "not_found";
+  query: string;
+  questionId: string | null;
+  questionText: string | null;
+  sequenceNumber: number | null;
+  sectionHeader: string | null;
+  instructionText: string | null;
+  questionType: string | null;
+  format: string | null;
+  answerOptions: AnalysisSurveyAnswerOption[];
+  scaleLabels: AnalysisSurveyScaleLabel[];
+  progNotes: string[];
+  documentSnippet: string | null;
+  sourceRefs: AnalysisSourceRef[];
   message?: string;
 }
 

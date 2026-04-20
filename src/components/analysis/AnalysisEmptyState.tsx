@@ -1,58 +1,51 @@
-import { Database, MessageSquareText, Sparkles } from "lucide-react";
+import { Loader2, MessageSquarePlus } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 interface AnalysisEmptyStateProps {
-  hasSession: boolean;
+  onCreateSession: () => Promise<void>;
+  isCreating: boolean;
 }
 
 export function AnalysisEmptyState({
-  hasSession,
+  onCreateSession,
+  isCreating,
 }: AnalysisEmptyStateProps) {
-  if (!hasSession) {
-    return (
-      <Card className="border-border/80 bg-card/90 backdrop-blur">
-        <CardHeader className="space-y-4">
-          <Badge variant="outline" className="w-fit border-tab-blue/30 text-tab-blue">
-            Chat with your data
-          </Badge>
-          <div className="space-y-2">
-            <CardTitle className="font-serif text-3xl tracking-tight">
+  return (
+    <div className="relative flex min-h-[calc(100vh-12rem)] flex-1 flex-col overflow-hidden rounded-[2rem] bg-[radial-gradient(circle_at_top,_rgba(96,165,250,0.08),_transparent_34%),linear-gradient(180deg,_rgba(255,255,255,0.92),_rgba(255,255,255,0.98))] px-6 py-6 dark:bg-[radial-gradient(circle_at_top,_rgba(96,165,250,0.10),_transparent_30%),linear-gradient(180deg,_rgba(10,10,10,0.88),_rgba(10,10,10,0.98))] sm:px-8 sm:py-8">
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-border/60 to-transparent" />
+
+      <div className="flex flex-1 items-center justify-center">
+        <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
+          <div className="space-y-4">
+            <h1 className="font-serif text-4xl tracking-tight text-foreground sm:text-5xl">
               Start an analysis session for this run
-            </CardTitle>
-            <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-              TabulateAI will keep each session tied to this run so future questions,
-              grounded answers, and rendered analysis artifacts stay attached to the same set
-              of tabs.
+            </h1>
+            <p className="mx-auto max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">
+              TabulateAI keeps each chat tied to this run, so your questions and grounded answers stay attached to the same set of tabs.
             </p>
           </div>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-xl border border-border/80 bg-muted/30 p-4">
-            <Database className="h-5 w-5 text-tab-blue" />
-            <p className="mt-3 text-sm font-medium">Run-scoped context</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Sessions stay anchored to this specific run and its validated outputs.
-            </p>
-          </div>
-          <div className="rounded-xl border border-border/80 bg-muted/30 p-4">
-            <MessageSquareText className="h-5 w-5 text-tab-teal" />
-            <p className="mt-3 text-sm font-medium">Durable history</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Conversation history, messages, and artifacts persist in Convex from the start.
-            </p>
-          </div>
-          <div className="rounded-xl border border-border/80 bg-muted/30 p-4">
-            <Sparkles className="h-5 w-5 text-tab-amber" />
-            <p className="mt-3 text-sm font-medium">Built to extend</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              The session model is ready for live responses, grounded lookup, and rendered results.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-  return null;
+
+          <Button
+            size="lg"
+            className="mt-8 h-11 rounded-full px-5 text-sm font-medium"
+            onClick={() => { void onCreateSession(); }}
+            disabled={isCreating}
+          >
+            {isCreating ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Starting chat
+              </>
+            ) : (
+              <>
+                <MessageSquarePlus className="mr-2 h-4 w-4" />
+                New Chat
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 }

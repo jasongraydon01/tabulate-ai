@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  getBannerPlanContext,
   getQuestionContext,
+  getRunContext,
+  getSurveyQuestion,
   getTableCard,
   listBannerCuts,
   searchRunCatalog,
@@ -193,6 +196,67 @@ const context: AnalysisGroundingContext = {
       ],
     },
   ],
+  bannerPlanGroups: [
+    {
+      groupName: "Gender",
+      columns: [
+        { name: "Female", original: "gender == 1" },
+        { name: "Male", original: "gender == 2" },
+      ],
+    },
+    {
+      groupName: "Region",
+      columns: [
+        { name: "East", original: "region == 1" },
+        { name: "West", original: "region == 2" },
+      ],
+    },
+  ],
+  bannerRouteMetadata: {
+    routeUsed: "banner_generate",
+    usedFallbackFromBannerAgent: false,
+  },
+  surveyMarkdown: `SECTION A\nQ1. How satisfied are you overall?\n1. Very satisfied\n2. Somewhat satisfied\n3. Not very satisfied\n4. Not at all satisfied`,
+  surveyQuestions: [
+    {
+      questionId: "Q1",
+      rawText: "Q1. How satisfied are you overall?",
+      questionText: "How satisfied are you overall?",
+      instructionText: "Select one response.",
+      answerOptions: [
+        { code: 1, text: "Very satisfied", routing: null, progNote: null },
+        { code: 2, text: "Somewhat satisfied", routing: null, progNote: null },
+      ],
+      scaleLabels: [
+        { value: 1, label: "Very satisfied" },
+        { value: 2, label: "Somewhat satisfied" },
+      ],
+      questionType: "single_select",
+      format: "numbered_list",
+      progNotes: ["Ask all respondents."],
+      sectionHeader: "SECTION A",
+    },
+  ],
+  projectContext: {
+    projectName: "TabulateAI Brand Tracker",
+    runStatus: "success",
+    studyMethodology: "standard",
+    analysisMethod: "standard_crosstab",
+    bannerSource: "auto_generated",
+    bannerMode: "auto_generate",
+    tableCount: 4,
+    bannerGroupCount: 2,
+    totalCuts: 4,
+    bannerGroupNames: ["Gender", "Region"],
+    researchObjectives: "Understand satisfaction differences across core respondent groups.",
+    bannerHints: "Prioritize demographics used in reporting.",
+    intakeFiles: {
+      dataFile: "study.sav",
+      survey: "questionnaire.docx",
+      bannerPlan: null,
+      messageList: null,
+    },
+  },
 };
 
 describe("analysis grounding helpers", () => {
@@ -344,5 +408,41 @@ describe("analysis grounding helpers", () => {
         expression: "gender == 1",
       },
     ]);
+  });
+
+  it("returns run-level context for prompt and agent grounding", () => {
+    const result = getRunContext(context);
+
+    expect(result.projectName).toBe("TabulateAI Brand Tracker");
+    expect(result.tableCount).toBe(4);
+    expect(result.bannerGroupNames).toEqual(["Gender", "Region"]);
+    expect(result.researchObjectives).toContain("satisfaction differences");
+  });
+
+  it("returns stage-20 banner plan context with original cut definitions", () => {
+    const result = getBannerPlanContext(context, "gender");
+
+    expect(result.status).toBe("available");
+    expect(result.routeUsed).toBe("banner_generate");
+    expect(result.groups).toEqual([
+      {
+        groupName: "Gender",
+        columns: [
+          { name: "Female", original: "gender == 1" },
+          { name: "Male", original: "gender == 2" },
+        ],
+      },
+    ]);
+  });
+
+  it("returns grounded survey wording and questionnaire context", () => {
+    const result = getSurveyQuestion(context, "Q1");
+
+    expect(result.status).toBe("available");
+    expect(result.questionText).toBe("How satisfied are you overall?");
+    expect(result.sequenceNumber).toBe(1);
+    expect(result.answerOptions).toHaveLength(2);
+    expect(result.sectionHeader).toBe("SECTION A");
+    expect(result.documentSnippet).toContain("Q1. How satisfied are you overall?");
   });
 });

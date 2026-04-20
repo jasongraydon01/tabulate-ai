@@ -1,15 +1,25 @@
-import { ResultsTablesArtifactSchema, CrosstabRawArtifactSchema } from "@/lib/exportData/inputArtifactSchemas";
+import {
+  BannerPlanArtifactSchema,
+  BannerRouteMetadataArtifactSchema,
+  CrosstabRawArtifactSchema,
+  ResultsTablesArtifactSchema,
+  SurveyParsedCleanupArtifactSchema,
+} from "@/lib/exportData/inputArtifactSchemas";
 import { buildQuestionContext, type QuestionIdFinalFile } from "@/lib/questionContext/adapters";
 import { downloadFile } from "@/lib/r2/r2";
 import { parseRunResult } from "@/schemas/runResultSchema";
 
 import type {
   AnalysisAvailabilityStatus,
+  AnalysisBannerPlanContextResult,
+  AnalysisBannerPlanGroupResult,
   AnalysisBannerCutsResult,
   AnalysisBannerGroupResult,
   AnalysisCatalogSearchResult,
   AnalysisQuestionContextResult,
+  AnalysisRunContextResult,
   AnalysisSourceRef,
+  AnalysisSurveyQuestionResult,
   AnalysisTableCardCell,
   AnalysisTableCardColumn,
   AnalysisTableCardColumnGroup,
@@ -19,7 +29,11 @@ import type {
 
 const TABLES_JSON_PATH = "results/tables.json";
 const QUESTION_ID_FINAL_PATH = "enrichment/12-questionid-final.json";
+const BANNER_PLAN_PATH = "planning/20-banner-plan.json";
+const BANNER_ROUTE_METADATA_PATH = "planning/banner-route-metadata.json";
 const CROSSTAB_PLAN_PATH = "planning/21-crosstab-plan.json";
+const SURVEY_MARKDOWN_PATH = "survey/survey-markdown.md";
+const SURVEY_PARSED_CLEANUP_PATH = "enrichment/08b-survey-parsed-cleanup.json";
 const DEFAULT_QUESTION_ITEM_LIMIT = 12;
 const DEFAULT_CARD_PREVIEW_ROW_LIMIT = 8;
 const DEFAULT_CARD_PREVIEW_GROUP_LIMIT = 1;
@@ -72,10 +86,71 @@ interface RawBannerGroup {
   columns: RawBannerColumn[];
 }
 
+interface RawBannerPlanColumn {
+  name: string;
+  original: string;
+}
+
+interface RawBannerPlanGroup {
+  groupName: string;
+  columns: RawBannerPlanColumn[];
+}
+
+interface RawBannerRouteMetadata {
+  routeUsed: "banner_agent" | "banner_generate";
+  usedFallbackFromBannerAgent: boolean;
+}
+
+interface RawSurveyAnswerOption {
+  code: string | number;
+  text: string;
+  routing: string | null;
+  progNote: string | null;
+}
+
+interface RawSurveyScaleLabel {
+  value: number;
+  label: string;
+}
+
+interface RawSurveyQuestion {
+  questionId: string;
+  rawText: string;
+  questionText: string;
+  instructionText: string | null;
+  answerOptions: RawSurveyAnswerOption[];
+  scaleLabels: RawSurveyScaleLabel[];
+  questionType: string;
+  format: string;
+  progNotes: string[];
+  sectionHeader: string | null;
+}
+
 interface AnalysisTablesMetadata {
   significanceTest: string | null;
   significanceLevel: number | null;
   comparisonGroups: string[];
+}
+
+interface AnalysisProjectContext {
+  projectName: string | null;
+  runStatus: string | null;
+  studyMethodology: string | null;
+  analysisMethod: string | null;
+  bannerSource: "uploaded" | "auto_generated" | null;
+  bannerMode: "upload" | "auto_generate" | null;
+  tableCount: number | null;
+  bannerGroupCount: number | null;
+  totalCuts: number | null;
+  bannerGroupNames: string[];
+  researchObjectives: string | null;
+  bannerHints: string | null;
+  intakeFiles: {
+    dataFile: string | null;
+    survey: string | null;
+    bannerPlan: string | null;
+    messageList: string | null;
+  };
 }
 
 interface SelectedCut {
@@ -94,6 +169,11 @@ export interface AnalysisGroundingContext {
   tables: Record<string, RawTableEntry>;
   questions: BuiltQuestionContext[];
   bannerGroups: RawBannerGroup[];
+  bannerPlanGroups: RawBannerPlanGroup[];
+  bannerRouteMetadata: RawBannerRouteMetadata | null;
+  surveyMarkdown: string | null;
+  surveyQuestions: RawSurveyQuestion[];
+  projectContext: AnalysisProjectContext;
   tablesMetadata: AnalysisTablesMetadata;
   missingArtifacts: string[];
 }
@@ -117,6 +197,26 @@ function compactText(parts: Array<string | null | undefined>): string {
     .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
     .join(" ")
     .trim();
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function extractFileName(value: unknown): string | null {
+  const next = asString(value);
+  if (!next) return null;
+
+  const segments = next.split("/");
+  return segments[segments.length - 1] || next;
 }
 
 function scoreMatch(query: string, ...targets: Array<string | null | undefined>): number {
@@ -492,6 +592,99 @@ async function downloadJsonArtifact<T>(key: string): Promise<T> {
   return JSON.parse(buffer.toString("utf-8")) as T;
 }
 
+async function downloadTextArtifact(key: string): Promise<string> {
+  const buffer = await downloadFile(key);
+  return buffer.toString("utf-8");
+}
+
+function buildBannerPlanGroups(
+  bannerPlanArtifact: ReturnType<typeof BannerPlanArtifactSchema.parse> | null,
+): RawBannerPlanGroup[] {
+  return (bannerPlanArtifact?.bannerCuts ?? []).map((group) => ({
+    groupName: group.groupName,
+    columns: group.columns.map((column) => ({
+      name: column.name,
+      original: column.original,
+    })),
+  }));
+}
+
+function buildSurveyQuestions(
+  surveyParsedArtifact: ReturnType<typeof SurveyParsedCleanupArtifactSchema.parse> | null,
+): RawSurveyQuestion[] {
+  return (surveyParsedArtifact?.surveyParsed ?? []).map((question) => ({
+    questionId: question.questionId,
+    rawText: question.rawText,
+    questionText: question.questionText,
+    instructionText: question.instructionText ?? null,
+    answerOptions: question.answerOptions.map((option) => ({
+      code: option.code,
+      text: option.text,
+      routing: option.routing ?? null,
+      progNote: option.progNote ?? null,
+    })),
+    scaleLabels: (question.scaleLabels ?? []).map((label) => ({
+      value: label.value,
+      label: label.label,
+    })),
+    questionType: question.questionType,
+    format: question.format,
+    progNotes: question.progNotes,
+    sectionHeader: question.sectionHeader ?? null,
+  }));
+}
+
+function resolveProjectContext(params: {
+  runResult: ReturnType<typeof parseRunResult> | undefined;
+  projectName?: string | null;
+  runStatus?: string | null;
+  projectConfig?: Record<string, unknown> | null;
+  projectIntake?: Record<string, unknown> | null;
+  bannerGroups: RawBannerGroup[];
+  bannerPlanGroups: RawBannerPlanGroup[];
+}): AnalysisProjectContext {
+  const config = params.projectConfig ?? {};
+  const intake = params.projectIntake ?? {};
+  const pipelineDecisions = params.runResult?.pipelineDecisions;
+  const summary = params.runResult?.summary;
+
+  const bannerGroupNames = (params.bannerGroups.length > 0
+    ? params.bannerGroups
+    : params.bannerPlanGroups.map((group) => ({
+        groupName: group.groupName,
+      } as RawBannerGroup)))
+    .map((group) => group.groupName)
+    .filter((groupName, index, values) => values.indexOf(groupName) === index);
+
+  const totalCuts = params.bannerGroups.length > 0
+    ? params.bannerGroups.reduce((sum, group) => sum + group.columns.length, 0)
+    : params.bannerPlanGroups.reduce((sum, group) => sum + group.columns.length, 0);
+
+  return {
+    projectName: params.projectName ?? null,
+    runStatus: params.runStatus ?? null,
+    studyMethodology: asString(config.studyMethodology),
+    analysisMethod: asString(config.analysisMethod),
+    bannerSource: pipelineDecisions?.banners.source ?? null,
+    bannerMode: (() => {
+      const value = asString(config.bannerMode);
+      return value === "upload" || value === "auto_generate" ? value : null;
+    })(),
+    tableCount: summary?.tables ?? params.runResult?.pipelineDecisions?.tables.finalTableCount ?? null,
+    bannerGroupCount: pipelineDecisions?.banners.bannerGroupCount ?? bannerGroupNames.length,
+    totalCuts: pipelineDecisions?.banners.totalCuts ?? totalCuts,
+    bannerGroupNames,
+    researchObjectives: asString(config.researchObjectives),
+    bannerHints: asString(config.bannerHints),
+    intakeFiles: {
+      dataFile: extractFileName(intake.dataFile),
+      survey: extractFileName(intake.survey),
+      bannerPlan: extractFileName(intake.bannerPlan),
+      messageList: extractFileName(intake.messageList),
+    },
+  };
+}
+
 function buildMissingMessage(missingArtifacts: string[]): string {
   if (missingArtifacts.length === 0) return "Run artifacts are available.";
   return `Some run artifacts are unavailable: ${missingArtifacts.join(", ")}.`;
@@ -509,18 +702,40 @@ function resolveSourceRefs(tableId: string, questionId: string | null, title: st
   return refs;
 }
 
-export async function loadAnalysisGroundingContext(runResultValue: unknown): Promise<AnalysisGroundingContext> {
-  const runResult = parseRunResult(runResultValue) ?? {};
+export async function loadAnalysisGroundingContext(params: {
+  runResultValue: unknown;
+  projectName?: string | null;
+  runStatus?: string | null;
+  projectConfig?: Record<string, unknown> | null;
+  projectIntake?: Record<string, unknown> | null;
+}): Promise<AnalysisGroundingContext> {
+  const runResult = parseRunResult(params.runResultValue) ?? {};
   const outputs = runResult.r2Files?.outputs ?? {};
 
   const tablesKey = outputs[TABLES_JSON_PATH] ?? null;
   const questionKey = outputs[QUESTION_ID_FINAL_PATH] ?? runResult.reviewR2Keys?.v3QuestionIdFinal ?? null;
+  const bannerPlanKey = outputs[BANNER_PLAN_PATH] ?? null;
+  const bannerRouteMetadataKey = outputs[BANNER_ROUTE_METADATA_PATH] ?? null;
   const crosstabKey = outputs[CROSSTAB_PLAN_PATH] ?? runResult.reviewR2Keys?.v3CrosstabPlan ?? null;
+  const surveyMarkdownKey = outputs[SURVEY_MARKDOWN_PATH] ?? null;
+  const surveyParsedCleanupKey = outputs[SURVEY_PARSED_CLEANUP_PATH] ?? null;
 
-  const [tablesResult, questionResult, crosstabResult] = await Promise.allSettled([
+  const [
+    tablesResult,
+    questionResult,
+    bannerPlanResult,
+    bannerRouteMetadataResult,
+    crosstabResult,
+    surveyMarkdownResult,
+    surveyParsedCleanupResult,
+  ] = await Promise.allSettled([
     tablesKey ? downloadJsonArtifact<unknown>(tablesKey) : Promise.resolve(null),
     questionKey ? downloadJsonArtifact<QuestionIdFinalFile>(questionKey) : Promise.resolve(null),
+    bannerPlanKey ? downloadJsonArtifact<unknown>(bannerPlanKey) : Promise.resolve(null),
+    bannerRouteMetadataKey ? downloadJsonArtifact<unknown>(bannerRouteMetadataKey) : Promise.resolve(null),
     crosstabKey ? downloadJsonArtifact<unknown>(crosstabKey) : Promise.resolve(null),
+    surveyMarkdownKey ? downloadTextArtifact(surveyMarkdownKey) : Promise.resolve(null),
+    surveyParsedCleanupKey ? downloadJsonArtifact<unknown>(surveyParsedCleanupKey) : Promise.resolve(null),
   ]);
 
   const missingArtifacts: string[] = [];
@@ -549,6 +764,30 @@ export async function loadAnalysisGroundingContext(runResultValue: unknown): Pro
     return questionResult.value;
   })();
 
+  const bannerPlanArtifact = (() => {
+    if (!bannerPlanKey) {
+      missingArtifacts.push(BANNER_PLAN_PATH);
+      return null;
+    }
+    if (bannerPlanResult.status !== "fulfilled" || !bannerPlanResult.value) {
+      missingArtifacts.push(BANNER_PLAN_PATH);
+      return null;
+    }
+    return BannerPlanArtifactSchema.parse(bannerPlanResult.value);
+  })();
+
+  const bannerRouteMetadataArtifact = (() => {
+    if (!bannerRouteMetadataKey) {
+      missingArtifacts.push(BANNER_ROUTE_METADATA_PATH);
+      return null;
+    }
+    if (bannerRouteMetadataResult.status !== "fulfilled" || !bannerRouteMetadataResult.value) {
+      missingArtifacts.push(BANNER_ROUTE_METADATA_PATH);
+      return null;
+    }
+    return BannerRouteMetadataArtifactSchema.parse(bannerRouteMetadataResult.value);
+  })();
+
   const crosstabArtifact = (() => {
     if (!crosstabKey) {
       missingArtifacts.push(CROSSTAB_PLAN_PATH);
@@ -561,16 +800,68 @@ export async function loadAnalysisGroundingContext(runResultValue: unknown): Pro
     return CrosstabRawArtifactSchema.parse(crosstabResult.value);
   })();
 
+  const surveyMarkdown = (() => {
+    if (!surveyMarkdownKey) {
+      missingArtifacts.push(SURVEY_MARKDOWN_PATH);
+      return null;
+    }
+    if (surveyMarkdownResult.status !== "fulfilled" || !surveyMarkdownResult.value) {
+      missingArtifacts.push(SURVEY_MARKDOWN_PATH);
+      return null;
+    }
+    return surveyMarkdownResult.value;
+  })();
+
+  const surveyParsedCleanupArtifact = (() => {
+    if (!surveyParsedCleanupKey) {
+      missingArtifacts.push(SURVEY_PARSED_CLEANUP_PATH);
+      return null;
+    }
+    if (surveyParsedCleanupResult.status !== "fulfilled" || !surveyParsedCleanupResult.value) {
+      missingArtifacts.push(SURVEY_PARSED_CLEANUP_PATH);
+      return null;
+    }
+    return SurveyParsedCleanupArtifactSchema.parse(surveyParsedCleanupResult.value);
+  })();
+
   const questions = questionArtifact ? buildQuestionContext(questionArtifact) : [];
+  const bannerGroups = buildBannerGroups(tablesArtifact, crosstabArtifact);
+  const bannerPlanGroups = buildBannerPlanGroups(bannerPlanArtifact);
+  const surveyQuestions = buildSurveyQuestions(surveyParsedCleanupArtifact);
 
   return {
     availability: deriveAvailability(
       missingArtifacts,
-      Boolean(tablesArtifact || questionArtifact || crosstabArtifact),
+      Boolean(
+        tablesArtifact
+        || questionArtifact
+        || bannerPlanArtifact
+        || crosstabArtifact
+        || surveyMarkdown
+        || surveyParsedCleanupArtifact,
+      ),
     ),
     tables: tablesArtifact?.tables ?? {},
     questions,
-    bannerGroups: buildBannerGroups(tablesArtifact, crosstabArtifact),
+    bannerGroups,
+    bannerPlanGroups,
+    bannerRouteMetadata: bannerRouteMetadataArtifact
+      ? {
+          routeUsed: bannerRouteMetadataArtifact.routeUsed,
+          usedFallbackFromBannerAgent: bannerRouteMetadataArtifact.usedFallbackFromBannerAgent,
+        }
+      : null,
+    surveyMarkdown,
+    surveyQuestions,
+    projectContext: resolveProjectContext({
+      runResult,
+      projectName: params.projectName,
+      runStatus: params.runStatus,
+      projectConfig: params.projectConfig,
+      projectIntake: params.projectIntake,
+      bannerGroups,
+      bannerPlanGroups,
+    }),
     tablesMetadata: buildTablesMetadata(tablesArtifact),
     missingArtifacts,
   };
@@ -655,6 +946,256 @@ export function searchRunCatalog(
     questions: questionMatches,
     tables: tableMatches,
     cuts: cutMatches,
+    ...(context.missingArtifacts.length > 0 ? { message: buildMissingMessage(context.missingArtifacts) } : {}),
+  };
+}
+
+function resolveSurveyDocumentSnippet(
+  surveyMarkdown: string | null,
+  question: RawSurveyQuestion,
+): string | null {
+  if (!surveyMarkdown) return null;
+
+  const candidates = [
+    question.questionId,
+    question.rawText,
+    question.questionText,
+  ]
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+  const normalizedMarkdown = surveyMarkdown.toLowerCase();
+
+  for (const candidate of candidates) {
+    const index = normalizedMarkdown.indexOf(candidate.toLowerCase());
+    if (index === -1) continue;
+
+    const start = Math.max(index - 250, 0);
+    const end = Math.min(index + Math.max(candidate.length, 1_000), surveyMarkdown.length);
+    return surveyMarkdown.slice(start, end).trim();
+  }
+
+  return null;
+}
+
+function resolveSurveyQuestionMatch(
+  context: AnalysisGroundingContext,
+  query: string,
+): { question: RawSurveyQuestion; sequenceNumber: number } | null {
+  const normalizedQuery = normalizeText(query);
+  if (!normalizedQuery) return null;
+
+  const exactIndex = context.surveyQuestions.findIndex(
+    (question) => normalizeText(question.questionId) === normalizedQuery,
+  );
+  if (exactIndex >= 0) {
+    return {
+      question: context.surveyQuestions[exactIndex],
+      sequenceNumber: exactIndex + 1,
+    };
+  }
+
+  let bestMatch: { question: RawSurveyQuestion; sequenceNumber: number; score: number } | null = null;
+
+  for (const [index, question] of context.surveyQuestions.entries()) {
+    const score = scoreMatch(
+      query,
+      question.questionId,
+      question.questionText,
+      question.rawText,
+      question.instructionText,
+      question.sectionHeader,
+      ...question.answerOptions.map((option) => option.text),
+      ...question.scaleLabels.map((label) => label.label),
+    );
+
+    if (score <= 0) continue;
+    if (!bestMatch || score > bestMatch.score) {
+      bestMatch = {
+        question,
+        sequenceNumber: index + 1,
+        score,
+      };
+    }
+  }
+
+  if (!bestMatch) return null;
+  return {
+    question: bestMatch.question,
+    sequenceNumber: bestMatch.sequenceNumber,
+  };
+}
+
+export function getRunContext(
+  context: AnalysisGroundingContext,
+): AnalysisRunContextResult {
+  return {
+    status: context.availability,
+    projectName: context.projectContext.projectName,
+    runStatus: context.projectContext.runStatus,
+    studyMethodology: context.projectContext.studyMethodology,
+    analysisMethod: context.projectContext.analysisMethod,
+    bannerSource: context.projectContext.bannerSource,
+    bannerMode: context.projectContext.bannerMode,
+    tableCount: context.projectContext.tableCount,
+    bannerGroupCount: context.projectContext.bannerGroupCount,
+    totalCuts: context.projectContext.totalCuts,
+    bannerGroupNames: context.projectContext.bannerGroupNames,
+    researchObjectives: context.projectContext.researchObjectives,
+    bannerHints: context.projectContext.bannerHints,
+    intakeFiles: context.projectContext.intakeFiles,
+    sourceRefs: [
+      ...(context.projectContext.projectName
+        ? [{ refType: "project" as const, refId: context.projectContext.projectName, label: context.projectContext.projectName }]
+        : []),
+      ...(context.projectContext.runStatus
+        ? [{ refType: "run" as const, refId: context.projectContext.runStatus, label: context.projectContext.runStatus }]
+        : []),
+    ],
+    ...(context.missingArtifacts.length > 0 ? { message: buildMissingMessage(context.missingArtifacts) } : {}),
+  };
+}
+
+export function getBannerPlanContext(
+  context: AnalysisGroundingContext,
+  filter: string | null | undefined,
+): AnalysisBannerPlanContextResult {
+  const normalizedFilter = filter?.trim() || null;
+
+  if (context.availability === "unavailable" && context.bannerPlanGroups.length === 0) {
+    return {
+      status: "unavailable",
+      filter: normalizedFilter,
+      routeUsed: context.bannerRouteMetadata?.routeUsed ?? null,
+      bannerSource: context.projectContext.bannerSource,
+      usedFallbackFromBannerAgent: context.bannerRouteMetadata?.usedFallbackFromBannerAgent ?? null,
+      researchObjectives: context.projectContext.researchObjectives,
+      bannerHints: context.projectContext.bannerHints,
+      groups: [],
+      totalGroups: 0,
+      totalCuts: 0,
+      sourceRefs: [],
+      message: buildMissingMessage(context.missingArtifacts),
+    };
+  }
+
+  const groups = context.bannerPlanGroups
+    .map<AnalysisBannerPlanGroupResult>((group) => ({
+      groupName: group.groupName,
+      columns: group.columns.map((column) => ({
+        name: column.name,
+        original: column.original,
+      })),
+    }))
+    .filter((group) => {
+      if (!normalizedFilter) return true;
+      if (scoreMatch(normalizedFilter, group.groupName) > 0) return true;
+      return group.columns.some((column) => scoreMatch(normalizedFilter, group.groupName, column.name, column.original) > 0);
+    })
+    .map((group) => ({
+      ...group,
+      columns: normalizedFilter
+        ? group.columns.filter((column) => scoreMatch(normalizedFilter, group.groupName, column.name, column.original) > 0)
+        : group.columns,
+    }))
+    .filter((group) => group.columns.length > 0);
+
+  if (normalizedFilter && groups.length === 0) {
+    return {
+      status: "not_found",
+      filter: normalizedFilter,
+      routeUsed: context.bannerRouteMetadata?.routeUsed ?? null,
+      bannerSource: context.projectContext.bannerSource,
+      usedFallbackFromBannerAgent: context.bannerRouteMetadata?.usedFallbackFromBannerAgent ?? null,
+      researchObjectives: context.projectContext.researchObjectives,
+      bannerHints: context.projectContext.bannerHints,
+      groups: [],
+      totalGroups: 0,
+      totalCuts: 0,
+      sourceRefs: [],
+      message: `No banner plan groups matched "${normalizedFilter}".`,
+    };
+  }
+
+  return {
+    status: context.availability,
+    filter: normalizedFilter,
+    routeUsed: context.bannerRouteMetadata?.routeUsed ?? null,
+    bannerSource: context.projectContext.bannerSource,
+    usedFallbackFromBannerAgent: context.bannerRouteMetadata?.usedFallbackFromBannerAgent ?? null,
+    researchObjectives: context.projectContext.researchObjectives,
+    bannerHints: context.projectContext.bannerHints,
+    groups,
+    totalGroups: groups.length,
+    totalCuts: groups.reduce((sum, group) => sum + group.columns.length, 0),
+    sourceRefs: [{ refType: "banner_plan", refId: BANNER_PLAN_PATH, label: "Banner plan" }],
+    ...(context.missingArtifacts.length > 0 ? { message: buildMissingMessage(context.missingArtifacts) } : {}),
+  };
+}
+
+export function getSurveyQuestion(
+  context: AnalysisGroundingContext,
+  query: string,
+): AnalysisSurveyQuestionResult {
+  if (context.availability === "unavailable" && context.surveyQuestions.length === 0) {
+    return {
+      status: "unavailable",
+      query,
+      questionId: null,
+      questionText: null,
+      sequenceNumber: null,
+      sectionHeader: null,
+      instructionText: null,
+      questionType: null,
+      format: null,
+      answerOptions: [],
+      scaleLabels: [],
+      progNotes: [],
+      documentSnippet: null,
+      sourceRefs: [],
+      message: buildMissingMessage(context.missingArtifacts),
+    };
+  }
+
+  const match = resolveSurveyQuestionMatch(context, query);
+  if (!match) {
+    return {
+      status: "not_found",
+      query,
+      questionId: null,
+      questionText: null,
+      sequenceNumber: null,
+      sectionHeader: null,
+      instructionText: null,
+      questionType: null,
+      format: null,
+      answerOptions: [],
+      scaleLabels: [],
+      progNotes: [],
+      documentSnippet: null,
+      sourceRefs: [],
+      message: `Survey question "${query}" was not found in this run's survey context.`,
+    };
+  }
+
+  return {
+    status: context.availability,
+    query,
+    questionId: match.question.questionId,
+    questionText: match.question.questionText,
+    sequenceNumber: match.sequenceNumber,
+    sectionHeader: match.question.sectionHeader,
+    instructionText: match.question.instructionText,
+    questionType: match.question.questionType,
+    format: match.question.format,
+    answerOptions: match.question.answerOptions,
+    scaleLabels: match.question.scaleLabels,
+    progNotes: match.question.progNotes,
+    documentSnippet: resolveSurveyDocumentSnippet(context.surveyMarkdown, match.question),
+    sourceRefs: [
+      { refType: "survey_question", refId: match.question.questionId, label: match.question.questionText },
+      ...(context.surveyMarkdown ? [{ refType: "survey_document" as const, refId: SURVEY_MARKDOWN_PATH, label: "Survey document" }] : []),
+    ],
     ...(context.missingArtifacts.length > 0 ? { message: buildMissingMessage(context.missingArtifacts) } : {}),
   };
 }

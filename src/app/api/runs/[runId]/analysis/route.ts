@@ -139,6 +139,14 @@ export async function POST(
       return NextResponse.json({ error: "Analysis session not found" }, { status: 404 });
     }
 
+    const project = await convex.query(api.projects.get, {
+      projectId: session.projectId,
+      orgId: auth.convexOrgId,
+    });
+    if (!project) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+
     const lastPersistedMessage = persistedMessages[persistedMessages.length - 1];
     let conversationMessages = persistedAnalysisMessagesToUIMessages(
       persistedMessages.map((message) => ({
@@ -187,7 +195,13 @@ export async function POST(
       ];
     }
 
-    const groundingContext = await loadAnalysisGroundingContext(run.result);
+    const groundingContext = await loadAnalysisGroundingContext({
+      runResultValue: run.result,
+      projectName: project.name,
+      runStatus: run.status,
+      projectConfig: project.config,
+      projectIntake: project.intake,
+    });
 
     const result = await streamAnalysisResponse({
       messages: conversationMessages,

@@ -215,7 +215,7 @@ describe('project detail page', () => {
     // Core page sections
     expect(markup).toContain('Downloads');
     expect(markup).toContain('Analysis Workspace');
-    expect(markup).toContain('Open Chat with your data');
+    expect(markup).toContain('Chat with your data');
     expect(markup).toContain('/projects/project-1/runs/run-1/analysis');
     // Pipeline Decisions and Table Labels are hidden pending UX redesign
     expect(markup).not.toContain('Pipeline Decisions');

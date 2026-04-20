@@ -30,6 +30,9 @@ describe("analysis agent production prompt", () => {
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("getTableCard");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("getQuestionContext");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("listBannerCuts");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("getSurveyQuestion");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("getBannerPlanContext");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("getRunContext");
   });
 
   it("contains the scratchpad protocol", () => {
@@ -47,8 +50,23 @@ describe("analysis agent production prompt", () => {
     const result = buildAnalysisInstructions({
       availability: "available",
       missingArtifacts: [],
+      runContext: {
+        projectName: "TabulateAI Study",
+        runStatus: "success",
+        tableCount: 24,
+        bannerGroupCount: 3,
+        totalCuts: 9,
+        bannerGroupNames: ["Gender", "Age", "Region"],
+        bannerSource: "auto_generated",
+        researchObjectives: "Understand subgroup differences.",
+        bannerHints: null,
+        surveyAvailable: true,
+        bannerPlanAvailable: true,
+      },
     });
 
+    expect(result).toContain("<run_context>");
+    expect(result).toContain("Project name: TabulateAI Study.");
     expect(result).toContain("<grounding_status>");
     expect(result).toContain("All grounding artifacts are available.");
   });
@@ -57,6 +75,19 @@ describe("analysis agent production prompt", () => {
     const result = buildAnalysisInstructions({
       availability: "partial",
       missingArtifacts: ["planning/21-crosstab-plan.json"],
+      runContext: {
+        projectName: "TabulateAI Study",
+        runStatus: "partial",
+        tableCount: 24,
+        bannerGroupCount: 3,
+        totalCuts: 9,
+        bannerGroupNames: ["Gender", "Age", "Region"],
+        bannerSource: "uploaded",
+        researchObjectives: null,
+        bannerHints: "Prioritize age splits.",
+        surveyAvailable: true,
+        bannerPlanAvailable: true,
+      },
     });
 
     expect(result).toContain("Artifact gaps:");
@@ -67,6 +98,19 @@ describe("analysis agent production prompt", () => {
     const result = buildAnalysisInstructions({
       availability: "unavailable",
       missingArtifacts: [],
+      runContext: {
+        projectName: null,
+        runStatus: null,
+        tableCount: null,
+        bannerGroupCount: null,
+        totalCuts: null,
+        bannerGroupNames: [],
+        bannerSource: null,
+        researchObjectives: null,
+        bannerHints: null,
+        surveyAvailable: false,
+        bannerPlanAvailable: false,
+      },
     });
 
     expect(result).toContain("not available in this session");

@@ -46,6 +46,7 @@ export function AnalysisWorkspace({
   const selectedSession = sessions?.find((session) => String(session._id) === sessionIdFromUrl)
     ?? sessions?.[0]
     ?? null;
+  const hasSessions = (sessions?.length ?? 0) > 0;
 
   const messages = useQuery(
     api.analysisMessages.listBySession,
@@ -147,7 +148,12 @@ export function AnalysisWorkspace({
     }
 
     if (!selectedSession) {
-      return <AnalysisEmptyState hasSession={false} />;
+      return (
+        <AnalysisEmptyState
+          onCreateSession={handleCreateSession}
+          isCreating={isCreatingSession}
+        />
+      );
     }
 
     if (messages === undefined || artifacts === undefined) {
@@ -198,48 +204,52 @@ export function AnalysisWorkspace({
         ]}
       />
 
-      <div className="flex overflow-hidden rounded-xl border border-border/70 bg-white dark:bg-card" style={{ height: "calc(100vh - 10rem)" }}>
-        <AnalysisSessionList
-          sessions={(sessions ?? []).map((session) => ({
-            _id: String(session._id),
-            title: session.title,
-            status: session.status,
-            createdAt: session.createdAt,
-            lastMessageAt: session.lastMessageAt,
-          }))}
-          selectedSessionId={selectedSession ? String(selectedSession._id) : null}
-          isLoading={sessions === undefined}
-          isCreating={isCreatingSession}
-          isOpen={isSidebarOpen}
-          onToggle={() => setIsSidebarOpen((open) => !open)}
-          onCreateSession={handleCreateSession}
-          onSelectSession={handleSelectSession}
-          onRenameSession={async (sessionId, title) => {
-            try {
-              await handleRenameSession(sessionId, title);
-            } catch (error) {
-              toast.error("Failed to rename chat", {
-                description: error instanceof Error ? error.message : "Unknown error",
-              });
-              throw error;
-            }
-          }}
-          onDeleteSession={async (sessionId) => {
-            try {
-              await handleDeleteSession(sessionId);
-            } catch (error) {
-              toast.error("Failed to delete chat", {
-                description: error instanceof Error ? error.message : "Unknown error",
-              });
-              throw error;
-            }
-          }}
-        />
+      {hasSessions ? (
+        <div className="flex overflow-hidden rounded-xl border border-border/70 bg-white dark:bg-card" style={{ height: "calc(100vh - 10rem)" }}>
+          <AnalysisSessionList
+            sessions={(sessions ?? []).map((session) => ({
+              _id: String(session._id),
+              title: session.title,
+              status: session.status,
+              createdAt: session.createdAt,
+              lastMessageAt: session.lastMessageAt,
+            }))}
+            selectedSessionId={selectedSession ? String(selectedSession._id) : null}
+            isLoading={sessions === undefined}
+            isCreating={isCreatingSession}
+            isOpen={isSidebarOpen}
+            onToggle={() => setIsSidebarOpen((open) => !open)}
+            onCreateSession={handleCreateSession}
+            onSelectSession={handleSelectSession}
+            onRenameSession={async (sessionId, title) => {
+              try {
+                await handleRenameSession(sessionId, title);
+              } catch (error) {
+                toast.error("Failed to rename chat", {
+                  description: error instanceof Error ? error.message : "Unknown error",
+                });
+                throw error;
+              }
+            }}
+            onDeleteSession={async (sessionId) => {
+              try {
+                await handleDeleteSession(sessionId);
+              } catch (error) {
+                toast.error("Failed to delete chat", {
+                  description: error instanceof Error ? error.message : "Unknown error",
+                });
+                throw error;
+              }
+            }}
+          />
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {renderThreadContent()}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            {renderThreadContent()}
+          </div>
         </div>
-      </div>
+      ) : (
+        renderThreadContent()
+      )}
     </div>
   );
 }

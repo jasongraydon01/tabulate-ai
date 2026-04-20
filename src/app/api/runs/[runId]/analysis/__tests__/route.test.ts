@@ -11,6 +11,30 @@ const mocks = vi.hoisted(() => ({
     tables: {},
     questions: [],
     bannerGroups: [],
+    bannerPlanGroups: [],
+    bannerRouteMetadata: null,
+    surveyMarkdown: null,
+    surveyQuestions: [],
+    projectContext: {
+      projectName: "TabulateAI Study",
+      runStatus: "success",
+      studyMethodology: null,
+      analysisMethod: null,
+      bannerSource: null,
+      bannerMode: null,
+      tableCount: null,
+      bannerGroupCount: null,
+      totalCuts: null,
+      bannerGroupNames: [],
+      researchObjectives: null,
+      bannerHints: null,
+      intakeFiles: {
+        dataFile: null,
+        survey: null,
+        bannerPlan: null,
+        messageList: null,
+      },
+    },
     tablesMetadata: {
       significanceTest: null,
       significanceLevel: null,
@@ -100,7 +124,8 @@ describe("analysis chat route", () => {
       .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
       .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1" })
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
     mocks.mutateInternal.mockResolvedValueOnce("user-msg-1").mockResolvedValueOnce("assistant-msg-1");
     mocks.streamAnalysisResponse.mockResolvedValueOnce({
       toUIMessageStreamResponse: ({ onFinish }: {
@@ -150,7 +175,13 @@ describe("analysis chat route", () => {
       ],
     });
     expect(mocks.streamAnalysisResponse).toHaveBeenCalledTimes(1);
-    expect(mocks.loadAnalysisGroundingContext).toHaveBeenCalledWith({});
+    expect(mocks.loadAnalysisGroundingContext).toHaveBeenCalledWith({
+      runResultValue: {},
+      projectName: "TabulateAI Study",
+      runStatus: undefined,
+      projectConfig: {},
+      projectIntake: {},
+    });
   });
 
   it("persists grounded table cards as analysis artifacts", async () => {
@@ -158,7 +189,8 @@ describe("analysis chat route", () => {
       .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
       .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1" })
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
     mocks.mutateInternal
       .mockResolvedValueOnce("user-msg-1")
       .mockResolvedValueOnce("artifact-1")

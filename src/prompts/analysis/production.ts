@@ -32,7 +32,7 @@ interpretation, not repetition.
 </audience>
 
 <tool_usage_protocol>
-You have five grounded tools plus a scratchpad for reasoning. Use the grounded
+You have eight grounded tools plus a scratchpad for reasoning. Use the grounded
 tools before making claims about run data.
 
 EXPLORATION WORKFLOW:
@@ -104,9 +104,29 @@ getQuestionContext
 - Also useful during exploration: the relatedTableIds field tells you which
   tables are built from a given question.
 
+getSurveyQuestion
+- Use when: the user asks how a question was asked, what the scale points were,
+  where it appeared in the questionnaire, or what routing/prog notes matter.
+- This is the main tool for survey wording and questionnaire-order questions.
+- Prefer this over guessing from crosstab labels alone when wording matters.
+
 listBannerCuts
 - Use when: the user asks what demographics or subgroups are available.
 - filter parameter: use to narrow to a specific group (e.g., "age", "region").
+
+getBannerPlanContext
+- Use when: the user asks how the banner was structured, what a banner group
+  contains, whether the banner was uploaded or generated, or what original cut
+  definitions were used.
+- Use this when explaining why certain banner groups exist or how a banner
+  group was defined before it became the final crosstab cuts.
+
+getRunContext
+- Use when: you need project-level or run-level framing — project name, run
+  status, table count, banner group summary, research objectives, banner hints,
+  or intake file context.
+- Use this before speaking confidently about study goals or run scope if the
+  dynamic context in the system prompt is not enough.
 
 VERIFICATION WORKFLOW:
 If a search returns no matches or a viewTable/getTableCard returns not_found:
@@ -212,7 +232,42 @@ the scratchpad — it is for analytical reasoning, not bookkeeping.
 export function buildAnalysisInstructions(context: {
   availability: string;
   missingArtifacts: string[];
+  runContext: {
+    projectName: string | null;
+    runStatus: string | null;
+    tableCount: number | null;
+    bannerGroupCount: number | null;
+    totalCuts: number | null;
+    bannerGroupNames: string[];
+    bannerSource: "uploaded" | "auto_generated" | null;
+    researchObjectives: string | null;
+    bannerHints: string | null;
+    surveyAvailable: boolean;
+    bannerPlanAvailable: boolean;
+  };
 }): string {
+  const runContextSection = [
+    "<run_context>",
+    `Project name: ${context.runContext.projectName ?? "Unknown"}.`,
+    `Run status: ${context.runContext.runStatus ?? "Unknown"}.`,
+    `Computed tables available: ${context.runContext.tableCount ?? "Unknown"}.`,
+    `Banner groups available: ${context.runContext.bannerGroupCount ?? "Unknown"}.`,
+    `Total banner cuts available: ${context.runContext.totalCuts ?? "Unknown"}.`,
+    `Banner source: ${context.runContext.bannerSource ?? "Unknown"}.`,
+    context.runContext.bannerGroupNames.length > 0
+      ? `Banner groups: ${context.runContext.bannerGroupNames.join(", ")}.`
+      : "Banner groups: unavailable.",
+    context.runContext.researchObjectives
+      ? `Research objectives: ${context.runContext.researchObjectives}.`
+      : "Research objectives: not provided.",
+    context.runContext.bannerHints
+      ? `Banner hints: ${context.runContext.bannerHints}.`
+      : "Banner hints: not provided.",
+    `Survey context available: ${context.runContext.surveyAvailable ? "yes" : "no"}.`,
+    `Stage-20 banner plan available: ${context.runContext.bannerPlanAvailable ? "yes" : "no"}.`,
+    "</run_context>",
+  ].join("\n");
+
   const groundingStatus = (() => {
     if (context.availability === "unavailable") {
       return [
@@ -235,5 +290,5 @@ export function buildAnalysisInstructions(context: {
     ].join("\n");
   })();
 
-  return `${ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION}\n\n${groundingStatus}`;
+  return `${ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION}\n\n${runContextSection}\n\n${groundingStatus}`;
 }

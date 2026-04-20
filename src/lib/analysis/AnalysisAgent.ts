@@ -11,7 +11,10 @@ import {
   getAnalysisProviderOptions,
 } from "@/lib/analysis/model";
 import {
+  getBannerPlanContext,
   getQuestionContext,
+  getRunContext,
+  getSurveyQuestion,
   getTableCard,
   listBannerCuts,
   searchRunCatalog,
@@ -42,6 +45,19 @@ export async function streamAnalysisResponse({
         system: buildAnalysisInstructions({
           availability: groundingContext.availability,
           missingArtifacts: groundingContext.missingArtifacts,
+          runContext: {
+            projectName: groundingContext.projectContext.projectName,
+            runStatus: groundingContext.projectContext.runStatus,
+            tableCount: groundingContext.projectContext.tableCount,
+            bannerGroupCount: groundingContext.projectContext.bannerGroupCount,
+            totalCuts: groundingContext.projectContext.totalCuts,
+            bannerGroupNames: groundingContext.projectContext.bannerGroupNames,
+            bannerSource: groundingContext.projectContext.bannerSource,
+            researchObjectives: groundingContext.projectContext.researchObjectives,
+            bannerHints: groundingContext.projectContext.bannerHints,
+            surveyAvailable: groundingContext.surveyQuestions.length > 0 || Boolean(groundingContext.surveyMarkdown),
+            bannerPlanAvailable: groundingContext.bannerPlanGroups.length > 0,
+          },
         }),
         messages: await convertToModelMessages(sanitizedMessages),
         stopWhen: stepCountIs(12),
@@ -93,12 +109,31 @@ export async function streamAnalysisResponse({
             }),
             execute: async ({ questionId }) => getQuestionContext(groundingContext, questionId),
           }),
+          getSurveyQuestion: tool({
+            description: "Return grounded survey wording, answer options, question order, and nearby questionnaire context for a question or topic.",
+            inputSchema: z.object({
+              query: z.string().min(1).max(200),
+            }),
+            execute: async ({ query }) => getSurveyQuestion(groundingContext, query),
+          }),
           listBannerCuts: tool({
             description: "List available banner groups and cuts for this run.",
             inputSchema: z.object({
               filter: z.string().min(1).max(200).nullable().optional(),
             }),
             execute: async ({ filter }) => listBannerCuts(groundingContext, filter),
+          }),
+          getBannerPlanContext: tool({
+            description: "Return the grounded stage-20 banner plan, including original group structure and source context.",
+            inputSchema: z.object({
+              filter: z.string().min(1).max(200).nullable().optional(),
+            }),
+            execute: async ({ filter }) => getBannerPlanContext(groundingContext, filter),
+          }),
+          getRunContext: tool({
+            description: "Return project-level and run-level analysis context, including project name, research objectives, banner summary, and high-level run stats.",
+            inputSchema: z.object({}),
+            execute: async () => getRunContext(groundingContext),
           }),
         },
         onFinish: ({ totalUsage }) => {

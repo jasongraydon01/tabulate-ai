@@ -782,14 +782,14 @@ export default function ProjectDetailPage({
                   Analysis Workspace
                 </CardTitle>
                 <p className="max-w-2xl text-sm text-muted-foreground">
-                  Open a run-scoped TabulateAI conversation tied to this output so grounded answers,
-                  inline table cards, and session history stay attached to the same run.
+                  Open a Chat with your data conversation in TabulateAI tied to this output so you can
+                  explore findings, summarize results, and surface grounded insights from the run.
                 </p>
               </div>
 
               {analysisAvailable && analysisHref ? (
                 <Button asChild>
-                  <Link href={analysisHref}>Open Chat with your data</Link>
+                  <Link href={analysisHref}>Chat with your data</Link>
                 </Button>
               ) : (
                 <Badge variant="outline" className="w-fit">
@@ -798,12 +798,9 @@ export default function ProjectDetailPage({
               )}
             </div>
           </CardHeader>
-          <CardContent>
-            {analysisAvailable ? (
-              <p className="text-sm text-muted-foreground">
-                Available for the latest completed run once outputs are present and still within retention.
-              </p>
-            ) : latestRun?.expiredAt ? (
+          {!analysisAvailable && (
+            <CardContent>
+              {latestRun?.expiredAt ? (
               <p className="text-sm text-muted-foreground">
                 Analysis is unavailable because this run&apos;s artifacts have expired.
               </p>
@@ -816,7 +813,8 @@ export default function ProjectDetailPage({
                 Analysis will appear here once this project has a completed run with output artifacts.
               </p>
             )}
-          </CardContent>
+            </CardContent>
+          )}
         </Card>
 
         {/* Downloads */}
