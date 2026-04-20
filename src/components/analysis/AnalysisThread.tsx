@@ -82,7 +82,11 @@ export function AnalysisThread({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <ScrollArea className="min-h-0 min-w-0 flex-1" viewportRef={viewportRef}>
+      <ScrollArea
+        className="min-h-0 min-w-0 flex-1"
+        viewportRef={viewportRef}
+        viewportClassName="[&>div]:!block [&>div]:!w-full"
+      >
         <div className="min-w-0 space-y-4 px-5 py-3 pb-24">
           {messages.length === 0 ? (
             <div className="py-8 text-center">

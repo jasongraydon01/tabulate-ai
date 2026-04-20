@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { ChevronDown, Expand } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,53 @@ import type {
 } from "@/lib/analysis/types";
 
 const TOTAL_GROUP_KEY = "__total__";
+
+function ScrollableTableContainer({ children }: { children: ReactNode }) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [hasOverflow, setHasOverflow] = useState(false);
+  const [isScrolledToEnd, setIsScrolledToEnd] = useState(true);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const check = () => {
+      const overflowed = el.scrollWidth > el.clientWidth + 1;
+      setHasOverflow(overflowed);
+      const atEnd = !overflowed
+        || Math.ceil(el.scrollLeft + el.clientWidth) >= el.scrollWidth - 1;
+      setIsScrolledToEnd(atEnd);
+    };
+
+    check();
+    el.addEventListener("scroll", check, { passive: true });
+
+    const resizeObserver = new ResizeObserver(check);
+    resizeObserver.observe(el);
+
+    return () => {
+      el.removeEventListener("scroll", check);
+      resizeObserver.disconnect();
+    };
+  }, []);
+
+  const showFade = hasOverflow && !isScrolledToEnd;
+
+  return (
+    <div className="relative">
+      <div ref={scrollRef} className="w-full overflow-x-auto">
+        {children}
+      </div>
+      <div
+        aria-hidden="true"
+        className={cn(
+          "pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-background via-background/50 to-transparent transition-opacity duration-150 dark:from-card dark:via-card/50",
+          showFade ? "opacity-100" : "opacity-0",
+        )}
+      />
+    </div>
+  );
+}
 
 function valueModeLabel(valueMode: AnalysisTableCard["valueMode"]): string {
   switch (valueMode) {
@@ -247,7 +295,7 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
     const rowHeaderLabel = isCompact ? "" : "Row";
 
     return (
-      <div className="w-full overflow-x-auto">
+      <ScrollableTableContainer>
         <table className={cn("w-max min-w-full border-collapse", isCompact ? "text-[13px]" : "text-sm")}>
           <thead>
             {showGroupHeaderInTable ? (
@@ -393,7 +441,7 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
             })}
           </tbody>
         </table>
-      </div>
+      </ScrollableTableContainer>
     );
   }
 
