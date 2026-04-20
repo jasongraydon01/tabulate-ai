@@ -155,6 +155,19 @@ Open question: should grounded table cards use their own internal horizontal scr
 The surfaced tool-call activity is now visible, which is directionally right, but it does not read as fully nested under the thinking disclosure. It feels like the tool activity is floating outside that container rather than being part of the same expandable reasoning block.
 Open question: should tool activity be rendered inside the same disclosure body as the reasoning trace so the relationship between thinking and tool usage is visually explicit?
 
+This observation actually decomposes into three scopes. Naming them explicitly so none of them get lost:
+
+**Scope A — in-session nesting (visual fix).**
+Tool-activity chips should render inside the thinking disclosure body alongside reasoning parts, in `message.parts` order so the narrative reads "reasoned → searched → inspected → rendered." The current `isStreaming && !hasTextContent` gate in `AnalysisMessage.tsx` should be dropped so the chips stay visible after streaming ends (within the current session). The collapsed summary line can show the latest activity during streaming and fall back to a short reasoning snippet afterward. This is purely a component-level change in `src/components/analysis/AnalysisMessage.tsx`.
+
+**Scope B — persist the trace across reloads (durability fix).**
+Today, `persistedAnalysisMessagesToUIMessages` (`src/lib/analysis/messages.ts`) only preserves `text` and `tool-getTableCard` parts. Reasoning parts, `searchRunCatalog` / `viewTable` / `getQuestionContext` / `listBannerCuts` / scratchpad calls, and every other non-render tool call are dropped on reload. That means refreshing the page — including refreshing mid-generation — loses the whole thinking trace. The fix spans the Convex `analysisMessages.parts` schema, the `onFinish` persistence in `src/app/api/runs/[runId]/analysis/route.ts`, and the hydration path in `messages.ts`. It is related to the earlier "refresh while the agent is generating" concern and is where that work lives.
+
+**Scope C — reasoning flag.**
+`src/app/api/runs/[runId]/analysis/route.ts:214` sets `sendReasoning: false`, which is why some turns have no visible thinking summary at all. Flipping this requires verifying the provider emits reasoning in a useful shape and that nothing in the persistence path breaks. Best handled alongside Scope B, because once reasoning parts are flowing to the client, we want them to survive reload the same way tool-activity parts do.
+
+**Sequencing.** Scope A is the immediate visual fix and will land first. Scopes B and C will be tackled together as a durability pass, since they share the "what do we persist and hydrate" surface area and both tie into the broader refresh-during-generation story.
+
 ## Meta
 
 ### (6) We need a place to capture hypotheses before turning them into work.

@@ -211,7 +211,7 @@ export async function POST(
 
     return result.toUIMessageStreamResponse({
       originalMessages: conversationMessages,
-      sendReasoning: false,
+      sendReasoning: true,
       onError: (error) => {
         console.error("[Analysis Chat POST] Stream error:", error);
         return "Analysis response failed. Please try again.";

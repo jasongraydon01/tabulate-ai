@@ -18,7 +18,10 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
   "tool-searchRunCatalog": "Searching run catalog",
   "tool-viewTable": "Inspecting table",
   "tool-getQuestionContext": "Checking question metadata",
+  "tool-getSurveyQuestion": "Reading survey wording",
   "tool-listBannerCuts": "Listing available cuts",
+  "tool-getBannerPlanContext": "Reviewing banner plan",
+  "tool-getRunContext": "Loading run context",
   "tool-scratchpad": "Reasoning",
 };
 
@@ -31,6 +34,10 @@ function truncateReasoning(text: string, maxLength = 120): string {
   if (firstLine.length <= maxLength) return firstLine;
   return `${firstLine.slice(0, maxLength).trim()}...`;
 }
+
+type TraceEntry =
+  | { kind: "reasoning"; id: string; text: string }
+  | { kind: "tool"; id: string; label: string; state: string };
 
 export function AnalysisMessage({
   message,
@@ -45,24 +52,48 @@ export function AnalysisMessage({
     (part) => isToolUIPart(part) && part.type === "tool-getTableCard",
   );
 
-  const reasoningParts = !isUser
-    ? message.parts.filter(isReasoningUIPart)
-    : [];
-  const hasReasoning = reasoningParts.length > 0;
-  const reasoningText = reasoningParts.map((part) => part.text).join("\n\n");
-  const hasTextContent = message.parts.some(isTextUIPart);
-
-  const toolActivityParts = !isUser
-    ? message.parts
-        .filter((part) => isToolUIPart(part) && part.type !== "tool-getTableCard")
-        .map((part) => {
-          if (!isToolUIPart(part)) return null;
+  const traceEntries: TraceEntry[] = !isUser
+    ? message.parts.flatMap((part, index): TraceEntry[] => {
+        if (isReasoningUIPart(part)) {
+          return [{
+            kind: "reasoning",
+            id: `${message.id}-reasoning-${index}`,
+            text: part.text,
+          }];
+        }
+        if (isToolUIPart(part) && part.type !== "tool-getTableCard") {
           const label = getToolActivityLabel(part.type);
-          if (!label) return null;
-          return { key: `${part.toolCallId}`, label, state: part.state };
-        })
-        .filter(Boolean)
+          if (!label) return [];
+          return [{
+            kind: "tool",
+            id: part.toolCallId,
+            label,
+            state: part.state,
+          }];
+        }
+        return [];
+      })
     : [];
+
+  const hasTrace = traceEntries.length > 0;
+
+  const collapsedSummary = (() => {
+    if (!hasTrace) return null;
+    for (let index = traceEntries.length - 1; index >= 0; index -= 1) {
+      const entry = traceEntries[index];
+      if (entry.kind === "reasoning" && entry.text.trim().length > 0) {
+        return truncateReasoning(entry.text);
+      }
+    }
+    for (let index = traceEntries.length - 1; index >= 0; index -= 1) {
+      const entry = traceEntries[index];
+      if (entry.kind === "tool") {
+        const inProgress = isStreaming && entry.state !== "output-available";
+        return `${entry.label}${inProgress ? "..." : ""}`;
+      }
+    }
+    return null;
+  })();
 
   return (
     <div className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}>
@@ -81,7 +112,7 @@ export function AnalysisMessage({
           </p>
         ) : (
           <div className="min-w-0 space-y-3">
-            {hasReasoning ? (
+            {hasTrace ? (
               <div className="space-y-1">
                 <button
                   type="button"
@@ -95,30 +126,40 @@ export function AnalysisMessage({
                     )}
                   />
                   <span className="italic">
-                    {isThinkingExpanded ? "Thinking" : truncateReasoning(reasoningText)}
+                    {isThinkingExpanded ? "Thinking" : (collapsedSummary ?? "Thinking")}
                   </span>
                 </button>
 
                 {isThinkingExpanded ? (
-                  <div className="ml-4.5 border-l border-border/40 pl-3 text-xs leading-relaxed text-muted-foreground">
-                    {reasoningText}
+                  <div className="ml-4.5 space-y-2 border-l border-border/40 pl-3 text-xs leading-relaxed text-muted-foreground">
+                    {traceEntries.map((entry) => {
+                      if (entry.kind === "reasoning") {
+                        return (
+                          <div
+                            key={entry.id}
+                            className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
+                          >
+                            {entry.text}
+                          </div>
+                        );
+                      }
+
+                      const inProgress = isStreaming && entry.state !== "output-available";
+                      return (
+                        <div
+                          key={entry.id}
+                          className="flex items-center gap-2"
+                        >
+                          <span className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+                          <span>
+                            {entry.label}
+                            {inProgress ? "..." : ""}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : null}
-              </div>
-            ) : null}
-
-            {isStreaming && !hasTextContent && toolActivityParts.length > 0 ? (
-              <div className="space-y-1">
-                {toolActivityParts.map((activity) => activity ? (
-                  <div
-                    key={activity.key}
-                    className="flex items-center gap-2 text-xs text-muted-foreground"
-                  >
-                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
-                    {activity.label}
-                    {activity.state !== "output-available" ? "..." : ""}
-                  </div>
-                ) : null)}
               </div>
             ) : null}
 
