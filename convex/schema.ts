@@ -352,6 +352,11 @@ export default defineSchema({
     runId: v.id("runs"),
     createdBy: v.id("users"),
     title: v.string(),
+    titleSource: v.optional(v.union(
+      v.literal("default"),
+      v.literal("generated"),
+      v.literal("manual"),
+    )),
     status: v.union(
       v.literal("active"),
       v.literal("archived"),

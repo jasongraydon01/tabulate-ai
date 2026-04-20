@@ -11,6 +11,7 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { AnalysisTitleBadge } from "@/components/analysis/AnalysisTitleBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -33,6 +34,7 @@ import { cn } from "@/lib/utils";
 interface SessionListItem {
   _id: string;
   title: string;
+  titleSource: "default" | "generated" | "manual";
   status: "active" | "archived";
   createdAt: number;
   lastMessageAt: number;
@@ -240,7 +242,14 @@ export function AnalysisSessionList({
                       onClick={() => onSelectSession(session._id)}
                       className="min-w-0 flex-1 rounded-md px-1 py-1 text-left"
                     >
-                      <p className="truncate text-sm font-medium">{session.title}</p>
+                      <div className="flex min-w-0 flex-col items-start gap-1">
+                        <p className="w-full break-words text-sm font-medium leading-snug whitespace-normal">
+                          {session.title}
+                        </p>
+                        {session.titleSource === "generated" ? (
+                          <AnalysisTitleBadge className="shrink-0" />
+                        ) : null}
+                      </div>
                       <p className="mt-0.5 text-[11px] text-muted-foreground">
                         {formatSessionTime(session.lastMessageAt)}
                       </p>

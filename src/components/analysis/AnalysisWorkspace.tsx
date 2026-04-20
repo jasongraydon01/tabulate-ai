@@ -171,6 +171,7 @@ export function AnalysisWorkspace({
         runId={runId}
         sessionId={String(selectedSession._id)}
         sessionTitle={selectedSession.title}
+        sessionTitleSource={selectedSession.titleSource}
         initialMessages={persistedAnalysisMessagesToUIMessages(
           messages.map((message) => ({
             _id: String(message._id),
@@ -211,6 +212,7 @@ export function AnalysisWorkspace({
             sessions={(sessions ?? []).map((session) => ({
               _id: String(session._id),
               title: session.title,
+              titleSource: session.titleSource,
               status: session.status,
               createdAt: session.createdAt,
               lastMessageAt: session.lastMessageAt,

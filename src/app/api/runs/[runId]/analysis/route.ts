@@ -17,6 +17,10 @@ import {
   writeAnalysisTurnErrorTrace,
   writeAnalysisTurnTrace,
 } from "@/lib/analysis/trace";
+import {
+  generateAnalysisSessionTitle,
+  isDefaultAnalysisSessionTitle,
+} from "@/lib/analysis/title";
 import { TABLE_CARD_TOOL_TYPE } from "@/lib/analysis/toolLabels";
 import { getConvexClient, mutateInternal } from "@/lib/convex";
 import { requireConvexAuth, AuthenticationError } from "@/lib/requireConvexAuth";
@@ -33,6 +37,34 @@ function isAnalysisMessageCandidate(value: unknown): value is UIMessage[] {
 type PersistedPartForCreate = PersistedAnalysisPart & {
   artifactId?: Id<"analysisArtifacts">;
 };
+
+function summarizeAssistantResponseForTitle(parts: UIMessage["parts"]): string {
+  const segments: string[] = [];
+
+  for (const part of parts) {
+    if (part.type === "text" && typeof part.text === "string") {
+      const text = sanitizeAnalysisMessageContent(part.text);
+      if (text) segments.push(text);
+      continue;
+    }
+
+    if (part.type === TABLE_CARD_TOOL_TYPE) {
+      const label = typeof part.title === "string"
+        ? sanitizeAnalysisMessageContent(part.title)
+        : typeof part.output === "object"
+          && part.output !== null
+          && "title" in part.output
+          && typeof part.output.title === "string"
+          ? sanitizeAnalysisMessageContent(part.output.title)
+          : "";
+      if (label) {
+        segments.push(`Table: ${label}`);
+      }
+    }
+  }
+
+  return segments.join(" ").trim().slice(0, 2000);
+}
 
 async function persistAssistantMessageParts(params: {
   parts: UIMessage["parts"];
@@ -146,6 +178,7 @@ export async function POST(
     }
 
     const lastPersistedMessage = persistedMessages[persistedMessages.length - 1];
+    const hasExistingAssistantMessage = persistedMessages.some((message) => message.role === "assistant");
     let conversationMessages = persistedAnalysisMessagesToUIMessages(
       persistedMessages.map((message) => ({
         _id: String(message._id),
@@ -239,6 +272,7 @@ export async function POST(
         if (isAborted) return;
 
         const assistantText = sanitizeAnalysisMessageContent(getAnalysisUIMessageText(responseMessage));
+        const assistantTitleBasis = assistantText || summarizeAssistantResponseForTitle(responseMessage.parts);
         const traceCapture = getTraceCapture();
         const persistedParts = await persistAssistantMessageParts({
           parts: responseMessage.parts,
@@ -281,6 +315,30 @@ export async function POST(
           });
         } catch (traceError) {
           console.warn("[Analysis Chat POST] Failed to write analysis turn trace:", traceError);
+        }
+
+        const shouldGenerateTitle = !hasExistingAssistantMessage
+          && session.titleSource === "default"
+          && isDefaultAnalysisSessionTitle(session.title);
+
+        if (!shouldGenerateTitle || !assistantTitleBasis) {
+          return;
+        }
+
+        try {
+          const generatedTitle = await generateAnalysisSessionTitle({
+            userPrompt: latestUserText,
+            assistantResponse: assistantTitleBasis,
+            abortSignal: request.signal,
+          });
+
+          await mutateInternal(internal.analysisSessions.applyGeneratedTitle, {
+            orgId: auth.convexOrgId,
+            sessionId: session._id,
+            title: generatedTitle,
+          });
+        } catch (titleError) {
+          console.warn("[Analysis Chat POST] Failed to generate analysis session title:", titleError);
         }
       },
     });

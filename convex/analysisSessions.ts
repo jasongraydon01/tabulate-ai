@@ -1,6 +1,10 @@
 import { v } from "convex/values";
 import { query, internalMutation } from "./_generated/server";
 
+type AnalysisSessionTitleSource = "default" | "generated" | "manual";
+
+const DEFAULT_ANALYSIS_SESSION_TITLE_RE = /^Analysis Session \d+$/;
+
 function compareByLastMessageDesc(
   a: { lastMessageAt: number; _creationTime: number },
   b: { lastMessageAt: number; _creationTime: number },
@@ -9,6 +13,19 @@ function compareByLastMessageDesc(
     return b.lastMessageAt - a.lastMessageAt;
   }
   return b._creationTime - a._creationTime;
+}
+
+function inferSessionTitleSource(session: {
+  title: string;
+  titleSource?: AnalysisSessionTitleSource;
+}): AnalysisSessionTitleSource {
+  if (session.titleSource === "default" || session.titleSource === "generated" || session.titleSource === "manual") {
+    return session.titleSource;
+  }
+
+  return DEFAULT_ANALYSIS_SESSION_TITLE_RE.test(session.title)
+    ? "default"
+    : "manual";
 }
 
 export const listByRun = query({
@@ -24,7 +41,11 @@ export const listByRun = query({
 
     return sessions
       .filter((session) => session.orgId === args.orgId)
-      .sort(compareByLastMessageDesc);
+      .sort(compareByLastMessageDesc)
+      .map((session) => ({
+        ...session,
+        titleSource: inferSessionTitleSource(session),
+      }));
   },
 });
 
@@ -36,7 +57,10 @@ export const getById = query({
   handler: async (ctx, args) => {
     const session = await ctx.db.get(args.sessionId);
     if (!session || session.orgId !== args.orgId) return null;
-    return session;
+    return {
+      ...session,
+      titleSource: inferSessionTitleSource(session),
+    };
   },
 });
 
@@ -78,6 +102,7 @@ export const create = internalMutation({
       title: trimmedTitle && trimmedTitle.length > 0
         ? trimmedTitle
         : `Analysis Session ${sessionCount + 1}`,
+      titleSource: trimmedTitle && trimmedTitle.length > 0 ? "manual" : "default",
       status: "active",
       createdAt: now,
       lastMessageAt: now,
@@ -102,7 +127,40 @@ export const rename = internalMutation({
       throw new Error("Session title is required");
     }
 
-    await ctx.db.patch(args.sessionId, { title });
+    await ctx.db.patch(args.sessionId, {
+      title,
+      titleSource: "manual",
+    });
+  },
+});
+
+export const applyGeneratedTitle = internalMutation({
+  args: {
+    orgId: v.id("organizations"),
+    sessionId: v.id("analysisSessions"),
+    title: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session || session.orgId !== args.orgId) {
+      throw new Error("Analysis session not found");
+    }
+
+    const title = args.title.trim();
+    if (!title) {
+      throw new Error("Session title is required");
+    }
+
+    if (inferSessionTitleSource(session) !== "default") {
+      return { updated: false };
+    }
+
+    await ctx.db.patch(args.sessionId, {
+      title,
+      titleSource: "generated",
+    });
+
+    return { updated: true };
   },
 });
 

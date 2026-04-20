@@ -6,6 +6,7 @@ import { useChat } from "@ai-sdk/react";
 import { AlertCircle } from "lucide-react";
 
 import { AnalysisMessage } from "@/components/analysis/AnalysisMessage";
+import { AnalysisTitleBadge } from "@/components/analysis/AnalysisTitleBadge";
 import {
   scrollAnalysisThreadToBottom,
   scrollAnalysisThreadToMessageStart,
@@ -18,12 +19,15 @@ interface AnalysisThreadProps {
   runId: string;
   sessionId: string;
   sessionTitle: string;
+  sessionTitleSource: "default" | "generated" | "manual";
   initialMessages: UIMessage[];
 }
 
 export function AnalysisThread({
   runId,
   sessionId,
+  sessionTitle,
+  sessionTitleSource,
   initialMessages,
 }: AnalysisThreadProps) {
   const [input, setInput] = useState("");
@@ -82,6 +86,16 @@ export function AnalysisThread({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="border-b border-border/60 px-5 py-3">
+        <div className="flex min-w-0 flex-col items-start gap-1">
+          <h2 className="w-full break-words text-sm font-medium leading-snug whitespace-normal text-foreground">
+            {sessionTitle}
+          </h2>
+          {sessionTitleSource === "generated" ? (
+            <AnalysisTitleBadge className="shrink-0" />
+          ) : null}
+        </div>
+      </div>
       <ScrollArea
         className="min-h-0 min-w-0 flex-1"
         viewportRef={viewportRef}
