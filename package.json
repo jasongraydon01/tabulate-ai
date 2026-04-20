@@ -63,6 +63,7 @@
     "sav-reader": "^2.0.8",
     "sharp": "^0.34.3",
     "sonner": "^2.0.7",
+    "streamdown": "^2.5.0",
     "stripe": "^20.4.1",
     "tailwind-merge": "^3.3.1",
     "tsx": "^4.21.0",

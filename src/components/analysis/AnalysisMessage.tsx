@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import Markdown from "react-markdown";
+import { useEffect, useRef, useState } from "react";
+import { Streamdown } from "streamdown";
 import {
   isReasoningUIPart,
   isTextUIPart,
@@ -14,6 +14,52 @@ import { GroundedTableCard } from "@/components/analysis/GroundedTableCard";
 import { getAnalysisToolActivityLabel } from "@/lib/analysis/toolLabels";
 import { isAnalysisTableCard } from "@/lib/analysis/types";
 import { cn } from "@/lib/utils";
+
+/**
+ * Coalesces rapid value updates to one per animation frame while `enabled` is
+ * true, and flushes the latest value immediately when `enabled` flips to false.
+ * Used to smooth streaming markdown rendering without dropping the final text.
+ */
+function useAnimationFrameThrottle<T>(value: T, enabled: boolean): T {
+  const [throttledValue, setThrottledValue] = useState(value);
+  const latestValueRef = useRef(value);
+  const frameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    latestValueRef.current = value;
+
+    if (!enabled) {
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+      setThrottledValue(value);
+      return;
+    }
+
+    if (frameRef.current !== null) return;
+
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null;
+      setThrottledValue(latestValueRef.current);
+    });
+  }, [value, enabled]);
+
+  useEffect(() => {
+    return () => {
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+      }
+    };
+  }, []);
+
+  return throttledValue;
+}
+
+function StreamingMarkdown({ text, isStreaming }: { text: string; isStreaming: boolean }) {
+  const throttledText = useAnimationFrameThrottle(text, isStreaming);
+  return <Streamdown>{throttledText}</Streamdown>;
+}
 
 function truncateReasoning(text: string, maxLength = 120): string {
   const firstLine = text.split("\n")[0].trim();
@@ -154,9 +200,9 @@ export function AnalysisMessage({
                 return (
                   <div
                     key={`${message.id}-text-${index}`}
-                    className="prose prose-sm min-w-0 max-w-none break-words dark:prose-invert prose-p:my-2 prose-p:whitespace-pre-wrap prose-ul:my-2 prose-ol:my-2 [overflow-wrap:anywhere]"
+                    className="prose-analysis min-w-0 max-w-none break-words [overflow-wrap:anywhere]"
                   >
-                    <Markdown>{part.text}</Markdown>
+                    <StreamingMarkdown text={part.text} isStreaming={isStreaming} />
                   </div>
                 );
               }

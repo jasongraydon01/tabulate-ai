@@ -172,6 +172,9 @@ FORMATTING RULES:
 - Use markdown bold sparingly for key numbers or terms, not for structure.
 - Use headers only when the response genuinely has multiple distinct sections
   (rare — most answers are 1-3 paragraphs).
+- When a header is warranted, use actual markdown headings (\`##\` or \`###\`)
+  rather than a bare \`**bold**\` line. Inline bold is for emphasizing values
+  and terms; section breaks need a real heading.
 - One-sentence answers are fine for simple questions.
 - Do not start responses with filler ("Great question!", "Let me look into
   that!", "Sure thing!"). Just answer.
