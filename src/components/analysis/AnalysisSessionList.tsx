@@ -14,10 +14,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ConfirmDestructiveDialog } from "@/components/confirm-destructive-dialog";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -56,6 +56,53 @@ function formatSessionTime(timestampMs: number): string {
     month: "short",
     day: "numeric",
   });
+}
+
+export function AnalysisDeleteSessionDialogContent({
+  sessionTitle,
+  isPending,
+  onCancel,
+  onConfirm,
+}: {
+  sessionTitle: string;
+  isPending: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Delete chat?</DialogTitle>
+        <DialogDescription>
+          Delete <span className="font-medium text-foreground">{sessionTitle}</span> and all of its
+          messages and grounded analysis artifacts. This cannot be undone.
+        </DialogDescription>
+      </DialogHeader>
+      <DialogFooter>
+        <Button
+          variant="outline"
+          onClick={onCancel}
+          disabled={isPending}
+        >
+          Cancel
+        </Button>
+        <Button
+          variant="destructive"
+          onClick={onConfirm}
+          disabled={isPending}
+        >
+          {isPending ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Deleting...
+            </>
+          ) : (
+            "Delete Chat"
+          )}
+        </Button>
+      </DialogFooter>
+    </>
+  );
 }
 
 export function AnalysisSessionList({
@@ -283,20 +330,23 @@ export function AnalysisSessionList({
         </DialogContent>
       </Dialog>
 
-      <ConfirmDestructiveDialog
+      <Dialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
           if (!open && pendingSessionAction === null) {
             setDeleteTarget(null);
           }
         }}
-        title="Delete chat?"
-        description="This will permanently delete the chat, its messages, and any grounded analysis artifacts tied to it."
-        confirmText={deleteTarget?.title ?? ""}
-        confirmLabel="Type the chat title to confirm"
-        destructiveLabel="Delete Chat"
-        onConfirm={handleDeleteConfirm}
-      />
+      >
+        <DialogContent showCloseButton={pendingSessionAction === null}>
+          <AnalysisDeleteSessionDialogContent
+            sessionTitle={deleteTarget?.title ?? "this chat"}
+            isPending={pendingSessionAction !== null}
+            onCancel={() => setDeleteTarget(null)}
+            onConfirm={() => { void handleDeleteConfirm(); }}
+          />
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
