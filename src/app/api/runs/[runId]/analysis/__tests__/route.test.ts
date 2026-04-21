@@ -1,3 +1,4 @@
+import { createUIMessageStream } from "ai";
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -121,24 +122,61 @@ function makeStreamResult(options: {
   onError?: Error;
 }) {
   return {
-    toUIMessageStreamResponse: ({ onFinish, onError }: {
+    toUIMessageStream: ({
+      originalMessages,
+      onFinish,
+      onError,
+      sendFinish = true,
+    }: {
+      originalMessages?: Array<Record<string, unknown>>;
       onFinish?: (event: {
         responseMessage: { parts: Array<Record<string, unknown>> };
         isAborted: boolean;
-      }) => Promise<void>;
+        finishReason?: string;
+      }) => void;
       onError?: (error: Error) => string;
-    }) => {
-      if (options.onError) {
-        onError?.(options.onError);
-      }
-      if (options.responseMessage) {
-        void onFinish?.({
-          responseMessage: options.responseMessage,
-          isAborted: false,
-        });
-      }
-      return new Response("stream");
-    },
+      sendFinish?: boolean;
+    }) => createUIMessageStream({
+      originalMessages: originalMessages as never,
+      onFinish,
+      execute: ({ writer }) => {
+        writer.write({ type: "start" });
+        if (options.onError) {
+          writer.write({
+            type: "error",
+            errorText: onError?.(options.onError) ?? options.onError.message,
+          });
+          return;
+        }
+
+        for (const part of options.responseMessage?.parts ?? []) {
+          if (part.type === "text" && typeof part.text === "string") {
+            writer.write({ type: "text-start", id: "text-1" });
+            writer.write({ type: "text-delta", id: "text-1", delta: part.text });
+            writer.write({ type: "text-end", id: "text-1" });
+            continue;
+          }
+
+          if (part.type === "tool-getTableCard") {
+            writer.write({
+              type: "tool-input-available",
+              toolCallId: String(part.toolCallId ?? "tool-1"),
+              toolName: "getTableCard",
+              input: part.input ?? {},
+            });
+            writer.write({
+              type: "tool-output-available",
+              toolCallId: String(part.toolCallId ?? "tool-1"),
+              output: part.output,
+            });
+          }
+        }
+
+        if (sendFinish) {
+          writer.write({ type: "finish", finishReason: "stop" });
+        }
+      },
+    }),
   };
 }
 
@@ -206,6 +244,7 @@ describe("analysis chat route", () => {
         },
       }),
       getTraceCapture: () => makeTraceCapture(),
+      getGroundingCapture: () => [],
     });
 
     const response = await POST(
@@ -221,7 +260,7 @@ describe("analysis chat route", () => {
     );
 
     expect(response.status).toBe(200);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await response.text();
     expect(mocks.mutateInternal).toHaveBeenCalledTimes(2);
     expect(mocks.mutateInternal.mock.calls[0][1]).toEqual({
       sessionId: "session-1",
@@ -320,6 +359,7 @@ describe("analysis chat route", () => {
         },
       }),
       getTraceCapture: () => makeTraceCapture(),
+      getGroundingCapture: () => [],
     });
 
     const response = await POST(
@@ -335,7 +375,7 @@ describe("analysis chat route", () => {
     );
 
     expect(response.status).toBe(200);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await response.text();
     expect(mocks.mutateInternal).toHaveBeenCalledTimes(3);
     expect(mocks.mutateInternal.mock.calls[1][1]).toEqual({
       sessionId: "session-1",
@@ -359,13 +399,14 @@ describe("analysis chat route", () => {
       role: "assistant",
       content: "Here is the grounded table.",
       parts: [
-        { type: "text", text: "Here is the grounded table." },
         {
           type: "tool-getTableCard",
           state: "output-available",
           artifactId: "artifact-1",
           label: "Q1 overall",
+          toolCallId: "tool-1",
         },
+        { type: "text", text: "Here is the grounded table." },
       ],
       agentMetrics: {
         model: "gpt-analysis",
@@ -374,6 +415,193 @@ describe("analysis chat route", () => {
         durationMs: 850,
       },
     });
+  });
+
+  it("persists grounding refs for numeric claims backed by a newly rendered table card", async () => {
+    mocks.query
+      .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
+      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Audit Session", titleSource: "manual" })
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
+    mocks.mutateInternal
+      .mockResolvedValueOnce("user-msg-1")
+      .mockResolvedValueOnce("artifact-1")
+      .mockResolvedValueOnce("assistant-msg-1");
+    mocks.streamAnalysisResponse.mockResolvedValueOnce({
+      streamResult: makeStreamResult({
+        responseMessage: {
+          parts: [
+            {
+              type: "tool-getTableCard",
+              toolCallId: "tool-1",
+              state: "output-available",
+              input: {
+                tableId: "q1",
+                rowFilter: null,
+                cutFilter: null,
+                valueMode: "pct",
+              },
+              output: {
+                status: "available",
+                tableId: "q1",
+                title: "Q1 overall",
+                questionId: "Q1",
+                questionText: "How satisfied are you?",
+                tableType: "frequency",
+                surveySection: null,
+                baseText: "All respondents",
+                tableSubtitle: null,
+                userNote: null,
+                valueMode: "pct",
+                columns: [],
+                rows: [],
+                totalRows: 0,
+                totalColumns: 0,
+                truncatedRows: 0,
+                truncatedColumns: 0,
+                requestedRowFilter: null,
+                requestedCutFilter: null,
+                significanceTest: null,
+                significanceLevel: null,
+                comparisonGroups: [],
+                sourceRefs: [],
+              },
+            },
+            { type: "text", text: "Overall satisfaction is 45%." },
+          ],
+        },
+      }),
+      getTraceCapture: () => makeTraceCapture(),
+      getGroundingCapture: () => [],
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/runs/run-1/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          messages: [{ id: "user-1", role: "user", parts: [{ type: "text", text: "What is overall satisfaction?" }] }],
+        }),
+      }),
+      { params: Promise.resolve({ runId: "run-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(mocks.mutateInternal.mock.calls[2][1]).toEqual(expect.objectContaining({
+      groundingRefs: [
+        expect.objectContaining({
+          claimId: "numeric-1",
+          claimType: "numeric",
+          evidenceKind: "table_card",
+          refType: "table",
+          refId: "q1",
+          label: "Q1 overall",
+          artifactId: "artifact-1",
+          anchorId: "artifact-1",
+          sourceTableId: "q1",
+          sourceQuestionId: "Q1",
+          renderedInCurrentMessage: true,
+        }),
+      ],
+    }));
+  });
+
+  it("uses a prior rendered table card as evidence for a later numeric answer", async () => {
+    const priorArtifactPayload = {
+      status: "available",
+      tableId: "q1",
+      title: "Q1 overall",
+      questionId: "Q1",
+      questionText: "How satisfied are you?",
+      tableType: "frequency",
+      surveySection: null,
+      baseText: "All respondents",
+      tableSubtitle: null,
+      userNote: null,
+      valueMode: "pct",
+      columns: [],
+      rows: [],
+      totalRows: 0,
+      totalColumns: 0,
+      truncatedRows: 0,
+      truncatedColumns: 0,
+      requestedRowFilter: null,
+      requestedCutFilter: null,
+      significanceTest: null,
+      significanceLevel: null,
+      comparisonGroups: [],
+      sourceRefs: [],
+    };
+
+    mocks.query
+      .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
+      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Audit Session", titleSource: "manual" })
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{
+        _id: "artifact-1",
+        artifactType: "table_card",
+        title: "Q1 overall",
+        sourceTableIds: ["q1"],
+        sourceQuestionIds: ["Q1"],
+        payload: priorArtifactPayload,
+      }])
+      .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
+    mocks.mutateInternal
+      .mockResolvedValueOnce("user-msg-1")
+      .mockResolvedValueOnce("assistant-msg-1");
+    mocks.streamAnalysisResponse.mockResolvedValueOnce({
+      streamResult: makeStreamResult({
+        responseMessage: {
+          parts: [{ type: "text", text: "Overall satisfaction is still 45%." }],
+        },
+      }),
+      getTraceCapture: () => makeTraceCapture(),
+      getGroundingCapture: () => [
+        {
+          toolName: "viewTable",
+          toolCallId: "view-1",
+          sourceRefs: [{ refType: "table", refId: "q1", label: "Q1 overall" }],
+          tableCard: priorArtifactPayload,
+        },
+      ],
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/runs/run-1/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          messages: [{ id: "user-1", role: "user", parts: [{ type: "text", text: "Remind me of overall satisfaction" }] }],
+        }),
+      }),
+      { params: Promise.resolve({ runId: "run-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(mocks.mutateInternal).toHaveBeenCalledTimes(2);
+    expect(mocks.mutateInternal.mock.calls[1][1]).toEqual(expect.objectContaining({
+      content: "Overall satisfaction is still 45%.",
+      groundingRefs: [
+        expect.objectContaining({
+          claimId: "numeric-1",
+          claimType: "numeric",
+          evidenceKind: "table_card",
+          refType: "table",
+          refId: "q1",
+          label: "Q1 overall",
+          artifactId: "artifact-1",
+          anchorId: "artifact-1",
+          sourceTableId: "q1",
+          sourceQuestionId: "Q1",
+          renderedInCurrentMessage: false,
+        }),
+      ],
+    }));
   });
 
   it("does not fail the response when writing the success trace throws", async () => {
@@ -401,6 +629,7 @@ describe("analysis chat route", () => {
           estimatedCostUsd: 0.001,
         },
       }),
+      getGroundingCapture: () => [],
     });
 
     const response = await POST(
@@ -416,7 +645,7 @@ describe("analysis chat route", () => {
     );
 
     expect(response.status).toBe(200);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await response.text();
     expect(mocks.mutateInternal).toHaveBeenCalledTimes(2);
   });
 
@@ -445,6 +674,7 @@ describe("analysis chat route", () => {
         finalClassification: "transient",
         terminalError: "stream exploded",
       }),
+      getGroundingCapture: () => [],
     });
 
     const response = await POST(
@@ -460,7 +690,7 @@ describe("analysis chat route", () => {
     );
 
     expect(response.status).toBe(200);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await response.text();
     expect(mocks.writeAnalysisTurnErrorTrace).toHaveBeenCalledWith(expect.objectContaining({
       runResultValue: { outputDir: "/tmp/out" },
       latestUserPrompt: "Why did this fail?",
@@ -486,6 +716,7 @@ describe("analysis chat route", () => {
         },
       }),
       getTraceCapture: () => makeTraceCapture(),
+      getGroundingCapture: () => [],
     });
 
     const response = await POST(
@@ -501,7 +732,7 @@ describe("analysis chat route", () => {
     );
 
     expect(response.status).toBe(200);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await response.text();
     expect(mocks.generateAnalysisSessionTitle).toHaveBeenCalledWith({
       userPrompt: "Summarize the main brand drivers",
       assistantResponse: "Top drivers center on value and ease of use.",

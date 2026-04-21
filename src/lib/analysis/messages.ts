@@ -1,7 +1,13 @@
 import { isTextUIPart, type UIMessage } from "ai";
 
 import { isRenderableAnalysisToolType, TABLE_CARD_TOOL_TYPE } from "@/lib/analysis/toolLabels";
-import { isAnalysisTableCard, type AnalysisTableCard } from "@/lib/analysis/types";
+import {
+  isAnalysisTableCard,
+  type AnalysisEvidenceItem,
+  type AnalysisGroundingRef,
+  type AnalysisMessageMetadata,
+  type AnalysisTableCard,
+} from "@/lib/analysis/types";
 
 export const MAX_ANALYSIS_MESSAGE_CHARS = 4000;
 
@@ -17,6 +23,7 @@ interface PersistedAnalysisMessageRecord {
     label?: string;
     toolCallId?: string;
   }>;
+  groundingRefs?: AnalysisGroundingRef[];
 }
 
 interface PersistedAnalysisArtifactRecord {
@@ -30,6 +37,60 @@ export function sanitizeAnalysisMessageContent(content: string): string {
     .replace(/[<>]/g, "")
     .trim()
     .slice(0, MAX_ANALYSIS_MESSAGE_CHARS);
+}
+
+export function buildAnalysisEvidenceItems(
+  groundingRefs: AnalysisGroundingRef[] | undefined,
+): AnalysisEvidenceItem[] {
+  if (!groundingRefs || groundingRefs.length === 0) return [];
+
+  const deduped = new Map<string, AnalysisEvidenceItem>();
+
+  for (const ref of groundingRefs) {
+    const key = [
+      ref.evidenceKind,
+      ref.claimType,
+      ref.artifactId ?? "",
+      ref.anchorId ?? "",
+      ref.refType,
+      ref.refId,
+      ref.sourceTableId ?? "",
+      ref.sourceQuestionId ?? "",
+    ].join("::");
+
+    if (deduped.has(key)) continue;
+
+    deduped.set(key, {
+      key,
+      claimType: ref.claimType,
+      evidenceKind: ref.evidenceKind,
+      refType: ref.refType,
+      refId: ref.refId,
+      label: ref.label,
+      anchorId: ref.anchorId ?? null,
+      artifactId: ref.artifactId ?? null,
+      sourceTableId: ref.sourceTableId ?? null,
+      sourceQuestionId: ref.sourceQuestionId ?? null,
+      renderedInCurrentMessage: ref.renderedInCurrentMessage ?? false,
+    });
+  }
+
+  return [...deduped.values()];
+}
+
+export function getAnalysisMessageMetadata(
+  message: Pick<UIMessage, "metadata">,
+): AnalysisMessageMetadata | null {
+  if (!message.metadata || typeof message.metadata !== "object") {
+    return null;
+  }
+
+  const candidate = message.metadata as AnalysisMessageMetadata;
+  if (!candidate.hasGroundedClaims && (!candidate.evidence || candidate.evidence.length === 0)) {
+    return null;
+  }
+
+  return candidate;
 }
 
 export function getAnalysisUIMessageText(message: Pick<UIMessage, "parts">): string {
@@ -69,6 +130,14 @@ export function persistedAnalysisMessagesToUIMessages(
   return messages.map((message) => ({
     id: String(message._id),
     role: message.role,
+    ...(message.groundingRefs && message.groundingRefs.length > 0
+      ? {
+          metadata: {
+            hasGroundedClaims: true,
+            evidence: buildAnalysisEvidenceItems(message.groundingRefs),
+          } satisfies AnalysisMessageMetadata,
+        }
+      : {}),
     parts: (() => {
       const parts: UIMessage["parts"] = [];
 

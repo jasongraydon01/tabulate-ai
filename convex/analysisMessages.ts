@@ -2,9 +2,17 @@ import { v } from "convex/values";
 import { query, internalMutation } from "./_generated/server";
 
 const groundingRefValidator = v.object({
+  claimId: v.string(),
+  claimType: v.union(v.literal("numeric"), v.literal("context")),
+  evidenceKind: v.union(v.literal("table_card"), v.literal("context")),
   refType: v.string(),
   refId: v.string(),
-  label: v.optional(v.string()),
+  label: v.string(),
+  anchorId: v.optional(v.string()),
+  artifactId: v.optional(v.id("analysisArtifacts")),
+  sourceTableId: v.optional(v.string()),
+  sourceQuestionId: v.optional(v.string()),
+  renderedInCurrentMessage: v.optional(v.boolean()),
 });
 
 const agentMetricsValidator = v.object({

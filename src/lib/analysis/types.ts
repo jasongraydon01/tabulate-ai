@@ -15,6 +15,43 @@ export interface AnalysisSourceRef {
   label?: string;
 }
 
+export type AnalysisGroundingClaimType = "numeric" | "context";
+
+export type AnalysisEvidenceKind = "table_card" | "context";
+
+export interface AnalysisGroundingRef {
+  claimId: string;
+  claimType: AnalysisGroundingClaimType;
+  evidenceKind: AnalysisEvidenceKind;
+  refType: AnalysisSourceRef["refType"];
+  refId: string;
+  label: string;
+  anchorId?: string | null;
+  artifactId?: string | null;
+  sourceTableId?: string | null;
+  sourceQuestionId?: string | null;
+  renderedInCurrentMessage?: boolean;
+}
+
+export interface AnalysisEvidenceItem {
+  key: string;
+  claimType: AnalysisGroundingClaimType;
+  evidenceKind: AnalysisEvidenceKind;
+  refType: AnalysisSourceRef["refType"];
+  refId: string;
+  label: string;
+  anchorId?: string | null;
+  artifactId?: string | null;
+  sourceTableId?: string | null;
+  sourceQuestionId?: string | null;
+  renderedInCurrentMessage?: boolean;
+}
+
+export interface AnalysisMessageMetadata {
+  hasGroundedClaims?: boolean;
+  evidence?: AnalysisEvidenceItem[];
+}
+
 export interface AnalysisCatalogQuestionMatch {
   questionId: string;
   questionText: string;

@@ -14,14 +14,17 @@ import {
   getBannerPlanContext,
   getQuestionContext,
   getRunContext,
+  sanitizeGroundingToolOutput,
   getSurveyQuestion,
   getTableCard,
   listBannerCuts,
   searchRunCatalog,
   type AnalysisGroundingContext,
 } from "@/lib/analysis/grounding";
+import type { AnalysisTurnGroundingEvent } from "@/lib/analysis/claimCheck";
 import { createAnalysisScratchpadTool } from "@/lib/analysis/scratchpad";
 import type { AnalysisTraceRetryEvent } from "@/lib/analysis/trace";
+import type { AnalysisSourceRef, AnalysisTableCard } from "@/lib/analysis/types";
 import { buildAnalysisInstructions, buildAnalysisQuestionCatalog } from "@/prompts/analysis";
 import { calculateCostSync, recordAgentMetrics } from "@/lib/observability";
 import { retryWithPolicyHandling } from "@/lib/retryWithPolicyHandling";
@@ -39,10 +42,55 @@ export async function streamAnalysisResponse({
   const sanitizedMessages = getSanitizedConversationMessagesForModel(messages);
   const { tool: scratchpad, getEntries } = createAnalysisScratchpadTool();
   const retryEvents: AnalysisTraceRetryEvent[] = [];
+  const groundingEvents: AnalysisTurnGroundingEvent[] = [];
   let usage = {
     inputTokens: 0,
     outputTokens: 0,
   };
+
+  function captureGroundingEvent(params: {
+    toolName: string;
+    toolCallId?: string;
+    result: unknown;
+  }) {
+    const sourceRefs = (() => {
+      if (!params.result || typeof params.result !== "object") return [];
+      const record = params.result as { sourceRefs?: AnalysisSourceRef[] };
+      return Array.isArray(record.sourceRefs) ? record.sourceRefs : [];
+    })();
+
+    const tableCard = (() => {
+      if (!params.result || typeof params.result !== "object") return undefined;
+      const record = params.result as Partial<AnalysisTableCard>;
+      if (record.status === "available" && typeof record.tableId === "string" && Array.isArray(record.rows)) {
+        return params.result as AnalysisTableCard;
+      }
+      return undefined;
+    })();
+
+    if (sourceRefs.length === 0 && !tableCard) return;
+
+    groundingEvents.push({
+      toolName: params.toolName,
+      toolCallId: params.toolCallId ?? params.toolName,
+      sourceRefs,
+      ...(tableCard ? { tableCard } : {}),
+    });
+  }
+
+  async function executeGroundedTool<T>(
+    toolName: string,
+    resolve: () => Promise<T> | T,
+    options?: { toolCallId?: string },
+  ): Promise<T> {
+    const result = sanitizeGroundingToolOutput(await resolve());
+    captureGroundingEvent({
+      toolName,
+      toolCallId: options?.toolCallId,
+      result,
+    });
+    return result;
+  }
 
   const questionCatalog = buildAnalysisQuestionCatalog(
     groundingContext.questions.map((question) => ({
@@ -86,7 +134,10 @@ export async function streamAnalysisResponse({
             inputSchema: z.object({
               query: z.string().min(1).max(200),
             }),
-            execute: async ({ query }) => searchRunCatalog(groundingContext, query),
+            execute: async ({ query }) => executeGroundedTool(
+              "searchRunCatalog",
+              () => searchRunCatalog(groundingContext, query),
+            ),
           }),
           viewTable: tool({
             description: "Inspect a table's data without showing it to the user. Use this to check whether a table is the right one before rendering it. Returns the same data as getTableCard but does not render inline.",
@@ -96,12 +147,16 @@ export async function streamAnalysisResponse({
               cutFilter: z.string().min(1).max(200).nullable().optional(),
               valueMode: z.enum(["pct", "count", "n", "mean"]).optional(),
             }),
-            execute: async ({ tableId, rowFilter, cutFilter, valueMode }) => getTableCard(groundingContext, {
-              tableId,
-              rowFilter,
-              cutFilter,
-              valueMode,
-            }),
+            execute: async ({ tableId, rowFilter, cutFilter, valueMode }, options) => executeGroundedTool(
+              "viewTable",
+              () => getTableCard(groundingContext, {
+                tableId,
+                rowFilter,
+                cutFilter,
+                valueMode,
+              }),
+              { toolCallId: options.toolCallId },
+            ),
           }),
           getTableCard: tool({
             description: "Render a table card inline for the user to see. Only call this when you have confirmed the table is the one the user needs.",
@@ -111,45 +166,69 @@ export async function streamAnalysisResponse({
               cutFilter: z.string().min(1).max(200).nullable().optional(),
               valueMode: z.enum(["pct", "count", "n", "mean"]).optional(),
             }),
-            execute: async ({ tableId, rowFilter, cutFilter, valueMode }) => getTableCard(groundingContext, {
-              tableId,
-              rowFilter,
-              cutFilter,
-              valueMode,
-            }),
+            execute: async ({ tableId, rowFilter, cutFilter, valueMode }, options) => executeGroundedTool(
+              "getTableCard",
+              () => getTableCard(groundingContext, {
+                tableId,
+                rowFilter,
+                cutFilter,
+                valueMode,
+              }),
+              { toolCallId: options.toolCallId },
+            ),
           }),
           getQuestionContext: tool({
             description: "Return grounded metadata for a specific question from questionid-final artifacts.",
             inputSchema: z.object({
               questionId: z.string().min(1).max(200),
             }),
-            execute: async ({ questionId }) => getQuestionContext(groundingContext, questionId),
+            execute: async ({ questionId }, options) => executeGroundedTool(
+              "getQuestionContext",
+              () => getQuestionContext(groundingContext, questionId),
+              { toolCallId: options.toolCallId },
+            ),
           }),
           getSurveyQuestion: tool({
             description: "Return grounded survey wording, answer options, question order, and nearby questionnaire context for a question or topic.",
             inputSchema: z.object({
               query: z.string().min(1).max(200),
             }),
-            execute: async ({ query }) => getSurveyQuestion(groundingContext, query),
+            execute: async ({ query }, options) => executeGroundedTool(
+              "getSurveyQuestion",
+              () => getSurveyQuestion(groundingContext, query),
+              { toolCallId: options.toolCallId },
+            ),
           }),
           listBannerCuts: tool({
             description: "List available banner groups and cuts for this run.",
             inputSchema: z.object({
               filter: z.string().min(1).max(200).nullable().optional(),
             }),
-            execute: async ({ filter }) => listBannerCuts(groundingContext, filter),
+            execute: async ({ filter }, options) => executeGroundedTool(
+              "listBannerCuts",
+              () => listBannerCuts(groundingContext, filter),
+              { toolCallId: options.toolCallId },
+            ),
           }),
           getBannerPlanContext: tool({
             description: "Return the grounded stage-20 banner plan, including original group structure and source context.",
             inputSchema: z.object({
               filter: z.string().min(1).max(200).nullable().optional(),
             }),
-            execute: async ({ filter }) => getBannerPlanContext(groundingContext, filter),
+            execute: async ({ filter }, options) => executeGroundedTool(
+              "getBannerPlanContext",
+              () => getBannerPlanContext(groundingContext, filter),
+              { toolCallId: options.toolCallId },
+            ),
           }),
           getRunContext: tool({
             description: "Return project-level and run-level analysis context, including project name, research objectives, banner summary, and high-level run stats.",
             inputSchema: z.object({}),
-            execute: async () => getRunContext(groundingContext),
+            execute: async (_input, options) => executeGroundedTool(
+              "getRunContext",
+              () => getRunContext(groundingContext),
+              { toolCallId: options.toolCallId },
+            ),
           }),
         },
         onFinish: ({ totalUsage }) => {
@@ -211,5 +290,10 @@ export async function streamAnalysisResponse({
       finalClassification: retryResult.finalClassification ?? retryEvents.at(-1)?.lastClassification ?? null,
       terminalError: retryResult.success ? null : (retryResult.error ?? null),
     }),
+    getGroundingCapture: () => groundingEvents.map((event) => ({
+      ...event,
+      sourceRefs: event.sourceRefs.map((ref) => ({ ...ref })),
+      ...(event.tableCard ? { tableCard: { ...event.tableCard } } : {}),
+    })),
   };
 }

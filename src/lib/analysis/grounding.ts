@@ -178,6 +178,47 @@ export interface AnalysisGroundingContext {
   missingArtifacts: string[];
 }
 
+const TOOL_OUTPUT_TEXT_MAX_LENGTH = 4000;
+
+function sanitizeGroundingText(value: string): string {
+  return value
+    .replace(/[<>]/g, "")
+    .replace(/(^|\n)\s*(system|assistant|user|tool|developer)\s*:/gim, "$1")
+    .replace(/(^|\n)\s*(ignore|disregard|override|forget)\b[^\n]*/gim, "$1")
+    .replace(/<\/?(system|assistant|user|tool|developer|instruction|prompt|analysis)[^>]*>/gim, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, TOOL_OUTPUT_TEXT_MAX_LENGTH);
+}
+
+function shouldPreserveGroundingKey(key: string): boolean {
+  return /(id|key)$/i.test(key);
+}
+
+export function sanitizeGroundingToolOutput<T>(value: T): T {
+  if (typeof value === "string") {
+    return sanitizeGroundingText(value) as T;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeGroundingToolOutput(item)) as T;
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>).map(([key, entryValue]) => {
+    if (shouldPreserveGroundingKey(key) && typeof entryValue === "string") {
+      return [key, entryValue];
+    }
+
+    return [key, sanitizeGroundingToolOutput(entryValue)];
+  });
+
+  return Object.fromEntries(entries) as T;
+}
+
 function normalizeText(value: string | null | undefined): string {
   return (value ?? "")
     .toLowerCase()

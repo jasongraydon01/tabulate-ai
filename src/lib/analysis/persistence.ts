@@ -25,6 +25,7 @@ export interface PendingTableCardArtifact {
 export interface PendingTableCardTemplate {
   state: string;
   label: string;
+  toolCallId?: string;
 }
 
 export type PendingAnalysisPart =
@@ -89,6 +90,7 @@ export function buildPersistedAnalysisParts(parts: UIMessage["parts"]): PendingA
           template: {
             state: part.state,
             label: part.output.title,
+            toolCallId: part.toolCallId,
           },
           artifact: {
             title: part.output.title,

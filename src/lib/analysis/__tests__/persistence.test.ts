@@ -151,7 +151,7 @@ describe("buildPersistedAnalysisParts", () => {
     expect(pending).toHaveLength(1);
     expect(pending[0]).toEqual({
       kind: "tableCard",
-      template: { state: "output-available", label: "Q1 overall" },
+      template: { state: "output-available", label: "Q1 overall", toolCallId: "call-table" },
       artifact: {
         title: "Q1 overall",
         tableId: "q1",

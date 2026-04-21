@@ -31,6 +31,7 @@ vi.mock("@/lib/analysis/grounding", () => ({
   listBannerCuts: vi.fn(async () => ({ status: "available" })),
   getBannerPlanContext: vi.fn(async () => ({ status: "available" })),
   getRunContext: vi.fn(async () => ({ status: "available" })),
+  sanitizeGroundingToolOutput: vi.fn((value) => value),
 }));
 
 vi.mock("@/prompts/analysis", () => ({
@@ -161,6 +162,7 @@ describe("streamAnalysisResponse", () => {
     });
 
     const capture = result.getTraceCapture();
+    const groundingCapture = result.getGroundingCapture();
 
     expect(capture.scratchpadEntries).toHaveLength(1);
     expect(capture.scratchpadEntries[0]?.content).toBe("Check grouped cuts first.");
@@ -191,5 +193,6 @@ describe("streamAnalysisResponse", () => {
       { input: 120, output: 45 },
       expect.any(Number),
     );
+    expect(groundingCapture).toEqual([]);
   });
 });

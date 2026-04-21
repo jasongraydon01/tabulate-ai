@@ -8,11 +8,17 @@ import {
   isToolUIPart,
   type UIMessage,
 } from "ai";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Link2 } from "lucide-react";
 
 import { GroundedTableCard } from "@/components/analysis/GroundedTableCard";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { getAnalysisMessageMetadata } from "@/lib/analysis/messages";
 import { getAnalysisToolActivityLabel } from "@/lib/analysis/toolLabels";
-import { isAnalysisTableCard } from "@/lib/analysis/types";
+import { isAnalysisTableCard, type AnalysisEvidenceItem } from "@/lib/analysis/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -114,6 +120,25 @@ export function getAnalysisTraceHeaderLabel(
   return isExpanded ? "Analysis steps" : (collapsedSummary ?? "Analysis steps");
 }
 
+export function getAnalysisMessageEvidenceItems(message: UIMessage): AnalysisEvidenceItem[] {
+  return getAnalysisMessageMetadata(message)?.evidence ?? [];
+}
+
+function getAnalysisEvidenceAnchorId(anchorId: string): string {
+  return `analysis-evidence-${anchorId.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
+}
+
+function scrollToEvidenceAnchor(anchorId: string) {
+  const target = document.getElementById(getAnalysisEvidenceAnchorId(anchorId));
+  if (!target) return;
+
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
+  target.classList.add("ring-2", "ring-tab-teal/40", "ring-offset-2", "ring-offset-background");
+  window.setTimeout(() => {
+    target.classList.remove("ring-2", "ring-tab-teal/40", "ring-offset-2", "ring-offset-background");
+  }, 1200);
+}
+
 export function AnalysisMessage({
   message,
   isStreaming = false,
@@ -126,8 +151,10 @@ export function AnalysisMessage({
   const hasGroundedTableCard = !isUser && message.parts.some(
     (part) => isToolUIPart(part) && part.type === "tool-getTableCard",
   );
+  const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
 
   const traceEntries = getAnalysisTraceEntries(message);
+  const evidenceItems = getAnalysisMessageEvidenceItems(message);
 
   const hasTrace = traceEntries.length > 0;
 
@@ -232,10 +259,15 @@ export function AnalysisMessage({
               if (isToolUIPart(part) && part.type === "tool-getTableCard") {
                 if (part.state === "output-available" && isAnalysisTableCard(part.output)) {
                   return (
-                    <GroundedTableCard
+                    <div
                       key={`${message.id}-${part.toolCallId}`}
-                      card={part.output}
-                    />
+                      id={getAnalysisEvidenceAnchorId(part.toolCallId)}
+                      className="scroll-mt-24 rounded-xl transition-shadow duration-300"
+                    >
+                      <GroundedTableCard
+                        card={part.output}
+                      />
+                    </div>
                   );
                 }
 
@@ -251,6 +283,44 @@ export function AnalysisMessage({
 
               return null;
             })}
+
+            {evidenceItems.length > 0 ? (
+              <Collapsible open={isEvidenceOpen} onOpenChange={setIsEvidenceOpen}>
+                <div className="pt-1">
+                  <CollapsibleTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground/70"
+                    >
+                      <ChevronDown
+                        className={cn("h-3 w-3 transition-transform", isEvidenceOpen && "rotate-180")}
+                      />
+                      <span>Evidence ({evidenceItems.length})</span>
+                    </button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pt-2">
+                    <div className="rounded-xl border border-border/60 bg-muted/15 px-3 py-2">
+                      <div className="space-y-1.5">
+                        {evidenceItems.map((item) => (
+                          <button
+                            key={item.key}
+                            type="button"
+                            onClick={() => item.anchorId ? scrollToEvidenceAnchor(item.anchorId) : undefined}
+                            className={cn(
+                              "flex w-full items-center gap-2 text-left text-[11px] leading-5 text-muted-foreground",
+                              item.anchorId ? "hover:text-foreground/80" : "cursor-default",
+                            )}
+                          >
+                            <Link2 className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{item.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
+            ) : null}
           </div>
         )}
       </div>

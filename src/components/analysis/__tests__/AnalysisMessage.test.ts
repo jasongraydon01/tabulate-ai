@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { UIMessage } from "ai";
 
 import {
+  getAnalysisMessageEvidenceItems,
   getAnalysisTraceEntries,
   getAnalysisTraceHeaderLabel,
 } from "@/components/analysis/AnalysisMessage";
@@ -102,5 +103,39 @@ describe("AnalysisMessage trace presentation", () => {
       },
     ]);
     expect(getAnalysisTraceHeaderLabel(traceEntries, null, true)).toBe("Analysis steps");
+  });
+
+  it("reads evidence metadata for grounded claim messages", () => {
+    const message: UIMessage = {
+      id: "assistant-4",
+      role: "assistant",
+      metadata: {
+        hasGroundedClaims: true,
+        evidence: [
+          {
+            key: "table_card::numeric::artifact-1",
+            claimType: "numeric",
+            evidenceKind: "table_card",
+            refType: "table",
+            refId: "q1",
+            label: "Q1 overall",
+            anchorId: "artifact-1",
+            artifactId: "artifact-1",
+            sourceTableId: "q1",
+            sourceQuestionId: "Q1",
+            renderedInCurrentMessage: false,
+          },
+        ],
+      },
+      parts: [{ type: "text", text: "Overall satisfaction is 45%." }],
+    };
+
+    expect(getAnalysisMessageEvidenceItems(message)).toEqual([
+      expect.objectContaining({
+        label: "Q1 overall",
+        refId: "q1",
+        anchorId: "artifact-1",
+      }),
+    ]);
   });
 });

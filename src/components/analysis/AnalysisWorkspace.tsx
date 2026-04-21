@@ -13,6 +13,7 @@ import { AnalysisEmptyState } from "@/components/analysis/AnalysisEmptyState";
 import { AnalysisSessionList } from "@/components/analysis/AnalysisSessionList";
 import { AnalysisThread } from "@/components/analysis/AnalysisThread";
 import { persistedAnalysisMessagesToUIMessages } from "@/lib/analysis/messages";
+import type { AnalysisGroundingRef } from "@/lib/analysis/types";
 import { useAuthContext } from "@/providers/auth-provider";
 
 interface AnalysisWorkspaceProps {
@@ -20,6 +21,36 @@ interface AnalysisWorkspaceProps {
   projectName: string;
   runId: string;
   runStatus: string;
+}
+
+function normalizeGroundingRefForUI(ref: {
+  claimId: string;
+  claimType: "numeric" | "context";
+  evidenceKind: "table_card" | "context";
+  refType: string;
+  refId: string;
+  label: string;
+  anchorId?: string;
+  artifactId?: string;
+  sourceTableId?: string;
+  sourceQuestionId?: string;
+  renderedInCurrentMessage?: boolean;
+}): AnalysisGroundingRef {
+  return {
+    claimId: ref.claimId,
+    claimType: ref.claimType,
+    evidenceKind: ref.evidenceKind,
+    refType: ref.refType as AnalysisGroundingRef["refType"],
+    refId: ref.refId,
+    label: ref.label,
+    ...(ref.anchorId ? { anchorId: ref.anchorId } : {}),
+    ...(ref.artifactId ? { artifactId: String(ref.artifactId) } : {}),
+    ...(ref.sourceTableId ? { sourceTableId: ref.sourceTableId } : {}),
+    ...(ref.sourceQuestionId ? { sourceQuestionId: ref.sourceQuestionId } : {}),
+    ...(typeof ref.renderedInCurrentMessage === "boolean"
+      ? { renderedInCurrentMessage: ref.renderedInCurrentMessage }
+      : {}),
+  };
 }
 
 export function AnalysisWorkspace({
@@ -177,6 +208,7 @@ export function AnalysisWorkspace({
             _id: String(message._id),
             role: message.role,
             content: message.content,
+            groundingRefs: message.groundingRefs?.map(normalizeGroundingRefForUI),
             parts: message.parts?.map((part) => ({
               type: part.type,
               text: part.text,
