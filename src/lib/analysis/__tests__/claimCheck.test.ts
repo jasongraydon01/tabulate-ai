@@ -22,6 +22,7 @@ function makeTableCard(overrides: Partial<AnalysisTableCard> = {}): AnalysisTabl
     totalColumns: 0,
     truncatedRows: 0,
     truncatedColumns: 0,
+    focusedCutIds: null,
     requestedRowFilter: null,
     requestedCutFilter: null,
     significanceTest: null,

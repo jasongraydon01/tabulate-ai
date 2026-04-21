@@ -36,6 +36,7 @@ function makeTablePart(toolCallId: string): UIMessage["parts"][number] {
       totalColumns: 0,
       truncatedRows: 0,
       truncatedColumns: 0,
+      focusedCutIds: null,
       requestedRowFilter: null,
       requestedCutFilter: null,
       significanceTest: null,

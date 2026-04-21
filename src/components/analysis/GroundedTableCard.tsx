@@ -133,9 +133,36 @@ function deriveLegacyCutKey(column: AnalysisTableCardColumn): string {
   return `${deriveLegacyGroupKey(column)}::${normalizeText(column.cutName) || column.cutName.toLowerCase()}`;
 }
 
+function reorderGroupsByFocus(
+  groups: AnalysisTableCardColumnGroup[],
+  focusedCutIds: string[] | null | undefined,
+): AnalysisTableCardColumnGroup[] {
+  if (!focusedCutIds || focusedCutIds.length === 0) return groups;
+
+  const focused = new Set(focusedCutIds);
+  const totalGroups: AnalysisTableCardColumnGroup[] = [];
+  const focusedGroups: AnalysisTableCardColumnGroup[] = [];
+  const otherGroups: AnalysisTableCardColumnGroup[] = [];
+
+  for (const group of groups) {
+    if (group.groupKey === TOTAL_GROUP_KEY) {
+      totalGroups.push(group);
+      continue;
+    }
+
+    if (group.columns.some((column) => column.cutKey && focused.has(column.cutKey))) {
+      focusedGroups.push(group);
+    } else {
+      otherGroups.push(group);
+    }
+  }
+
+  return [...totalGroups, ...focusedGroups, ...otherGroups];
+}
+
 export function normalizeGroundedTableCardGroups(card: AnalysisTableCard): AnalysisTableCardColumnGroup[] {
   if (card.columnGroups && card.columnGroups.length > 0) {
-    return card.columnGroups.map((group) => ({
+    const mapped = card.columnGroups.map((group) => ({
       ...group,
       columns: group.columns.map((column) => ({
         ...column,
@@ -143,6 +170,7 @@ export function normalizeGroundedTableCardGroups(card: AnalysisTableCard): Analy
         isTotal: column.isTotal ?? group.groupKey === TOTAL_GROUP_KEY,
       })),
     }));
+    return reorderGroupsByFocus(mapped, card.focusedCutIds);
   }
 
   const groups: AnalysisTableCardColumnGroup[] = [];
@@ -166,7 +194,7 @@ export function normalizeGroundedTableCardGroups(card: AnalysisTableCard): Analy
     });
   }
 
-  return groups;
+  return reorderGroupsByFocus(groups, card.focusedCutIds);
 }
 
 export function getGroundedTableCardVisibleGroups(
@@ -184,6 +212,20 @@ export function getGroundedTableCardVisibleGroups(
 
   const totalGroups = groups.filter((group) => group.groupKey === TOTAL_GROUP_KEY);
   const nonTotalGroups = groups.filter((group) => group.groupKey !== TOTAL_GROUP_KEY);
+
+  // When the agent passed a cutFilter, lead with the focused groups so the
+  // compact view highlights what the user asked about. Every other group
+  // stays on the payload — the expand dialog and details disclosure show all.
+  if (card.focusedCutIds && card.focusedCutIds.length > 0) {
+    const focusedKeys = new Set(card.focusedCutIds);
+    const focusedGroups = nonTotalGroups.filter((group) =>
+      group.columns.some((column) => column.cutKey && focusedKeys.has(column.cutKey)),
+    );
+    if (focusedGroups.length > 0) {
+      return [...totalGroups, ...focusedGroups];
+    }
+  }
+
   const defaultScope = card.defaultScope ?? "matched_groups";
   const visibleNonTotalCount = defaultScope === "total_only"
     ? 0
@@ -264,7 +306,13 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
   const visibleRows = getGroundedTableCardVisibleRows(card, false);
   const hiddenRowCount = card.hiddenRowCount ?? card.truncatedRows;
   const previewHiddenRowCount = Math.max(card.rows.length - visibleRows.length, 0);
-  const hiddenGroupCount = card.hiddenGroupCount ?? 0;
+  const totalNonTotalCuts = allGroups
+    .filter((group) => group.groupKey !== TOTAL_GROUP_KEY)
+    .reduce((sum, group) => sum + group.columns.length, 0);
+  const visibleNonTotalCuts = visibleGroups
+    .filter((group) => group.groupKey !== TOTAL_GROUP_KEY)
+    .reduce((sum, group) => sum + group.columns.length, 0);
+  const hiddenCutCount = Math.max(totalNonTotalCuts - visibleNonTotalCuts, 0);
   const nonTotalColumnGroups = allGroups.filter((group) => group.groupKey !== TOTAL_GROUP_KEY);
   const questionHeading = buildQuestionHeading(card);
   const hasMetadata = Boolean(
@@ -276,7 +324,6 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
     || card.comparisonGroups.length > 0
     || nonTotalColumnGroups.length > 0,
   );
-  const hasDiveDeeper = previewHiddenRowCount > 0 || hiddenGroupCount > 0 || (card.hiddenCutCount ?? card.truncatedColumns) > 0;
 
   function renderTableContent({
     groups,
@@ -541,16 +588,15 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
             rowFilter: card.requestedRowFilter,
           })}
 
-          {hasDiveDeeper ? (
-            <div className="border-t border-border/40 px-2 py-1">
-              <Button variant="ghost" size="xs" className="h-auto gap-1.5 px-2 py-0.5 text-[11px] italic text-muted-foreground" onClick={() => setIsDiveDeeperOpen(true)}>
-                <Expand className="h-3 w-3 shrink-0" />
-                {hiddenRowCount > 0 ? "Answer options truncated. " : ""}
-                {hiddenRowCount === 0 && previewHiddenRowCount > 0 ? "Additional rows available. " : ""}
-                Expand table for deeper analysis.
-              </Button>
-            </div>
-          ) : null}
+          <div className="border-t border-border/40 px-2 py-1">
+            <Button variant="ghost" size="xs" className="h-auto gap-1.5 px-2 py-0.5 text-[11px] italic text-muted-foreground" onClick={() => setIsDiveDeeperOpen(true)}>
+              <Expand className="h-3 w-3 shrink-0" />
+              {hiddenRowCount > 0 ? "Answer options truncated. " : ""}
+              {hiddenRowCount === 0 && previewHiddenRowCount > 0 ? "Additional rows available. " : ""}
+              {hiddenCutCount > 0 ? `Showing ${visibleNonTotalCuts} of ${totalNonTotalCuts} cuts. ` : ""}
+              Expand table for deeper analysis.
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

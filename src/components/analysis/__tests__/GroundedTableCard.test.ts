@@ -88,14 +88,13 @@ const groupedCard: AnalysisTableCard = {
   totalRows: 9,
   totalColumns: 4,
   truncatedRows: 1,
-  truncatedColumns: 1,
+  truncatedColumns: 3,
   defaultScope: "total_only",
   initialVisibleRowCount: 8,
   initialVisibleGroupCount: 0,
   hiddenRowCount: 1,
   hiddenGroupCount: 2,
-  hiddenCutCount: 3,
-  isExpandable: true,
+  focusedCutIds: null,
   requestedRowFilter: null,
   requestedCutFilter: null,
   significanceTest: "z-test",
@@ -134,8 +133,7 @@ const legacyCard: AnalysisTableCard = {
   initialVisibleGroupCount: undefined,
   hiddenRowCount: undefined,
   hiddenGroupCount: undefined,
-  hiddenCutCount: undefined,
-  isExpandable: undefined,
+  focusedCutIds: null,
 };
 
 const frequencyCardWithStats: AnalysisTableCard = {
@@ -291,7 +289,8 @@ describe("GroundedTableCard helpers", () => {
     );
 
     expect(markup).toContain("Bank consideration");
-    expect(markup).toContain("Additional rows available. Expand table for deeper analysis.");
+    expect(markup).toContain("Additional rows available.");
+    expect(markup).toContain("Expand table for deeper analysis");
     expect(markup).not.toContain("Std Dev");
     expect(markup).not.toContain("Std Err");
   });
@@ -304,5 +303,84 @@ describe("GroundedTableCard helpers", () => {
     expect(markup).not.toContain("Full table view for this grounded result");
     expect(markup).not.toContain("Percent");
     expect(markup).not.toContain("data-slot=\"badge\"");
+  });
+
+  it("always renders the expand button on available cards, even when nothing is truncated", () => {
+    const untruncatedCard: AnalysisTableCard = {
+      ...groupedCard,
+      rows: groupedCard.rows.slice(0, 1),
+      totalRows: 1,
+      truncatedRows: 0,
+      truncatedColumns: 0,
+      initialVisibleRowCount: 1,
+      initialVisibleGroupCount: 3,
+      hiddenRowCount: 0,
+      hiddenGroupCount: 0,
+      defaultScope: "matched_groups",
+    };
+
+    const markup = renderToStaticMarkup(
+      React.createElement(GroundedTableCard, { card: untruncatedCard }),
+    );
+
+    expect(markup).toContain("Expand table for deeper analysis");
+  });
+
+  it("leads the compact view with focused cuts when cutFilter matched groups", () => {
+    const focusedCard: AnalysisTableCard = {
+      ...groupedCard,
+      defaultScope: "matched_groups",
+      initialVisibleGroupCount: 1,
+      hiddenGroupCount: 1,
+      focusedCutIds: ["group:gender::female", "group:gender::male"],
+    };
+
+    const visibleGroups = getGroundedTableCardVisibleGroups(focusedCard, false);
+    expect(visibleGroups.map((group) => group.groupName)).toEqual(["Total", "Gender"]);
+  });
+
+  it("carries every USED group in the card payload even when focus narrows the compact view", () => {
+    // The compact inline view leads with the focused Gender group; the full
+    // payload (which the details disclosure and expand dialog both render
+    // from) must still include every USED group on the source table.
+    const focusedCard: AnalysisTableCard = {
+      ...groupedCard,
+      defaultScope: "matched_groups",
+      initialVisibleGroupCount: 1,
+      hiddenGroupCount: 1,
+      focusedCutIds: ["group:gender::female", "group:gender::male"],
+    };
+
+    const allGroups = normalizeGroundedTableCardGroups(focusedCard);
+    expect(allGroups.map((group) => group.groupName)).toEqual(["Total", "Gender", "Region"]);
+
+    const compactGroups = getGroundedTableCardVisibleGroups(focusedCard, false);
+    expect(compactGroups.map((group) => group.groupName)).toEqual(["Total", "Gender"]);
+
+    const expandedGroups = getGroundedTableCardVisibleGroups(focusedCard, true);
+    expect(expandedGroups.map((group) => group.groupName)).toEqual(["Total", "Gender", "Region"]);
+  });
+
+  it("reorders non-Total groups so focused groups appear right after Total", () => {
+    // Focus is on Region — it should lead the full list even though it comes
+    // after Gender in the natural banner order.
+    const regionFocusedCard: AnalysisTableCard = {
+      ...groupedCard,
+      defaultScope: "matched_groups",
+      initialVisibleGroupCount: 1,
+      hiddenGroupCount: 1,
+      focusedCutIds: ["group:region::east"],
+    };
+
+    expect(normalizeGroundedTableCardGroups(regionFocusedCard).map((group) => group.groupName)).toEqual([
+      "Total",
+      "Region",
+      "Gender",
+    ]);
+    expect(getGroundedTableCardVisibleGroups(regionFocusedCard, true).map((group) => group.groupName)).toEqual([
+      "Total",
+      "Region",
+      "Gender",
+    ]);
   });
 });

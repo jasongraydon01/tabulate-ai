@@ -43,6 +43,7 @@ describe("deterministic follow-up suggestions", () => {
           totalColumns: 1,
           truncatedRows: 0,
           truncatedColumns: 0,
+          focusedCutIds: null,
           requestedRowFilter: null,
           requestedCutFilter: null,
           significanceTest: null,

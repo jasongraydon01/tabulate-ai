@@ -88,6 +88,7 @@ function makeTableCardPart() {
       totalColumns: 4,
       truncatedRows: 0,
       truncatedColumns: 0,
+      focusedCutIds: null,
       requestedRowFilter: null,
       requestedCutFilter: null,
       significanceTest: null,

@@ -148,6 +148,8 @@ export interface AnalysisTableCard {
   tableSubtitle: string | null;
   userNote: string | null;
   valueMode: AnalysisValueMode;
+  // `columns` / `columnGroups` always carry every USED cut on the source table.
+  // The agent's cutFilter is a render hint (see focusedCutIds), not a data filter.
   columns: AnalysisTableCardColumn[];
   columnGroups?: AnalysisTableCardColumnGroup[];
   rows: AnalysisTableCardRow[];
@@ -160,8 +162,10 @@ export interface AnalysisTableCard {
   initialVisibleGroupCount?: number;
   hiddenRowCount?: number;
   hiddenGroupCount?: number;
-  hiddenCutCount?: number;
-  isExpandable?: boolean;
+  // Cut ids matched by the agent's cutFilter — used by the UI to pick which
+  // non-Total groups lead the compact inline view. Null or empty = no focus;
+  // details disclosure and expand dialog always show every cut regardless.
+  focusedCutIds: string[] | null;
   requestedRowFilter: string | null;
   requestedCutFilter: string | null;
   significanceTest: string | null;

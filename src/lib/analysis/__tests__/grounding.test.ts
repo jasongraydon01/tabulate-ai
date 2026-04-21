@@ -322,13 +322,13 @@ describe("analysis grounding helpers", () => {
     expect(card.defaultScope).toBe("total_only");
     expect(card.initialVisibleGroupCount).toBe(0);
     expect(card.hiddenGroupCount).toBe(2);
-    expect(card.hiddenCutCount).toBe(4);
+    expect(card.focusedCutIds).toBeNull();
     expect(card.columnGroups?.map((group) => group.groupName)).toEqual(["Total", "Gender", "Region"]);
     expect(card.columns.map((column) => column.cutName)).toEqual(["Total", "Female", "Male", "East", "West"]);
     expect(card.rows[0]?.cellsByCutKey?.["__total__::total"]?.displayValue).toBe("45%");
   });
 
-  it("returns full matching groups when a cut filter is applied", () => {
+  it("carries the full USED cut set on every card and only narrows focus via cutFilter", () => {
     const card = getTableCard(context, {
       tableId: "q1_overall",
       cutFilter: "female",
@@ -341,8 +341,26 @@ describe("analysis grounding helpers", () => {
     }
 
     expect(card.defaultScope).toBe("matched_groups");
-    expect(card.columnGroups?.map((group) => group.groupName)).toEqual(["Total", "Gender"]);
-    expect(card.columns.map((column) => column.cutName)).toEqual(["Total", "Female", "Male"]);
+    // Payload always carries every USED group + cut, regardless of cutFilter.
+    expect(card.columnGroups?.map((group) => group.groupName)).toEqual(["Total", "Gender", "Region"]);
+    expect(card.columns.map((column) => column.cutName)).toEqual([
+      "Total",
+      "Female",
+      "Male",
+      "East",
+      "West",
+    ]);
+    // Rows have cells for every cut, not just the focused ones — so the expand
+    // dialog and details disclosure can render the full view.
+    expect(Object.keys(card.rows[0]?.cellsByCutKey ?? {})).toEqual([
+      "__total__::total",
+      "group:gender::female",
+      "group:gender::male",
+      "group:region::east",
+      "group:region::west",
+    ]);
+    // focusedCutIds names the cuts the UI should lead with in the compact view.
+    expect(card.focusedCutIds).toEqual(["group:gender::female", "group:gender::male"]);
     expect(card.rows[0]?.values.find((value) => value.cutName === "Female")).toEqual(
       expect.objectContaining({
         displayValue: "54%",
@@ -383,7 +401,6 @@ describe("analysis grounding helpers", () => {
 
     expect(card.initialVisibleRowCount).toBe(8);
     expect(card.hiddenRowCount).toBe(2);
-    expect(card.isExpandable).toBe(true);
     expect(card.truncatedRows).toBe(2);
   });
 

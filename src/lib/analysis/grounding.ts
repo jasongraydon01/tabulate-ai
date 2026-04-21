@@ -477,12 +477,18 @@ function buildSelectedCuts(
   cutFilter: string | null,
   bannerGroups: RawBannerGroup[],
 ): {
-  cuts: SelectedCut[];
+  // Every USED cut from the source table, Total first. Cells built against
+  // this set so the expand dialog + details disclosure always carry full data.
+  allCuts: SelectedCut[];
   columnGroups: AnalysisTableCardColumnGroup[];
+  // Cut ids the agent's cutFilter matched. Drives the inline compact render.
+  focusedCutIds: string[];
+  // Derived from focus vs full: "total_only" when no focus, "matched_groups" otherwise.
   defaultScope: "total_only" | "matched_groups";
+  // Number of non-Total groups the compact inline view leads with.
   initialVisibleGroupCount: number;
+  // Non-Total groups not in the visible-by-default set. Still available in the card.
   hiddenGroupCount: number;
-  hiddenCutCount: number;
 } {
   const bannerGroupLookup = buildBannerGroupLookup(bannerGroups);
   const allCuts = Object.entries(table.data ?? {})
@@ -523,18 +529,19 @@ function buildSelectedCuts(
     });
   }
 
-  const matchedGroups = cutFilter
+  const focusedGroups = cutFilter
     ? orderedGroups.filter((group) =>
         group.cuts.some((cut) =>
           scoreMatch(cutFilter, group.groupName, cut.cutName, cut.statLetter) > 0,
         ) || scoreMatch(cutFilter, group.groupName) > 0)
-    : orderedGroups;
+    : [];
 
-  const selectedNonTotalGroups = matchedGroups.length > 0 ? matchedGroups : orderedGroups;
-  const selectedGroups: AnalysisTableCardColumnGroup[] = [];
+  const focusedCutIds = focusedGroups.flatMap((group) => group.cuts.map((cut) => cut.cutKey));
+
+  const columnGroups: AnalysisTableCardColumnGroup[] = [];
 
   if (totalCuts.length > 0) {
-    selectedGroups.push({
+    columnGroups.push({
       groupKey: TOTAL_GROUP_KEY,
       groupName: "Total",
       columns: totalCuts.map((cut) => ({
@@ -548,8 +555,8 @@ function buildSelectedCuts(
     });
   }
 
-  for (const group of selectedNonTotalGroups) {
-    selectedGroups.push({
+  for (const group of orderedGroups) {
+    columnGroups.push({
       groupKey: group.groupKey,
       groupName: group.groupName,
       columns: group.cuts.map((cut) => ({
@@ -563,23 +570,24 @@ function buildSelectedCuts(
     });
   }
 
-  const defaultScope = totalCuts.length > 0 && !cutFilter ? "total_only" : "matched_groups";
-  const initialVisibleGroupCount = defaultScope === "matched_groups"
-    ? Math.min(getAnalysisCardPreviewGroupLimit(), selectedNonTotalGroups.length)
-    : 0;
+  const hasFocus = focusedGroups.length > 0;
+  const defaultScope = hasFocus ? "matched_groups" : totalCuts.length > 0 ? "total_only" : "matched_groups";
+  const initialVisibleGroupCount = hasFocus
+    ? focusedGroups.length
+    : defaultScope === "matched_groups"
+      ? Math.min(getAnalysisCardPreviewGroupLimit(), orderedGroups.length)
+      : 0;
 
   return {
-    cuts: [
+    allCuts: [
       ...totalCuts,
-      ...selectedNonTotalGroups.flatMap((group) => group.cuts),
+      ...orderedGroups.flatMap((group) => group.cuts),
     ],
-    columnGroups: selectedGroups,
+    columnGroups,
+    focusedCutIds,
     defaultScope,
     initialVisibleGroupCount,
-    hiddenGroupCount: Math.max(selectedNonTotalGroups.length - initialVisibleGroupCount, 0),
-    hiddenCutCount: selectedNonTotalGroups
-      .slice(initialVisibleGroupCount)
-      .reduce((sum, group) => sum + group.cuts.length, 0),
+    hiddenGroupCount: Math.max(orderedGroups.length - initialVisibleGroupCount, 0),
   };
 }
 
@@ -1436,19 +1444,19 @@ export function getTableCard(
   const valueMode = resolvePreferredValueMode(table.tableType, args.valueMode);
   const rowKeys = collectRowKeys(table);
   const {
-    cuts: selectedCuts,
+    allCuts,
     columnGroups,
+    focusedCutIds,
     defaultScope,
     initialVisibleGroupCount,
     hiddenGroupCount,
-    hiddenCutCount,
   } = buildSelectedCuts(table, cutFilter, context.bannerGroups);
   const columns: AnalysisTableCardColumn[] = columnGroups.flatMap((group) => group.columns);
 
   const prioritizedRowKeys = rowFilter
     ? (() => {
         const matching = rowKeys.filter((rowKey) => {
-          for (const cut of selectedCuts) {
+          for (const cut of allCuts) {
             const row = cut.cut[rowKey];
             if (isRawTableRow(row) && scoreMatch(rowFilter, row.label, rowKey, row.groupName) > 0) {
               return true;
@@ -1464,11 +1472,11 @@ export function getTableCard(
     : rowKeys;
 
   const rows = prioritizedRowKeys.map((rowKey) => {
-    const firstRow = selectedCuts
+    const firstRow = allCuts
       .map((cut) => cut.cut[rowKey])
       .find(isRawTableRow);
 
-    const values: AnalysisTableCardCell[] = selectedCuts.map((cut) => {
+    const values: AnalysisTableCardCell[] = allCuts.map((cut) => {
       const row = cut.cut[rowKey];
       const rawRow = isRawTableRow(row) ? row : {};
       const rawValue = resolveValueForMode(rawRow, valueMode);
@@ -1502,6 +1510,11 @@ export function getTableCard(
   const title = deriveTitle(table, args.tableId);
   const initialVisibleRowCount = Math.min(getAnalysisCardPreviewRowLimit(), rows.length);
   const hiddenRowCount = Math.max(rows.length - initialVisibleRowCount, 0);
+  const totalNonTotalCuts = allCuts.filter((cut) => !cut.isTotal).length;
+  const visibleNonTotalCutCount = columnGroups
+    .filter((group) => group.groupKey !== TOTAL_GROUP_KEY)
+    .slice(0, initialVisibleGroupCount)
+    .reduce((sum, group) => sum + group.columns.length, 0);
 
   return {
     status: "available",
@@ -1519,16 +1532,15 @@ export function getTableCard(
     columnGroups,
     rows,
     totalRows: rows.length,
-    totalColumns: selectedCuts.length,
+    totalColumns: allCuts.length,
     truncatedRows: hiddenRowCount,
-    truncatedColumns: hiddenCutCount,
+    truncatedColumns: Math.max(totalNonTotalCuts - visibleNonTotalCutCount, 0),
     defaultScope,
     initialVisibleRowCount,
     initialVisibleGroupCount,
     hiddenRowCount,
     hiddenGroupCount,
-    hiddenCutCount,
-    isExpandable: hiddenRowCount > 0 || hiddenGroupCount > 0,
+    focusedCutIds: focusedCutIds.length > 0 ? focusedCutIds : null,
     requestedRowFilter: rowFilter,
     requestedCutFilter: cutFilter,
     significanceTest: context.tablesMetadata.significanceTest,
