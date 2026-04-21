@@ -485,6 +485,10 @@ Natural-language conversational analysis on top of the crosstab output. Users as
 | 3.5 | Backlog | Tool-call dedup, stuck-loop detection, prompt-cache audit |
 | 7 | Deferred | Compute-lane design checkpoint (after real usage) |
 
+**Remaining v1 work splits into two parallel tracks** (see implementation plan for the full breakdown):
+- **Track A — Interface polish (active).** Slice 5 plus ongoing UX fixes against real usage. Recently shipped: grounded-card render decoupling, follow-up chip visibility gating, title-pill removal, centered empty state.
+- **Track B — Prompt intentionality + analytical depth (deferred, design first).** Explicit workflow prompting (request classification, scope check, internal goal-setting) and capability expansion (cut building, NET generation, derived tables). Crosses into the compute-lane design checkpoint (Slice 7). No code changes until a design note exists and has been pressure-tested against real session transcripts; production prompt stays frozen, workflow experiments land on alternative first.
+
 **Exit:** Users can ask natural-language questions about their dataset and receive answers grounded in verified pipeline artifacts. Unsupported dataset-specific claims are revised before display. The surface feels productized — session list, follow-up suggestions, per-message feedback, durable artifacts. Compute-lane decision informed by actual usage, not speculation.
 
 ---

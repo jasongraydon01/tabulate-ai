@@ -128,19 +128,56 @@ Injection hardening: retrieved tool text is sanitized before re-entering model c
 - Per-message feedback: thumbs up/down plus optional inline correction text, persisted in `analysisMessageFeedback` and inspectable per run/session.
 - Cleaner thread list, tighter empty states, smoother streamed markdown, anchored table placement via `renderAnchors.ts`.
 
-## Remaining v1 Work
+## Remaining v1 Work — Two Parallel Tracks
 
-### Slice 5 — Durable artifact polish
+The remaining v1 work splits into two tracks that can progress independently. Track A is fit-and-finish and has been shipping steadily alongside outreach. Track B is deeper, needs deliberate design before implementation, and carries most of the "feels like an analysis partner" weight.
 
-- Copy / export hooks on table cards
-- Artifact-focused references in the UI
-- Richer artifact metadata when it unlocks concrete UI
+### Track A — Interface polish (active)
 
-Exit: the assistant's structured outputs feel reusable, not ephemeral.
+Small, tight UX fixes against real usage. Low blast radius, no model behavior changes.
 
-### Slice 6 — Context compaction policy
+Recently shipped:
+- Grounded table card decoupled from render filter — `getTableCard` now carries every USED cut; `focusedCutIds` is a presentation hint; expand button is no longer truncation-gated; Details disclosure and Expand dialog both surface the full cut set, with focused groups ordered right after Total.
+- Follow-up chips hidden unless the user is idle at the tail assistant message (not just disabled).
+- `GENERATED` title pill removed from session cards and thread header.
+- In-session empty state rewritten to centered-serif treatment matching the no-sessions empty state.
 
-Late-phase. Policy first, implementation only if it stays contained.
+Outstanding under this track:
+- **Slice 5 — Durable artifact polish.** Copy / export hooks on table cards, artifact-focused references, richer artifact metadata when it unlocks concrete UI. Exit: structured outputs feel reusable, not ephemeral.
+- Ongoing fit-and-finish as real usage surfaces friction. Don't pre-design — ship as it surfaces.
+
+### Track B — Prompt intentionality + analytical depth (deferred, design first)
+
+The piece that pushes the surface from "grounded Q&A" toward "analysis partner." Two sub-areas that reinforce each other:
+
+**1. Prompt workflow and intentionality.** The analysis prompt today is a tool-usage protocol plus a trust contract. It does not ask the agent to think about what the user is actually after before it starts calling tools. Borrow from the V3 pipeline agents: give it an explicit internal workflow — classify the request (exploration / synthesis / methodology / narrow lookup / follow-up on prior evidence), write down a one-line goal, decide what scope is sufficient, then act.
+
+Concrete friction this would address, observed in real sessions:
+- Agent refusing to summarize grounded evidence that is already in-thread ("I need a supporting table card") — claim-check over-firing on retrospective synthesis of already-rendered cards.
+- Over-matching `cutFilter` — user says "primary bank," agent pulls a separate "bank type" cut because the word "bank" matched both.
+- Agent rendering more cuts than the user's question justified, instead of picking the one that answers it.
+
+The prompt does not have to stay at its current length. It might grow; it might also shrink once intentionality is expressed as a workflow rather than as a wall of constraints.
+
+**2. Analytical capability expansion.** More tools, so the agent can actually *help* rather than only read. None of these ship in v1, but they belong in the design space so we don't paint ourselves into a corner with the current grounding layer.
+
+- Building new cuts on the fly when the banner doesn't carry one the user asked for (the "what about gender?" case).
+- Expanding cuts — compute combinations the crosstab pipeline didn't emit.
+- Generating NETs from the data when grouping sharpens the answer.
+- Other derived-table patterns from Phase 10b that the assistant might reasonably produce conversationally.
+
+These cross into the compute-lane design checkpoint (Slice 7) — they can't ship without it — so the design conversation is one conversation, not two.
+
+### Slice mapping against the tracks
+
+| Slice | Track | Status |
+|-------|-------|--------|
+| 5 — Durable artifact polish | A | Outstanding, opportunistic |
+| 6 — Context compaction policy | Cross-cutting | Late-phase; implementation contingent on real session-length data |
+| 3.5 — Harness robustness (dedup, stuck-loop, cache audit) | B | Backlog; becomes load-bearing as the prompt workflow grows |
+| 7 — Compute-lane design checkpoint | B | Deferred; gating milestone for capability expansion |
+
+### Slice 6 — Context compaction policy (cross-cutting)
 
 - Utilization threshold at which summarization kicks in
 - What stays verbatim: recent N turns + rendered table cards + session-level user preferences
@@ -149,21 +186,20 @@ Late-phase. Policy first, implementation only if it stays contained.
 
 Exit: long sessions (40+ turns) do not risk context-window exhaustion; policy documented even if implementation is deferred.
 
-## Backlog (not prerequisites)
-
-### Slice 3.5 — Harness robustness
+### Slice 3.5 — Harness robustness (Track B backlog)
 
 - Tool-call deduplication within a single turn (identical tool + args returns cached prior result)
 - Stuck-loop detection (nudge or forced-synthesis turn when the agent repeats the same tool+args)
 - Anthropic prompt-cache audit: verify system prompt + tool definitions are byte-stable across turns within a session, confirm cache hits via API response headers, document what invalidates the cache
 - Revisit `stopWhen: stepCountIs(12)` against real turn traces
 
-### Slice 7 — Compute-lane design checkpoint
+### Slice 7 — Compute-lane design checkpoint (Track B core)
 
 Decision memo after real usage. Questions to answer:
 - how often do users ask for unavailable cuts?
 - how often do users want charts?
 - do recuts justify a dedicated queue?
+- which derived-table patterns (NETs, cross-question ratios, shift analyses) show up conversationally often enough to justify pulling into the assistant's toolkit vs. leaving to the processor workflow?
 
 ## Open Questions
 
@@ -173,7 +209,9 @@ Decision memo after real usage. Questions to answer:
 
 ## Recommended Next Step
 
-**Slice 5 — durable artifact polish.** Table cards are already rendered and persisted; the next useful lift is making them reusable (copy, export, reference) so the conversation produces keepable artifacts, not just ephemeral answers. Slice 6 (compaction policy) follows once we have real session-length data.
+Continue **Track A** opportunistically — finish Slice 5 when a concrete "I want to copy/export this card" moment surfaces, and keep picking off UX friction as real sessions expose it.
+
+Before touching **Track B**, write a prompt-workflow design note: what intentionality stages the agent should run through, what request taxonomy to classify against, how to surface the scope check without cluttering responses. Pressure-test the note against real session transcripts (especially cases where the assistant refused to synthesize already-grounded evidence, or over-matched cutFilter) before editing the alternative prompt. The production prompt stays frozen — workflow experiments land on alternative first.
 
 ## Sources Consulted
 
