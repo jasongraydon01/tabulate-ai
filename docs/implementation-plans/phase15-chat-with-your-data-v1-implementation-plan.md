@@ -148,7 +148,7 @@ Outstanding under this track:
 
 ### Track B — Prompt intentionality + analytical depth (deferred, design first)
 
-The piece that pushes the surface from "grounded Q&A" toward "analysis partner." Three sub-areas that reinforce each other:
+The piece that pushes the surface from "grounded Q&A" toward "analysis partner." Four sub-areas that reinforce each other, plus one cross-cutting observation worth flagging so it doesn't get lost:
 
 **1. Prompt workflow and intentionality.** The analysis prompt today is a tool-usage protocol plus a trust contract. It does not ask the agent to think about what the user is actually after before it starts calling tools. Borrow from the V3 pipeline agents: give it an explicit internal workflow — classify the request (exploration / synthesis / methodology / narrow lookup / follow-up on prior evidence), write down a one-line goal, decide what scope is sufficient, then act.
 
@@ -156,6 +156,8 @@ Concrete friction this would address, observed in real sessions:
 - Agent refusing to summarize grounded evidence that is already in-thread ("I need a supporting table card") — see sub-area 2 for the root cause; the prompt-side fix is teaching the agent to recognize synthesis-of-prior-evidence as a legitimate request shape.
 - Over-matching `cutFilter` — user says "primary bank," agent pulls a separate "bank type" cut because the word "bank" matched both.
 - Agent rendering more cuts than the user's question justified, instead of picking the one that answers it.
+
+**Acknowledgment-before-work pattern.** Part of the workflow design, worth calling out separately. Claude's hosted agents lead with a one-sentence acknowledgment ("Let me pull the age breakdown first") before making tool calls, then stream the final answer. It's not a tool — it's just the model emitting a text part, then tool-call parts, then more text parts; the AI SDK surfaces them in order and our UI already renders interleaved text + tool parts correctly. The value is twofold: (a) the user sees immediate confirmation the agent understood the ask, and (b) the user can hit stop if the stated plan is wrong, before we spend tool calls and tokens. This is cheap prompt-side work once the workflow design lands.
 
 The prompt does not have to stay at its current length. It might grow; it might also shrink once intentionality is expressed as a workflow rather than as a wall of constraints.
 
@@ -178,7 +180,14 @@ Design options in scope when this slice opens (not decided):
 
 This sub-area shares design DNA with Slice 6 (context compaction policy). They should be worked as one policy document, not two.
 
-**3. Analytical capability expansion.** More tools, so the agent can actually *help* rather than only read. None of these ship in v1, but they belong in the design space so we don't paint ourselves into a corner with the current grounding layer.
+**3. Tool surface review — what the agent should have, and what's redundant.** The tool set has grown organically. Before we add more tools in sub-area 4, audit what's there. Two candidate redundancies to open the conversation with:
+
+- **Scratchpad tool vs. reasoning summaries.** The scratchpad tool (`createAnalysisScratchpadTool` in `src/lib/analysis/scratchpad.ts`) exists so the agent can write private notes that get captured in the trace. Now that the analysis model routes through the OpenAI Responses API and surfaces streamed reasoning summaries (and Anthropic already surfaces thinking), the scratchpad may be redundant — reasoning summaries cover the same observability role without the agent having to choose to call a tool. Worth deciding whether to keep it, remove it, or reserve it for a narrower purpose.
+- **`viewTable` vs. `getTableCard`.** Same payload, different side effect (render or not). The two-tool shape is a prompt-level affordance — inspect before render. Worth asking whether one tool with a render flag is clearer, or whether the split is what's keeping the agent from speculative rendering. Neutral on the answer; flagging as review-worthy.
+
+The broader question: which tools give the model *too much* context (bloated tool definitions inflate every turn's system prompt, hurting prompt-cache stability and attention) and which are load-bearing? A pass against real turn traces — what the agent actually uses, what it ignores, what it misuses — would tell us. This is a near-zero-code review exercise that should inform the prompt-workflow design note before anything ships.
+
+**4. Analytical capability expansion.** More tools, so the agent can actually *help* rather than only read. None of these ship in v1, but they belong in the design space so we don't paint ourselves into a corner with the current grounding layer.
 
 - Building new cuts on the fly when the banner doesn't carry one the user asked for (the "what about gender?" case).
 - Expanding cuts — compute combinations the crosstab pipeline didn't emit.
@@ -187,6 +196,10 @@ This sub-area shares design DNA with Slice 6 (context compaction policy). They s
 
 These cross into the compute-lane design checkpoint (Slice 7) — they can't ship without it — so the design conversation is one conversation, not two.
 
+### Cross-cutting observation: reasoning summaries in the pipeline
+
+The V3 pipeline agents (`VerificationAgent`, `CrosstabAgentV2`, `LoopSemanticsPolicyAgent`, etc.) currently do not capture reasoning summaries, even though they run on reasoning models. Now that we have the OpenAI Responses API plumbing working on the analysis path, the same fix mechanically applies to the pipeline: switch `.chat()` → `.responses()` on reasoning-capable models, enable `reasoningSummary`, and the summaries would flow into agent metrics / traces. Not Phase 15 work, not Track B strictly — flagging here so it doesn't get lost when we think about observability improvements across the stack.
+
 ### Slice mapping against the tracks
 
 | Slice | Track | Status |
@@ -194,7 +207,7 @@ These cross into the compute-lane design checkpoint (Slice 7) — they can't shi
 | 5 — Durable artifact polish | A | Outstanding, opportunistic |
 | 6 — Context compaction policy | B (sub-area 2) | Merge with the agent-context-optimality design note — one policy covers both |
 | 3.5 — Harness robustness (dedup, stuck-loop, cache audit) | B | Backlog; becomes load-bearing as the prompt workflow grows |
-| 7 — Compute-lane design checkpoint | B (sub-area 3) | Deferred; gating milestone for capability expansion |
+| 7 — Compute-lane design checkpoint | B (sub-area 4) | Deferred; gating milestone for capability expansion |
 
 ### Slice 6 — Context compaction policy (cross-cutting)
 
@@ -230,12 +243,13 @@ Decision memo after real usage. Questions to answer:
 
 Continue **Track A** opportunistically — finish Slice 5 when a concrete "I want to copy/export this card" moment surfaces, and keep picking off UX friction as real sessions expose it.
 
-Before touching **Track B**, write two design notes and resolve them before any prompt or transport change lands:
+Before touching **Track B**, write three design notes and resolve them before any prompt, tool, or transport change lands:
 
-1. **Prompt workflow design note** — intentionality stages, request taxonomy, how to surface the scope check without cluttering responses.
+1. **Prompt workflow design note** — intentionality stages, request taxonomy, acknowledgment-before-work pattern, how to surface the scope check without cluttering responses.
 2. **Agent context policy note** — what survives from prior turns (summaries? tool-call trace? full payloads within a window?), what gets reconstructed on demand, how it composes with Slice 6 compaction.
+3. **Tool surface review note** — audit existing tools against real turn traces (scratchpad vs reasoning summaries, `viewTable` vs `getTableCard`, anything else that looks redundant or over-contextual); decide what stays, what merges, what gets cut, before capability expansion adds more.
 
-Pressure-test both against real session transcripts — especially cases where the assistant refused to synthesize already-grounded evidence, over-matched `cutFilter`, or re-ran a tool it had already tried. The production prompt stays frozen — workflow experiments land on alternative first. Transport changes (what survives sanitization) are independent of prompt changes and can be trialed behind a feature flag without touching either prompt.
+Pressure-test all three against real session transcripts — especially cases where the assistant refused to synthesize already-grounded evidence, over-matched `cutFilter`, re-ran a tool it had already tried, or skipped a useful acknowledgment. The production prompt stays frozen — workflow experiments land on alternative first. Transport changes (what survives sanitization) and tool-surface changes are independent of prompt changes and can each be trialed behind a feature flag.
 
 ## Sources Consulted
 
