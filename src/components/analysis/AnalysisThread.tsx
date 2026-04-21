@@ -123,9 +123,15 @@ export function AnalysisThread({
       >
         <div className="min-w-0 space-y-4 px-5 py-3 pb-24">
           {messages.length === 0 ? (
-            <div className="py-8 text-center">
-              <p className="text-sm text-muted-foreground">
-                Ask a question about your data to get started.
+            <div className="rounded-2xl border border-dashed border-border/60 bg-muted/15 px-5 py-6 text-left">
+              <p className="text-sm font-medium text-foreground">
+                Start with a grounded question
+              </p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Ask for the overall story first, then narrow into a subgroup, banner cut, or question wording when something needs a closer read.
+              </p>
+              <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                Example: “What stands out overall?” or “Break this down by age.”
               </p>
             </div>
           ) : (
@@ -144,10 +150,10 @@ export function AnalysisThread({
 
           {isBusy && status === "submitted" && (
             <div className="flex w-full justify-start">
-              <div className="px-1 py-2">
+              <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <GridLoader size="sm" />
-                  Thinking...
+                  TabulateAI is checking the run artifacts...
                 </div>
               </div>
             </div>
@@ -158,7 +164,7 @@ export function AnalysisThread({
               <div className="flex items-start gap-2">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                 <div>
-                  <p className="font-medium">Analysis response failed</p>
+                  <p className="font-medium">TabulateAI could not finish this answer</p>
                   <p className="mt-1 text-sm/6 text-foreground/80">
                     {error.message}
                   </p>

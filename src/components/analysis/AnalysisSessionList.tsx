@@ -53,10 +53,38 @@ interface AnalysisSessionListProps {
   onDeleteSession: (sessionId: string) => Promise<void>;
 }
 
-function formatSessionTime(timestampMs: number): string {
-  return new Date(timestampMs).toLocaleDateString("en-US", {
+export function formatSessionTime(timestampMs: number, now = new Date()): string {
+  const date = new Date(timestampMs);
+  const startOfNow = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const diffDays = Math.round((startOfNow - startOfDate) / 86_400_000);
+
+  if (diffDays === 0) {
+    return `Today · ${date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    })}`;
+  }
+
+  if (diffDays === 1) {
+    return `Yesterday · ${date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    })}`;
+  }
+
+  if (diffDays >= 2 && diffDays <= 6) {
+    return date.toLocaleDateString("en-US", {
+      weekday: "short",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+
+  return date.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
+    year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
   });
 }
 
@@ -189,41 +217,51 @@ export function AnalysisSessionList({
     <>
       <aside className="flex h-full w-[260px] shrink-0 flex-col overflow-hidden border-r border-border/60">
         <div className="flex items-center justify-between gap-2 px-3 py-2.5">
-        <Button
-          variant="ghost"
-          size="xs"
-          className="h-7 w-7 p-0"
-          onClick={onToggle}
-        >
-          <PanelLeftClose className="h-4 w-4" />
-          <span className="sr-only">Close chat list</span>
-        </Button>
-        <Button
-          size="sm"
-          className="h-7 gap-1.5 px-2.5 text-xs"
-          onClick={() => { void onCreateSession(); }}
-          disabled={isCreating}
-        >
-          {isCreating ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <MessageSquarePlus className="h-3.5 w-3.5" />
-          )}
-          New Chat
-        </Button>
+          <Button
+            variant="ghost"
+            size="xs"
+            className="h-7 w-7 p-0"
+            onClick={onToggle}
+          >
+            <PanelLeftClose className="h-4 w-4" />
+            <span className="sr-only">Close chat list</span>
+          </Button>
+          <Button
+            size="sm"
+            className="h-7 gap-1.5 px-2.5 text-xs"
+            onClick={() => { void onCreateSession(); }}
+            disabled={isCreating}
+          >
+            {isCreating ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <MessageSquarePlus className="h-3.5 w-3.5" />
+            )}
+            New Chat
+          </Button>
         </div>
 
         <ScrollArea className="flex-1">
           <div className="px-2 pb-2">
             {isLoading ? (
-              <div className="flex items-center gap-2 px-2 py-4 text-xs text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Loading chats...
+              <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-3 py-4 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Loading chats...
+                </div>
+                <p className="mt-2 leading-5">
+                  TabulateAI is loading prior analysis sessions for this run.
+                </p>
               </div>
             ) : sessions.length === 0 ? (
-              <p className="px-2 py-4 text-xs text-muted-foreground">
-                No chats yet. Start one to explore your data.
-              </p>
+              <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-3 py-4">
+                <p className="text-sm font-medium text-foreground">
+                  No chats yet
+                </p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  Start a run-scoped chat to keep questions, grounded answers, and table evidence together.
+                </p>
+              </div>
             ) : (
               sessions.map((session) => {
                 const isSelected = session._id === selectedSessionId;
@@ -233,8 +271,10 @@ export function AnalysisSessionList({
                   <div
                     key={session._id}
                     className={cn(
-                      "mb-1 flex items-start gap-1 rounded-lg px-1.5 py-1 transition-colors",
-                      isSelected ? "bg-primary/8" : "hover:bg-muted/50",
+                      "mb-1 flex items-start gap-1 rounded-xl border px-1.5 py-1 transition-colors",
+                      isSelected
+                        ? "border-primary/20 bg-primary/8 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+                        : "border-transparent hover:border-border/60 hover:bg-muted/40",
                     )}
                   >
                     <button
@@ -243,16 +283,18 @@ export function AnalysisSessionList({
                       className="min-w-0 flex-1 rounded-md px-1 py-1 text-left"
                     >
                       <div className="flex min-w-0 flex-col items-start gap-1">
-                        <p className="w-full break-words text-sm font-medium leading-snug whitespace-normal">
+                        <p className="w-full break-words text-sm font-medium leading-snug whitespace-normal text-foreground">
                           {session.title}
                         </p>
-                        {session.titleSource === "generated" ? (
-                          <AnalysisTitleBadge className="shrink-0" />
-                        ) : null}
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          {session.titleSource === "generated" ? (
+                            <AnalysisTitleBadge className="shrink-0" />
+                          ) : null}
+                          <p className="text-[11px] text-muted-foreground">
+                            {formatSessionTime(session.lastMessageAt)}
+                          </p>
+                        </div>
                       </div>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">
-                        {formatSessionTime(session.lastMessageAt)}
-                      </p>
                     </button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>

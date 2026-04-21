@@ -22,7 +22,10 @@ export function AnalysisEmptyState({
               Start an analysis session for this run
             </h1>
             <p className="mx-auto max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">
-              TabulateAI keeps each chat tied to this run, so your questions and grounded answers stay attached to the same set of tabs.
+              TabulateAI keeps each chat tied to this run, so your questions, grounded answers, and table evidence stay attached to the same set of tabs.
+            </p>
+            <p className="mx-auto max-w-2xl text-sm leading-6 text-muted-foreground/90 sm:text-base">
+              Start with an overall read, a subgroup comparison, or a question about how something was asked in the survey.
             </p>
           </div>
 

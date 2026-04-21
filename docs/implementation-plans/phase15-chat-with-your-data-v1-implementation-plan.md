@@ -653,9 +653,9 @@ Exit criteria:
 
 Harness alignment note: for v1 we are intentionally choosing a lighter trust presentation than full per-claim inline citations. The evidence panel keeps trust signals available at the message level without turning every grounded answer into citation-heavy prose. Tool-output injection hardening still addresses the primary attack vector for grounded-chat agents — untrusted content flowing back into the model context through retrieval — and remains part of the core Slice 3 contract.
 
-### Slice 3.5: Harness robustness checkpoints
+### Backlog: Harness robustness checkpoints (formerly Slice 3.5)
 
-Status: Small-PR scope, lands alongside or immediately after Slice 3
+Status: Optional follow-on backlog. Not required before Slice 4.
 
 Deliver:
 - tool-call deduplication within a single turn — identical tool + args returns the cached prior result rather than re-running
@@ -751,7 +751,7 @@ Exit criteria:
 - follow-up paths are obvious after grounded answers
 - message-level user feedback is captured per assistant response and inspectable per run/session
 
-Slice 3.5 (harness robustness checkpoints) remains a valid follow-on when we want tighter loop control and cache verification, but it is no longer a blocker for moving into Slice 4.
+The former Slice 3.5 workstream remains a valid hardening follow-on when we want tighter loop control and cache verification, but it is explicitly backlog now rather than a numbered prerequisite in the delivery path.
 
 ## Sources Consulted
 
