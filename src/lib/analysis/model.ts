@@ -1,5 +1,8 @@
 import { createAnthropic, type AnthropicLanguageModelOptions } from "@ai-sdk/anthropic";
-import type { OpenAILanguageModelChatOptions } from "@ai-sdk/openai";
+import type {
+  OpenAILanguageModelChatOptions,
+  OpenAILanguageModelResponsesOptions,
+} from "@ai-sdk/openai";
 
 import { getAzureProvider, getEnvironmentConfig, getOpenAIProvider } from "@/lib/env";
 import type { ReasoningEffort } from "@/lib/types";
@@ -78,11 +81,36 @@ function parseAnalysisReasoningSummary(value: string | undefined): AnalysisReaso
   return undefined;
 }
 
-function getAnalysisOpenAIProviderOptions(args: {
-  reasoningEnvVarName: "ANALYSIS_REASONING_EFFORT" | "ANALYSIS_TITLE_REASONING_EFFORT";
+function getAnalysisOpenAIResponsesProviderOptions():
+  | { openai: OpenAILanguageModelResponsesOptions }
+  | undefined {
+  if (getAnalysisAIProvider() === "anthropic") {
+    return undefined;
+  }
+
+  const reasoningEffort = parseAnalysisReasoningEffort(
+    process.env.ANALYSIS_REASONING_EFFORT,
+    "ANALYSIS_REASONING_EFFORT",
+  );
+  const textVerbosity = parseAnalysisTextVerbosity(process.env.ANALYSIS_TEXT_VERBOSITY);
+  const reasoningSummary = parseAnalysisReasoningSummary(process.env.ANALYSIS_REASONING_SUMMARY);
+
+  const options: OpenAILanguageModelResponsesOptions = {
+    ...(reasoningEffort ? { reasoningEffort } : {}),
+    ...(textVerbosity ? { textVerbosity } : {}),
+    ...(reasoningSummary ? { reasoningSummary } : {}),
+  };
+
+  if (Object.keys(options).length === 0) {
+    return undefined;
+  }
+
+  return { openai: options };
+}
+
+function getAnalysisOpenAIChatProviderOptions(args: {
+  reasoningEnvVarName: "ANALYSIS_TITLE_REASONING_EFFORT";
   fallbackReasoningEffort?: ReasoningEffort;
-  includeTextVerbosity: boolean;
-  includeReasoningSummary: boolean;
 }): { openai: OpenAILanguageModelChatOptions } | undefined {
   if (getAnalysisAIProvider() === "anthropic") {
     return undefined;
@@ -93,17 +121,9 @@ function getAnalysisOpenAIProviderOptions(args: {
     args.reasoningEnvVarName,
     args.fallbackReasoningEffort,
   );
-  const textVerbosity = args.includeTextVerbosity
-    ? parseAnalysisTextVerbosity(process.env.ANALYSIS_TEXT_VERBOSITY)
-    : undefined;
-  const reasoningSummary = args.includeReasoningSummary
-    ? parseAnalysisReasoningSummary(process.env.ANALYSIS_REASONING_SUMMARY)
-    : undefined;
 
   const options: OpenAILanguageModelChatOptions = {
     ...(reasoningEffort ? { reasoningEffort } : {}),
-    ...(textVerbosity ? { textVerbosity } : {}),
-    ...(reasoningSummary ? { reasoningSummary } : {}),
   };
 
   if (Object.keys(options).length === 0) {
@@ -167,7 +187,10 @@ export function getAnalysisModel() {
     return createAnthropic({ apiKey }).chat(modelId);
   }
 
-  return getAnalysisProvider()!.chat(modelId);
+  // Use the Responses API on OpenAI/Azure so reasoning summaries surface as
+  // streamed reasoning parts. The Chat Completions path silently drops
+  // `reasoningSummary` because that option only exists on Responses.
+  return getAnalysisProvider()!.responses(modelId);
 }
 
 export function getAnalysisTitleModel() {
@@ -183,6 +206,8 @@ export function getAnalysisTitleModel() {
     return createAnthropic({ apiKey }).chat(modelId);
   }
 
+  // Titles stay on Chat Completions — they don't need reasoning summaries,
+  // and `reasoningEffort: "none"` is cleanly supported there.
   return getAnalysisProvider()!.chat(modelId);
 }
 
@@ -196,7 +221,7 @@ export function getAnalysisTitleModelName(): string {
 
 export function getAnalysisProviderOptions():
   | { anthropic: AnthropicLanguageModelOptions }
-  | { openai: OpenAILanguageModelChatOptions }
+  | { openai: OpenAILanguageModelResponsesOptions }
   | undefined {
   if (getAnalysisAIProvider() === "anthropic") {
     const options: AnthropicLanguageModelOptions = {
@@ -210,11 +235,7 @@ export function getAnalysisProviderOptions():
     return { anthropic: options };
   }
 
-  return getAnalysisOpenAIProviderOptions({
-    reasoningEnvVarName: "ANALYSIS_REASONING_EFFORT",
-    includeTextVerbosity: true,
-    includeReasoningSummary: true,
-  });
+  return getAnalysisOpenAIResponsesProviderOptions();
 }
 
 export function getAnalysisTitleProviderOptions():
@@ -229,10 +250,8 @@ export function getAnalysisTitleProviderOptions():
     };
   }
 
-  return getAnalysisOpenAIProviderOptions({
+  return getAnalysisOpenAIChatProviderOptions({
     reasoningEnvVarName: "ANALYSIS_TITLE_REASONING_EFFORT",
     fallbackReasoningEffort: "none",
-    includeTextVerbosity: false,
-    includeReasoningSummary: false,
   });
 }

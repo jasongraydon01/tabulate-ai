@@ -21,7 +21,7 @@ describe("analysis model config", () => {
     expect(getAnalysisAIProvider()).toBe("openai");
   });
 
-  it("uses the direct OpenAI analysis provider when the global provider is azure", () => {
+  it("uses the direct OpenAI Responses API for analysis when the global provider is azure", () => {
     vi.stubEnv("AI_PROVIDER", "azure");
     vi.stubEnv("AZURE_API_KEY", "azure-test-key-12345");
     vi.stubEnv("AZURE_RESOURCE_NAME", "demo-resource");
@@ -33,11 +33,12 @@ describe("analysis model config", () => {
 
     expect(getAnalysisAIProvider()).toBe("openai");
     expect(getAnalysisModelName()).toBe("openai/gpt-5.4-mini");
-    expect(model.provider).toBe("openai.chat");
+    // Responses API so reasoning summaries can stream to the UI.
+    expect(model.provider).toBe("openai.responses");
     expect(model.modelId).toBe("gpt-5.4-mini");
   });
 
-  it("uses the direct Azure analysis provider when the global provider is openai", () => {
+  it("uses the Azure Responses API for analysis when the global provider is openai", () => {
     vi.stubEnv("AI_PROVIDER", "openai");
     vi.stubEnv("OPENAI_API_KEY", "sk-test-key-12345");
     vi.stubEnv("ANALYSIS_AI_PROVIDER", "azure");
@@ -49,7 +50,7 @@ describe("analysis model config", () => {
 
     expect(getAnalysisAIProvider()).toBe("azure");
     expect(getAnalysisModelName()).toBe("azure/gpt-5.4");
-    expect(model.provider).toBe("azure.chat");
+    expect(model.provider).toBe("azure.responses");
     expect(model.modelId).toBe("gpt-5.4");
   });
 
