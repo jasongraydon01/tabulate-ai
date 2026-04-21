@@ -1,10 +1,16 @@
 import { createAnthropic, type AnthropicLanguageModelOptions } from "@ai-sdk/anthropic";
+import type { OpenAILanguageModelChatOptions } from "@ai-sdk/openai";
 
-import { getActiveProvider, getEnvironmentConfig } from "@/lib/env";
+import { getAzureProvider, getEnvironmentConfig, getOpenAIProvider } from "@/lib/env";
+import type { ReasoningEffort } from "@/lib/types";
 
 export type AnalysisAIProvider = "anthropic" | "openai" | "azure";
 type AnalysisAnthropicEffort = "low" | "medium" | "high" | "max";
-type AnalysisOpenAIReasoningEffort = "minimal";
+type AnalysisTextVerbosity = NonNullable<OpenAILanguageModelChatOptions["textVerbosity"]>;
+type AnalysisReasoningSummary = "auto" | "detailed";
+
+const VALID_ANALYSIS_TEXT_VERBOSITY: AnalysisTextVerbosity[] = ["low", "medium", "high"];
+const VALID_ANALYSIS_REASONING_SUMMARIES: AnalysisReasoningSummary[] = ["auto", "detailed"];
 
 function parseAnalysisProvider(value: string | undefined): AnalysisAIProvider | null {
   const normalized = value?.toLowerCase().trim();
@@ -28,6 +34,94 @@ function parseAdaptiveThinkingFlag(value: string | undefined): boolean {
   if (normalized === "true") return true;
   if (normalized === "false") return false;
   return true;
+}
+
+function parseAnalysisReasoningEffort(
+  value: string | undefined,
+  envVarName: string,
+  fallback?: ReasoningEffort,
+): ReasoningEffort | undefined {
+  if (!value) return fallback;
+  const normalized = value.toLowerCase().trim() as ReasoningEffort;
+  if (["none", "minimal", "low", "medium", "high", "xhigh"].includes(normalized)) {
+    return normalized;
+  }
+
+  if (fallback) {
+    console.warn(`[analysis/model.ts] Invalid ${envVarName} "${value}", using default "${fallback}"`);
+    return fallback;
+  }
+
+  console.warn(`[analysis/model.ts] Invalid ${envVarName} "${value}", using provider default`);
+  return undefined;
+}
+
+function parseAnalysisTextVerbosity(value: string | undefined): AnalysisTextVerbosity | undefined {
+  if (!value) return undefined;
+  const normalized = value.toLowerCase().trim() as AnalysisTextVerbosity;
+  if (VALID_ANALYSIS_TEXT_VERBOSITY.includes(normalized)) {
+    return normalized;
+  }
+
+  console.warn(`[analysis/model.ts] Invalid ANALYSIS_TEXT_VERBOSITY "${value}", using provider default`);
+  return undefined;
+}
+
+function parseAnalysisReasoningSummary(value: string | undefined): AnalysisReasoningSummary | undefined {
+  if (!value) return undefined;
+  const normalized = value.toLowerCase().trim() as AnalysisReasoningSummary;
+  if (VALID_ANALYSIS_REASONING_SUMMARIES.includes(normalized)) {
+    return normalized;
+  }
+
+  console.warn(`[analysis/model.ts] Invalid ANALYSIS_REASONING_SUMMARY "${value}", using provider default`);
+  return undefined;
+}
+
+function getAnalysisOpenAIProviderOptions(args: {
+  reasoningEnvVarName: "ANALYSIS_REASONING_EFFORT" | "ANALYSIS_TITLE_REASONING_EFFORT";
+  fallbackReasoningEffort?: ReasoningEffort;
+  includeTextVerbosity: boolean;
+  includeReasoningSummary: boolean;
+}): { openai: OpenAILanguageModelChatOptions } | undefined {
+  if (getAnalysisAIProvider() === "anthropic") {
+    return undefined;
+  }
+
+  const reasoningEffort = parseAnalysisReasoningEffort(
+    process.env[args.reasoningEnvVarName],
+    args.reasoningEnvVarName,
+    args.fallbackReasoningEffort,
+  );
+  const textVerbosity = args.includeTextVerbosity
+    ? parseAnalysisTextVerbosity(process.env.ANALYSIS_TEXT_VERBOSITY)
+    : undefined;
+  const reasoningSummary = args.includeReasoningSummary
+    ? parseAnalysisReasoningSummary(process.env.ANALYSIS_REASONING_SUMMARY)
+    : undefined;
+
+  const options: OpenAILanguageModelChatOptions = {
+    ...(reasoningEffort ? { reasoningEffort } : {}),
+    ...(textVerbosity ? { textVerbosity } : {}),
+    ...(reasoningSummary ? { reasoningSummary } : {}),
+  };
+
+  if (Object.keys(options).length === 0) {
+    return undefined;
+  }
+
+  return { openai: options };
+}
+
+function getAnalysisProvider() {
+  const provider = getAnalysisAIProvider();
+  if (provider === "openai") {
+    return getOpenAIProvider();
+  }
+  if (provider === "azure") {
+    return getAzureProvider();
+  }
+  return null;
 }
 
 export function getAnalysisAIProvider(): AnalysisAIProvider {
@@ -73,7 +167,7 @@ export function getAnalysisModel() {
     return createAnthropic({ apiKey }).chat(modelId);
   }
 
-  return getActiveProvider().chat(modelId);
+  return getAnalysisProvider()!.chat(modelId);
 }
 
 export function getAnalysisTitleModel() {
@@ -89,7 +183,7 @@ export function getAnalysisTitleModel() {
     return createAnthropic({ apiKey }).chat(modelId);
   }
 
-  return getActiveProvider().chat(modelId);
+  return getAnalysisProvider()!.chat(modelId);
 }
 
 export function getAnalysisModelName(): string {
@@ -102,25 +196,30 @@ export function getAnalysisTitleModelName(): string {
 
 export function getAnalysisProviderOptions():
   | { anthropic: AnthropicLanguageModelOptions }
+  | { openai: OpenAILanguageModelChatOptions }
   | undefined {
-  if (getAnalysisAIProvider() !== "anthropic") {
-    return undefined;
+  if (getAnalysisAIProvider() === "anthropic") {
+    const options: AnthropicLanguageModelOptions = {
+      effort: parseAnalysisAnthropicEffort(process.env.ANALYSIS_ANTHROPIC_EFFORT),
+    };
+
+    if (parseAdaptiveThinkingFlag(process.env.ANALYSIS_ENABLE_ADAPTIVE_THINKING)) {
+      options.thinking = { type: "adaptive" };
+    }
+
+    return { anthropic: options };
   }
 
-  const options: AnthropicLanguageModelOptions = {
-    effort: parseAnalysisAnthropicEffort(process.env.ANALYSIS_ANTHROPIC_EFFORT),
-  };
-
-  if (parseAdaptiveThinkingFlag(process.env.ANALYSIS_ENABLE_ADAPTIVE_THINKING)) {
-    options.thinking = { type: "adaptive" };
-  }
-
-  return { anthropic: options };
+  return getAnalysisOpenAIProviderOptions({
+    reasoningEnvVarName: "ANALYSIS_REASONING_EFFORT",
+    includeTextVerbosity: true,
+    includeReasoningSummary: true,
+  });
 }
 
 export function getAnalysisTitleProviderOptions():
   | { anthropic: AnthropicLanguageModelOptions }
-  | { openai: { reasoningEffort: AnalysisOpenAIReasoningEffort } }
+  | { openai: OpenAILanguageModelChatOptions }
   | undefined {
   if (getAnalysisAIProvider() === "anthropic") {
     return {
@@ -130,9 +229,10 @@ export function getAnalysisTitleProviderOptions():
     };
   }
 
-  return {
-    openai: {
-      reasoningEffort: "minimal",
-    },
-  };
+  return getAnalysisOpenAIProviderOptions({
+    reasoningEnvVarName: "ANALYSIS_TITLE_REASONING_EFFORT",
+    fallbackReasoningEffort: "none",
+    includeTextVerbosity: false,
+    includeReasoningSummary: false,
+  });
 }

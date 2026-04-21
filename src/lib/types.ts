@@ -4,13 +4,9 @@
  */
 
 /**
- * Reasoning effort levels supported by Azure OpenAI GPT-5 and o-series models
- * - 'none': No reasoning (GPT-5.1 only)
- * - 'minimal': Fastest responses, basic reasoning
- * - 'low': Quick reasoning, good for simple tasks
- * - 'medium': Default, balanced reasoning (AI SDK default)
- * - 'high': Deep reasoning, complex tasks
- * - 'xhigh': Maximum reasoning (GPT-5.1-Codex-Max only)
+ * Reasoning effort levels supported by modern GPT-5/o-series reasoning models.
+ * Exact availability varies by provider and model family, but the AI SDK accepts
+ * this shared enum for current GPT-5-era chat models.
  */
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 

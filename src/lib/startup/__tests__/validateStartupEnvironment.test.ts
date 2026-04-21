@@ -13,7 +13,8 @@ afterEach(() => {
 });
 
 function setMinimalValidEnv() {
-  process.env.AI_PROVIDER = 'azure';
+  process.env.AI_PROVIDER = 'openai';
+  process.env.OPENAI_API_KEY = 'sk-test-key-12345';
   process.env.AZURE_API_KEY = 'test-azure-key-12345';
   process.env.AZURE_RESOURCE_NAME = 'my-resource';
   process.env.CONVEX_URL = 'https://test.convex.cloud';
@@ -40,7 +41,7 @@ function setMinimalValidEnv() {
 
 describe('validateStartupEnvironment', () => {
   describe('valid configurations', () => {
-    it('passes with all required Azure vars present', () => {
+    it('passes with all required OpenAI vars present', () => {
       setMinimalValidEnv();
       const result = validateStartupEnvironment();
       expect(result.valid).toBe(true);
@@ -52,17 +53,34 @@ describe('validateStartupEnvironment', () => {
       setMinimalValidEnv();
       process.env.AI_PROVIDER = 'openai';
       process.env.OPENAI_API_KEY = 'sk-test-key-12345';
-      delete process.env.AZURE_API_KEY;
-      delete process.env.AZURE_RESOURCE_NAME;
       const result = validateStartupEnvironment();
       expect(result.valid).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
 
-    it('passes when analysis chat uses Anthropic but the main pipeline stays on Azure', () => {
+    it('passes when analysis chat uses Anthropic but the main pipeline stays on OpenAI', () => {
       setMinimalValidEnv();
       process.env.ANALYSIS_AI_PROVIDER = 'anthropic';
       process.env.ANTHROPIC_API_KEY = 'sk-ant-test-12345';
+
+      const result = validateStartupEnvironment();
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('passes when analysis chat uses OpenAI but the main pipeline stays on Azure', () => {
+      setMinimalValidEnv();
+      process.env.AI_PROVIDER = 'azure';
+      process.env.ANALYSIS_AI_PROVIDER = 'openai';
+
+      const result = validateStartupEnvironment();
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('passes when analysis chat uses Azure but the main pipeline stays on OpenAI', () => {
+      setMinimalValidEnv();
+      process.env.ANALYSIS_AI_PROVIDER = 'azure';
 
       const result = validateStartupEnvironment();
       expect(result.valid).toBe(true);
@@ -79,7 +97,7 @@ describe('validateStartupEnvironment', () => {
       expect(result.errors).toHaveLength(0);
     });
 
-    it('defaults to azure when AI_PROVIDER is not set', () => {
+    it('defaults to openai when AI_PROVIDER is not set', () => {
       setMinimalValidEnv();
       delete process.env.AI_PROVIDER;
       const result = validateStartupEnvironment();
@@ -90,6 +108,7 @@ describe('validateStartupEnvironment', () => {
   describe('missing AI provider credentials', () => {
     it('errors when AZURE_API_KEY is missing (azure provider)', () => {
       setMinimalValidEnv();
+      process.env.AI_PROVIDER = 'azure';
       delete process.env.AZURE_API_KEY;
       const result = validateStartupEnvironment();
       expect(result.valid).toBe(false);
@@ -98,6 +117,7 @@ describe('validateStartupEnvironment', () => {
 
     it('errors when AZURE_RESOURCE_NAME is missing (azure provider)', () => {
       setMinimalValidEnv();
+      process.env.AI_PROVIDER = 'azure';
       delete process.env.AZURE_RESOURCE_NAME;
       const result = validateStartupEnvironment();
       expect(result.valid).toBe(false);
@@ -111,6 +131,27 @@ describe('validateStartupEnvironment', () => {
       const result = validateStartupEnvironment();
       expect(result.valid).toBe(false);
       expect(result.errors).toContain('Missing required environment variable: OPENAI_API_KEY');
+    });
+
+    it('errors when ANALYSIS_AI_PROVIDER is openai but OPENAI_API_KEY is missing', () => {
+      setMinimalValidEnv();
+      process.env.AI_PROVIDER = 'azure';
+      process.env.ANALYSIS_AI_PROVIDER = 'openai';
+      delete process.env.OPENAI_API_KEY;
+
+      const result = validateStartupEnvironment();
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain('Missing required environment variable: OPENAI_API_KEY');
+    });
+
+    it('errors when ANALYSIS_AI_PROVIDER is azure but Azure credentials are missing', () => {
+      setMinimalValidEnv();
+      process.env.ANALYSIS_AI_PROVIDER = 'azure';
+      delete process.env.AZURE_API_KEY;
+
+      const result = validateStartupEnvironment();
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain('Missing required environment variable: AZURE_API_KEY');
     });
 
     it('errors on unknown AI_PROVIDER', () => {
@@ -138,6 +179,21 @@ describe('validateStartupEnvironment', () => {
       const result = validateStartupEnvironment();
       expect(result.valid).toBe(false);
       expect(result.errors[0]).toContain('Unknown ANALYSIS_AI_PROVIDER');
+    });
+
+    it('warns on invalid analysis reasoning and verbosity values', () => {
+      setMinimalValidEnv();
+      process.env.ANALYSIS_REASONING_EFFORT = 'turbo';
+      process.env.ANALYSIS_TITLE_REASONING_EFFORT = 'super-high';
+      process.env.ANALYSIS_TEXT_VERBOSITY = 'verbose';
+      process.env.ANALYSIS_REASONING_SUMMARY = 'full';
+
+      const result = validateStartupEnvironment();
+      expect(result.valid).toBe(true);
+      expect(result.warnings).toContain('ANALYSIS_REASONING_EFFORT "turbo" is invalid; analysis will use the provider default');
+      expect(result.warnings).toContain('ANALYSIS_TITLE_REASONING_EFFORT "super-high" is invalid; analysis titles will use the default');
+      expect(result.warnings).toContain('ANALYSIS_TEXT_VERBOSITY "verbose" is invalid; analysis will use the provider default');
+      expect(result.warnings).toContain('ANALYSIS_REASONING_SUMMARY "full" is invalid; analysis will use the provider default');
     });
   });
 
@@ -258,7 +314,7 @@ describe('validateStartupEnvironment', () => {
   describe('multiple errors', () => {
     it('collects all errors when multiple vars are missing', () => {
       setMinimalValidEnv();
-      delete process.env.AZURE_API_KEY;
+      delete process.env.OPENAI_API_KEY;
       delete process.env.CONVEX_URL;
       delete process.env.R2_BUCKET_NAME;
       const result = validateStartupEnvironment();

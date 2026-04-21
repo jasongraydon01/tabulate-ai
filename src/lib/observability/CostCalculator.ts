@@ -119,6 +119,18 @@ const FALLBACK_PRICING: Record<string, ModelPricing> = {
     input_cost_per_token: 0.5e-6,
     output_cost_per_token: 2e-6,
   },
+  'gpt-5.4': {
+    input_cost_per_token: 2.5e-6,
+    output_cost_per_token: 15e-6,
+  },
+  'gpt-5.4-mini': {
+    input_cost_per_token: 0.75e-6,
+    output_cost_per_token: 4.5e-6,
+  },
+  'gpt-5.4-nano': {
+    input_cost_per_token: 0.2e-6,
+    output_cost_per_token: 1.25e-6,
+  },
 };
 
 // =============================================================================
@@ -168,7 +180,13 @@ function normalizeModelName(model: string): string[] {
   }
 
   // Handle gpt-5 series
-  if (normalized.includes('gpt-5-mini')) {
+  if (normalized.includes('gpt-5.4-nano')) {
+    variations.push('gpt-5.4-nano', 'azure/gpt-5.4-nano');
+  } else if (normalized.includes('gpt-5.4-mini')) {
+    variations.push('gpt-5.4-mini', 'azure/gpt-5.4-mini');
+  } else if (normalized.includes('gpt-5.4')) {
+    variations.push('gpt-5.4', 'azure/gpt-5.4');
+  } else if (normalized.includes('gpt-5-mini')) {
     variations.push('gpt-5-mini', 'azure/gpt-5-mini');
   } else if (normalized.includes('gpt-5')) {
     variations.push('gpt-5', 'azure/gpt-5');

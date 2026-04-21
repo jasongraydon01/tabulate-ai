@@ -16,7 +16,7 @@ export const ANALYSIS_TOOL_ACTIVITY_LABELS: Record<string, string> = {
   "tool-listBannerCuts": "Listing available cuts",
   "tool-getBannerPlanContext": "Reviewing banner plan",
   "tool-getRunContext": "Loading run context",
-  "tool-scratchpad": "Reasoning",
+  "tool-scratchpad": "Internal note",
 };
 
 export const TABLE_CARD_TOOL_TYPE = "tool-getTableCard";

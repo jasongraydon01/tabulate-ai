@@ -71,6 +71,49 @@ type TraceEntry =
   | { kind: "reasoning"; id: string; text: string }
   | { kind: "tool"; id: string; label: string; state: string };
 
+export function getAnalysisTraceEntries(message: UIMessage): TraceEntry[] {
+  if (message.role === "user") {
+    return [];
+  }
+
+  return message.parts.flatMap((part, index): TraceEntry[] => {
+    if (isReasoningUIPart(part)) {
+      const text = part.text.trim();
+      if (!text) return [];
+
+      return [{
+        kind: "reasoning",
+        id: `${message.id}-reasoning-${index}`,
+        text,
+      }];
+    }
+    if (isToolUIPart(part) && part.type !== "tool-getTableCard") {
+      const label = getAnalysisToolActivityLabel(part.type);
+      if (!label) return [];
+      return [{
+        kind: "tool",
+        id: part.toolCallId,
+        label,
+        state: part.state,
+      }];
+    }
+    return [];
+  });
+}
+
+export function getAnalysisTraceHeaderLabel(
+  traceEntries: TraceEntry[],
+  collapsedSummary: string | null,
+  isExpanded: boolean,
+): string {
+  const hasReasoningSummary = traceEntries.some((entry) => entry.kind === "reasoning");
+  if (hasReasoningSummary) {
+    return isExpanded ? "Reasoning" : (collapsedSummary ?? "Reasoning");
+  }
+
+  return isExpanded ? "Analysis steps" : (collapsedSummary ?? "Analysis steps");
+}
+
 export function AnalysisMessage({
   message,
   isStreaming = false,
@@ -84,28 +127,7 @@ export function AnalysisMessage({
     (part) => isToolUIPart(part) && part.type === "tool-getTableCard",
   );
 
-  const traceEntries: TraceEntry[] = !isUser
-    ? message.parts.flatMap((part, index): TraceEntry[] => {
-        if (isReasoningUIPart(part)) {
-          return [{
-            kind: "reasoning",
-            id: `${message.id}-reasoning-${index}`,
-            text: part.text,
-          }];
-        }
-        if (isToolUIPart(part) && part.type !== "tool-getTableCard") {
-          const label = getAnalysisToolActivityLabel(part.type);
-          if (!label) return [];
-          return [{
-            kind: "tool",
-            id: part.toolCallId,
-            label,
-            state: part.state,
-          }];
-        }
-        return [];
-      })
-    : [];
+  const traceEntries = getAnalysisTraceEntries(message);
 
   const hasTrace = traceEntries.length > 0;
 
@@ -158,7 +180,7 @@ export function AnalysisMessage({
                     )}
                   />
                   <span className="italic">
-                    {isThinkingExpanded ? "Thinking" : (collapsedSummary ?? "Thinking")}
+                    {getAnalysisTraceHeaderLabel(traceEntries, collapsedSummary, isThinkingExpanded)}
                   </span>
                 </button>
 

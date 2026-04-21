@@ -12,6 +12,10 @@ export interface StartupValidationResult {
   warnings: string[];
 }
 
+const VALID_ANALYSIS_REASONING_EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'];
+const VALID_ANALYSIS_TEXT_VERBOSITY = ['low', 'medium', 'high'];
+const VALID_ANALYSIS_REASONING_SUMMARIES = ['auto', 'detailed'];
+
 function requireVar(
   name: string,
   errors: string[],
@@ -45,7 +49,7 @@ export function validateStartupEnvironment(): StartupValidationResult {
   const warnings: string[] = [];
 
   // ── AI Provider ──────────────────────────────────────────────────────
-  const aiProvider = (process.env.AI_PROVIDER || 'azure').toLowerCase();
+  const aiProvider = (process.env.AI_PROVIDER || 'openai').toLowerCase();
   const analysisAiProvider = process.env.ANALYSIS_AI_PROVIDER?.toLowerCase();
 
   if (aiProvider === 'azure') {
@@ -60,9 +64,42 @@ export function validateStartupEnvironment(): StartupValidationResult {
   if (analysisAiProvider) {
     if (!['azure', 'openai', 'anthropic'].includes(analysisAiProvider)) {
       errors.push(`Unknown ANALYSIS_AI_PROVIDER: "${analysisAiProvider}" (expected "azure", "openai", or "anthropic")`);
+    } else if (analysisAiProvider === 'azure') {
+      requireVar('AZURE_API_KEY', errors);
+      requireVar('AZURE_RESOURCE_NAME', errors);
+    } else if (analysisAiProvider === 'openai') {
+      requireVar('OPENAI_API_KEY', errors);
     } else if (analysisAiProvider === 'anthropic') {
       requireVar('ANTHROPIC_API_KEY', errors);
     }
+  }
+
+  if (
+    process.env.ANALYSIS_REASONING_EFFORT
+    && !VALID_ANALYSIS_REASONING_EFFORTS.includes(process.env.ANALYSIS_REASONING_EFFORT.toLowerCase())
+  ) {
+    warnings.push(`ANALYSIS_REASONING_EFFORT "${process.env.ANALYSIS_REASONING_EFFORT}" is invalid; analysis will use the provider default`);
+  }
+
+  if (
+    process.env.ANALYSIS_TITLE_REASONING_EFFORT
+    && !VALID_ANALYSIS_REASONING_EFFORTS.includes(process.env.ANALYSIS_TITLE_REASONING_EFFORT.toLowerCase())
+  ) {
+    warnings.push(`ANALYSIS_TITLE_REASONING_EFFORT "${process.env.ANALYSIS_TITLE_REASONING_EFFORT}" is invalid; analysis titles will use the default`);
+  }
+
+  if (
+    process.env.ANALYSIS_TEXT_VERBOSITY
+    && !VALID_ANALYSIS_TEXT_VERBOSITY.includes(process.env.ANALYSIS_TEXT_VERBOSITY.toLowerCase())
+  ) {
+    warnings.push(`ANALYSIS_TEXT_VERBOSITY "${process.env.ANALYSIS_TEXT_VERBOSITY}" is invalid; analysis will use the provider default`);
+  }
+
+  if (
+    process.env.ANALYSIS_REASONING_SUMMARY
+    && !VALID_ANALYSIS_REASONING_SUMMARIES.includes(process.env.ANALYSIS_REASONING_SUMMARY.toLowerCase())
+  ) {
+    warnings.push(`ANALYSIS_REASONING_SUMMARY "${process.env.ANALYSIS_REASONING_SUMMARY}" is invalid; analysis will use the provider default`);
   }
 
   // ── Convex ───────────────────────────────────────────────────────────

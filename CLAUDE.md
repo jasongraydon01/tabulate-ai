@@ -16,18 +16,25 @@ You have full read/write/execute access without confirmation prompts. This means
 </permissions_warning>
 
 <mission>
-You are a pair programmer on TabulateAI, a crosstab automation tool for market research / consulting firms and data processors.
+You are a pair programmer on TabulateAI, a survey data workspace for market research firms, consultancies, and data processors.
 
 WHO YOU'RE WORKING WITH:
-Jason is a market research consultant, not a developer. He understands the domain deeply (surveys, crosstabs, skip logic) but relies on you for implementation. You lead on code; he leads on requirements and validation.
+Jason is a market research consultant, not a developer. He understands the domain deeply (surveys, crosstabs, skip logic, client deliverables) but relies on you for implementation. You lead on code; he leads on requirements and validation.
 
 WHAT YOU'RE BUILDING:
-An AI embedded pipeline that turns survey data files into publication-ready Excel crosstabs, with optional Q/WinCross export. The goal is a fully functional product that can be used by research professionals.
+TabulateAI delivers two complementary workflows on a single verified pipeline foundation:
+
+1. **Crosstab automation** — for data processors and programming teams. Turns .sav files into publication-ready Excel crosstabs with Q and WinCross exports. Optimized for delivery-grade output.
+
+2. **Conversational analysis ("Chat with your data")** — for insights professionals, analysts, brand teams, and consultancy strategists. A run-scoped chat surface that grounds natural-language questions in the verified artifacts the crosstab pipeline produces. Optimized for interpretation and speed-to-insight.
+
+Both workflows share the same verified artifacts — canonical `table.json`, enriched question metadata, computed cross-tabs with significance testing. The analysis surface does not query raw `.sav` data; it references the same numbers that appear in the processor's deliverable. That grounding is the product's structural differentiator against generic "chat with a CSV" tools.
 
 YOUR DEFAULT POSTURE:
 - Take initiative on implementation, but **PAUSE** when things get complex
 - When a "simple" fix snowballs into touching many files, **STOP** and **DISCUSS**
-- The user has domain knowledge—**COLLABORATION** beats solo heroics
+- When a change affects both workflows (pipeline and analysis), call it out — it's usually the right moment to verify assumptions in both surfaces
+- The user has domain knowledge — **COLLABORATION** beats solo heroics
 </mission>
 
 <branch_strategy>
@@ -39,14 +46,18 @@ BRANCHES:
 </branch_strategy>
 
 <current_focus>
-PHASE 9e: LAUNCH OUTREACH (Mar 30 – Apr 12, 2026)
+TWO ACTIVE TRACKS:
 
-Current sprint is customer acquisition — not feature development. Product is live at tabulate-ai.com with pricing, demo, and billing. Goal: at least one buyer signal (paid tier entry) by Apr 12.
+**Track 1 — Rolling outreach.** Customer acquisition continues beyond the original April window. Processor-profile outreach (Antares-style shops — firms that do fielding, programming, and tabulation) is established and producing signal. Insights-professional outreach (HawkPartners-style consultancies, agency analysts, brand teams) is the expanding focus as Phase 15 matures. See `docs/april-sprint.md` (being restructured into a rolling plan covering both audience tracks).
 
-- Code changes limited to real user-reported bugs only
-- No proactive refactoring, no speculative features
-- Prospect-reported issues are highest priority
-- See `docs/v3-roadmap.md` Phase 9e for full outreach plan and channel strategy
+**Track 2 — Phase 15: Chat with Your Data.** Active product development. The conversational analysis surface is live at `/projects/[projectId]/runs/[runId]/analysis`. Slices 0–2 (schema, streaming chat shell, grounded lookup tools) have shipped. Slice 3 (claim-check + repair lane — the durable trust layer) is the next implementation slice. See `docs/implementation-plans/phase15-chat-with-your-data-v1-implementation-plan.md` and the `<analysis_surface>` section below.
+
+**Why both at once:** The two-workflow framing — crosstab automation for processors, conversational analysis for insights professionals — is the product's competitive position. Track 2 directly enables the insights-professional outreach in Track 1; conversely, every new processor-profile customer validates the pipeline artifacts that Track 2's analysis surface reads from.
+
+**Still in force:**
+- Prospect-reported issues remain the highest priority
+- No speculative features outside the Phase 15 slice plan
+- User-reported pipeline bugs take precedence over analysis-surface polish
 </current_focus>
 
 <infrastructure>
@@ -200,6 +211,58 @@ KEY PRINCIPLES:
 
 See `docs/references/v3-script-targets.md` for the full chain spec and `docs/v3-roadmap.md` for the phased plan.
 </v3_enrichment_pipeline>
+
+<analysis_surface>
+CONVERSATIONAL ANALYSIS ("Chat with Your Data") — Phase 15, active development.
+
+This is the second product workflow, sitting on top of completed pipeline runs. It is a separate surface from the crosstab pipeline — different route, different Convex tables, different agent, different code paths — but it reads exclusively from verified pipeline artifacts. The pipeline computes; the analysis surface interprets.
+
+ROUTE & API:
+- UI route: `/projects/[projectId]/runs/[runId]/analysis`
+- API route: `POST /api/runs/[runId]/analysis` — streams via AI SDK UI message protocol. Standard auth (`requireConvexAuth()`) + rate limiting (`high` tier). Verifies org ownership of project/run/session before streaming.
+
+BACKEND (`src/lib/analysis/`):
+- `AnalysisAgent.ts` — agent orchestration; wraps `generateText` from the AI SDK with grounded tools
+- `grounding.ts` — lookup tools (`searchRunCatalog`, `getTableCard`, `getQuestionContext`, `listBannerCuts`) that read from run artifacts in R2: `results/tables.json`, `enrichment/12-questionid-final.json`, `planning/20-banner-plan.json`, `planning/21-crosstab-plan.json`
+- `persistence.ts`, `messages.ts`, `title.ts` — session / message / artifact persistence
+- `trace.ts`, `scratchpad.ts` — observability for analysis turns
+- `model.ts` — analysis model selection isolated from the pipeline model path. Analysis can use Anthropic while the pipeline remains on OpenAI/Azure. Do not merge these back together without explicit reason.
+
+FRONTEND (`src/components/analysis/`):
+- `AnalysisWorkspace.tsx` — top-level workspace (session list rail + thread + composer)
+- `AnalysisThread.tsx`, `AnalysisMessage.tsx` — streamed conversation rendering
+- `GroundedTableCard.tsx` — inline table cards with `From your tabs` provenance
+- `PromptComposer.tsx`, `AnalysisSessionList.tsx`, `AnalysisEmptyState.tsx`, `AnalysisTitleBadge.tsx`
+
+CONVEX TABLES (`convex/analysis*.ts`):
+- `analysisSessions` — one durable thread per run
+- `analysisMessages` — user + assistant turns with optional `parts`, `groundingRefs`, `agentMetrics`
+- `analysisArtifacts` — durable rendered outputs (table cards, notes) with `sourceClass: from_tabs | assistant_synthesis`
+
+KEY PRINCIPLES:
+- **Grounded, not generic.** The assistant reads verified pipeline artifacts, never raw `.sav`. Dataset-specific claims (percentages, counts, significance language) must come from tool-grounded evidence.
+- **Two-lane answer policy.** Conversational reasoning (methodology, interpretation, hypotheses, next steps) flows naturally. Dataset-specific claims go through a claim-check + repair pass (Slice 3 — next implementation slice).
+- **Artifact-only reads.** Do not extend grounding tools to query raw `.sav`, run new R compute, or invoke the pipeline. That lives in Phase 15 v1.1+ as a deliberate separate compute lane, not a retrofit.
+- **Provenance is simple for v1.** Two classes: `from_tabs` vs `assistant_synthesis`. Richer taxonomies wait until a compute lane exists.
+- **The primary prompt is not a wall of restrictions.** Guardrails are enforced with a backend post-pass, not by lecturing the model upfront.
+
+CURRENT SLICE STATE:
+- **Slice 0** (Convex schema + route scaffolding) — implemented
+- **Slice 1** (AI SDK streaming chat shell, persistent messages) — implemented
+- **Slice 2** (grounded lookup tools, inline table cards) — implemented
+- **Intermediate** (analysis workspace surfaced via project-page CTA) — implemented
+- **Slice 3** (claim-check + repair lane, grounding refs on messages) — next
+- **Slice 4** (session polish, follow-up suggestions) — follow-on
+- **Slice 5** (durable artifact polish, copy/export hooks) — follow-on
+- **Slice 6** (compute-lane design checkpoint) — deliberately deferred until real usage signals demand
+
+WHEN TO TOUCH WHICH SURFACE:
+- User asks a question about tab correctness, exports, processor-facing output → pipeline code paths
+- User asks about assistant responses, grounding quality, message rendering, session behavior → `src/lib/analysis/*` and `src/components/analysis/*`
+- A change affects both (e.g., adding a new artifact type the analysis surface can read) → touch both, and verify the analysis grounding tools still parse the artifact correctly
+
+REFERENCE: `docs/implementation-plans/phase15-chat-with-your-data-v1-implementation-plan.md`
+</analysis_surface>
 
 <pipeline_worker>
 WORKER QUEUE ARCHITECTURE:
@@ -524,6 +587,7 @@ tabulate-ai/
 │   │   ├── env.ts                 # Per-agent model config (34KB)
 │   │   ├── loadEnv.ts             # Environment loading (Node 22 ESM workaround)
 │   │   ├── api/                   # API orchestration (pipelineOrchestrator, reviewCompletion)
+│   │   ├── analysis/              # Chat with Your Data (Phase 15): agent, grounding tools, persistence, model
 │   │   ├── v3/runtime/            # V3 runtime modules (questionId, canonical, planning, compute)
 │   │   ├── pipeline/              # PipelineRunner (CLI path)
 │   │   ├── tables/                # TableGenerator, TablePostProcessor, DataMapGrouper, CutsSpec
@@ -571,8 +635,11 @@ tabulate-ai/
 │   │   ├── verification/          #   VerificationAgent
 │   │   ├── skiplogic/             #   SkipLogicAgent
 │   │   └── filtertranslator/      #   FilterTranslatorAgent
-│   ├── app/                       # Next.js app router (18 API routes, auth, marketing, product)
+│   ├── app/                       # Next.js app router (API routes, auth, marketing, product)
+│   │   ├── api/runs/[runId]/analysis/  # Phase 15 analysis streaming endpoint
+│   │   └── (product)/projects/[projectId]/runs/[runId]/analysis/  # Chat with Your Data UI route
 │   ├── components/                # React components (shadcn/ui, table review, wizard, upload)
+│   │   └── analysis/              # Phase 15 chat workspace, thread, grounded table cards
 │   ├── hooks/                     # React hooks
 │   ├── providers/                 # Context providers
 │   └── guardrails/                # Agent safety guardrails
@@ -580,12 +647,18 @@ tabulate-ai/
 │   ├── worker.ts                  # Pipeline worker daemon (entry point)
 │   └── pull-run-artifacts.ts      # Pull run artifacts from R2 for local inspection
 ├── convex/                        # Backend schema + mutations (Convex)
+│   ├── analysisSessions.ts        #   Phase 15: durable chat threads per run
+│   ├── analysisMessages.ts        #   Phase 15: user + assistant turns, grounding refs
+│   └── analysisArtifacts.ts       #   Phase 15: durable rendered outputs (table cards)
 ├── data/                          # Test datasets (.sav + survey + reference tabs)
 ├── docs/
 │   ├── v3-roadmap.md              # V3 sprint phases + status
+│   ├── april-sprint.md            # Rolling outreach + product plan (originally April, now ongoing)
 │   ├── wincross-style-contract-implementation-plan.md # WinCross export contract
 │   ├── phase8-implementation-plan.md  # Production hardening plan (complete)
 │   ├── phase10-implementation-plan.md # Derived analytical tables plan
+│   ├── implementation-plans/
+│   │   └── phase15-chat-with-your-data-v1-implementation-plan.md  # Active Phase 15 plan
 │   └── references/                # Reference docs, transcripts, specs
 │       ├── v3-script-targets.md   #   V3 enrichment chain spec
 │       ├── v3-13d-canonical-table-spec.md # Canonical table spec

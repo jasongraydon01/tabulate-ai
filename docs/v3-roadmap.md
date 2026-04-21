@@ -301,6 +301,8 @@ Lightweight trial for prospects who haven't signed up yet. Same pipeline, restri
 > Everything below this line adds analytical depth and platform extensions that aren't necessary for initial product-market fit. Phases 1–9 deliver a complete, self-serve crosstab automation product with professional exports. Phases 10+ are investments in differentiation and breadth that should be driven by real user feedback and demand signals — not built speculatively.
 >
 > Proceed to Phase 10+ when: multiple firms are actively using the product, and feedback indicates which extensions would deliver the most value.
+>
+> **Exception pulled forward: Phase 15 (Chat With Your Data).** Conversational analysis is the differentiated hook for insights-professional outreach (consultancies, agency analysts, brand teams). The processor workflow doesn't need it, but the insights-professional audience does — so v1 of Phase 15 is shipping alongside ongoing outreach rather than waiting for the gate. See Phase 15 for status.
 
 ---
 
@@ -444,33 +446,43 @@ The Antares feedback is the first real-world vendor validation of our WinCross o
 
 ## Phase 15: Conversational Data Analysis ("Chat With Your Data")
 
-**Status:** Not started — contingent on market validation gate.
-**"Backend" Focus:** /Users/jasongraydon01/.claude/plans/polymorphic-beaming-raven.md
-**UI/UX Companion:** /Users/jasongraydon01/.claude/plans/vivid-shimmying-lobster.md
+**Status:** In progress — pulled forward from post-PMF to accompany insights-professional outreach.
+**Active implementation plan:** `docs/implementation-plans/phase15-chat-with-your-data-v1-implementation-plan.md`
+**Background:** `/Users/jasongraydon01/.claude/plans/polymorphic-beaming-raven.md` (backend), `/Users/jasongraydon01/.claude/plans/vivid-shimmying-lobster.md` (UI/UX)
 
-Add natural-language conversational analysis on top of the crosstab output. Users ask questions of their data in plain English and get answers grounded in the verified artifacts the pipeline has already produced.
+Natural-language conversational analysis on top of the crosstab output. Users ask questions of their data in plain English and receive answers grounded in the verified artifacts the pipeline has already produced. Live at `/projects/[projectId]/runs/[runId]/analysis`.
 
-**Why this matters:**
-- The competitive reference point is Panoplai, which markets "digital twins" of datasets and lets users ask questions of the data conversationally. This is increasingly table-stakes for non-processor audiences (insights managers, brand teams, agency strategists) who want answers without navigating tab books.
-- TabulateAI has a unique structural advantage: we don't just have raw data — we have **verified crosstab artifacts** (canonical `table.json`, enriched question metadata, computed cross-tabulations with significance testing). The AI can reference these as a ground-truth starting point rather than computing from scratch, which reduces hallucination risk and grounds answers in the same numbers the client sees in their deliverables.
-- This extends the product beyond the data processor segment into the broader research consumer segment — the people who commission tabs but don't want to read 300-page tab books.
+**Why it moved forward:**
+- The processor-profile outreach (Track 1 of the April sprint) is producing signal, but insights-professional outreach (consultancies, agency analysts, brand teams) needs a differentiated hook beyond Q/WinCross exports. Conversational analysis is that hook.
+- The competitive reference point is Panoplai, which markets "digital twins" of datasets and lets users ask questions conversationally. This is increasingly table-stakes for non-processor audiences who want answers without navigating tab books.
+- TabulateAI has a unique structural advantage: we don't just have raw data — we have **verified crosstab artifacts** (canonical `table.json`, enriched question metadata, computed cross-tabulations with significance testing). The assistant references these as ground truth rather than computing from scratch, which reduces hallucination risk and grounds answers in the same numbers the client sees in their deliverables.
 
-**Approach (high-level, not yet designed):**
-- The conversational layer references the pipeline's computed artifacts (tables, metadata, enriched question context) as its knowledge base — not the raw `.sav` directly
-- Simple questions ("What % of respondents are female?") should be answerable from existing cross-tabs without new computation
-- Complex questions ("Is there a significant difference in brand preference between regions?") can reference specific tables and significance test results
-- Out-of-scope questions (anything not covered by the existing table set) should be acknowledged honestly, not hallucinated — with an option to suggest which additional tables would answer the question
-- The UI should make it clear when an answer comes from a verified table vs. when it's an AI interpretation
+**Architecture (shipped v1):**
+- The assistant reads verified pipeline artifacts only (`results/tables.json`, `enrichment/12-questionid-final.json`, `planning/20-banner-plan.json`, `planning/21-crosstab-plan.json`) — never raw `.sav`
+- Grounded lookup tools: `searchRunCatalog`, `getTableCard`, `getQuestionContext`, `listBannerCuts`
+- Durable Convex tables: `analysisSessions`, `analysisMessages`, `analysisArtifacts`
+- Two-lane answer policy: conversational reasoning flows naturally; dataset-specific claims go through a claim-check + repair pass
+- Inline table cards with `From your tabs` provenance distinguish grounded evidence from AI interpretation
 
-**What we do NOT want to build:**
-- A generic SQL/dataframe chat agent that queries raw data with no grounding — that's the commodity approach and it hallucinates
-- A replacement for the tab book — conversational analysis is complementary, not a substitute for the full deliverable
-- Premature infrastructure — this phase should be designed after we have real user feedback on what questions people actually ask
+**What we do NOT want to build (reaffirmed):**
+- A generic SQL/dataframe chat agent with no grounding — hallucinates, commodity
+- A replacement for the tab book — analysis is complementary, not a substitute
+- A compute lane in v1 — recuts / new statistical work are deliberately deferred to v1.1+ after we see what users actually ask for
 
-**Why it's here now (even though it's post-PMF):**
-This should not be an afterthought bolted onto a product that wasn't designed for it. Architectural decisions made in Phases 10–14 (artifact structure, metadata richness, export formats) should be made with awareness that a conversational layer will eventually sit on top. That doesn't mean building for it now — it means not building against it.
+**Slice status (see implementation plan for detail):**
 
-**Exit:** Users can ask natural-language questions about their dataset and receive answers grounded in verified pipeline artifacts. The system clearly distinguishes between answers from computed tables and AI interpretations.
+| Slice | Status | Deliverable |
+|-------|--------|-------------|
+| 0 | ✓ | Convex schema, run-scoped route, empty-state workspace |
+| 1 | ✓ | AI SDK streaming chat shell, persistent messages |
+| 2 | ✓ | Grounded lookup tools, inline table cards |
+| Intermediate | ✓ | Workspace surfaced from project page CTA |
+| 3 | Next | Claim-check + repair lane, grounding refs on messages |
+| 4 | Follow-on | Session polish, follow-up suggestions |
+| 5 | Follow-on | Durable artifact polish, copy/export hooks |
+| 6 | Deferred | Compute-lane design checkpoint (after real usage) |
+
+**Exit:** Users can ask natural-language questions about their dataset and receive answers grounded in verified pipeline artifacts. Unsupported dataset-specific claims are revised before display. The surface feels productized — session list, follow-up suggestions, durable artifacts. Compute-lane decision informed by actual usage, not speculation.
 
 ---
 
