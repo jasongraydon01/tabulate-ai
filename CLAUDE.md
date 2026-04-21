@@ -300,77 +300,13 @@ KEY FILES:
 </pipeline_worker>
 
 <code_patterns>
-AGENT CALL PATTERN (all agents follow this):
-```typescript
-import { generateText, Output, stepCountIs } from 'ai';
-import { getVerificationModel, getVerificationModelName, getVerificationReasoningEffort } from '@/lib/env';
-import { recordAgentMetrics } from '@/lib/observability';
-import { retryWithPolicyHandling } from '@/lib/retryWithPolicyHandling';
+AGENT CALL PATTERN: Wrap `generateText` in `retryWithPolicyHandling()`. Always include `stopWhen: stepCountIs(15)`, `abortSignal`, `providerOptions.openai.reasoningEffort`, and `output: Output.object({ schema })`. Call `recordAgentMetrics(agentName, modelName, { input, output }, durationMs)` after every call. See `src/agents/VerificationAgent.ts` for the canonical template.
 
-const startTime = Date.now();
+SCHEMA-FIRST: Define the Zod schema in `src/schemas/`, export the inferred type, pass via `Output.object({ schema })`.
 
-const result = await retryWithPolicyHandling(async () => {
-  const { output, usage } = await generateText({
-    model: getVerificationModel(),
-    system: systemPrompt,
-    prompt: userPrompt,
-    tools: { scratchpad },
-    stopWhen: stepCountIs(15),
-    output: Output.object({ schema: MyOutputSchema }),
-    providerOptions: {
-      openai: { reasoningEffort: getVerificationReasoningEffort() },
-    },
-    abortSignal,
-  });
+PARALLEL PROCESSING: Use `pLimit(n)` and `createContextScratchpadTool(agentName, itemId)` per iteration — never the global scratchpad. Aggregate with `getAllContextScratchpadEntries()` after.
 
-  // ALWAYS record metrics
-  recordAgentMetrics(
-    'VerificationAgent',
-    getVerificationModelName(),
-    { input: usage?.inputTokens || 0, output: usage?.outputTokens || 0 },
-    Date.now() - startTime
-  );
-
-  return output;
-});
-```
-
-SCHEMA-FIRST DEVELOPMENT:
-```typescript
-// 1. Define schema (in src/schemas/)
-export const MyOutputSchema = z.object({
-  tables: z.array(ExtendedTableDefinitionSchema),
-  confidence: z.number(),
-});
-
-// 2. Export type
-export type MyOutput = z.infer<typeof MyOutputSchema>;
-
-// 3. Use in agent
-output: Output.object({ schema: MyOutputSchema })
-```
-
-PARALLEL PROCESSING:
-```typescript
-import pLimit from 'p-limit';
-import { createContextScratchpadTool, getAllContextScratchpadEntries } from './tools/scratchpad';
-
-const limit = pLimit(3);  // 3 concurrent
-
-const results = await Promise.all(
-  items.map((item, i) => limit(async () => {
-    // Use context-isolated scratchpad for parallel execution
-    const scratchpad = createContextScratchpadTool('AgentName', item.id);
-    // ... agent call with this scratchpad
-    return result;
-  }))
-);
-
-// Aggregate all scratchpad entries after
-const allEntries = getAllContextScratchpadEntries();
-```
-
-Getters: `getVerificationModel()`, `getVerificationModelName()`, `getVerificationReasoningEffort()`
+Getters live in `@/lib/env`: `getVerificationModel()`, `getVerificationModelName()`, `getVerificationReasoningEffort()`.
 </code_patterns>
 
 <security_patterns>
@@ -565,105 +501,50 @@ THINGS THAT WILL BREAK IF YOU FORGET:
 ```
 tabulate-ai/
 ├── src/
-│   ├── agents/                    # AI agents
-│   │   ├── AIGateAgent.ts         #   V3 enrichment validation gate
-│   │   ├── LoopGateAgent.ts       #   V3 loop classification gate
-│   │   ├── SurveyCleanupAgent.ts  #   Clean parsed survey extraction artifacts
-│   │   ├── SubtypeGateAgent.ts    #   Validate analytical subtype classifications
-│   │   ├── StructureGateAgent.ts  #   Validate canonical table structure
-│   │   ├── TableContextAgent.ts   #   Refine table presentation metadata
-│   │   ├── NETEnrichmentAgent.ts  #   Propose NET roll-up groupings
-│   │   ├── BannerAgent.ts         #   Extract banner from PDF/DOCX
-│   │   ├── BannerGenerateAgent.ts #   Generate banners from data (no doc)
-│   │   ├── CrosstabAgent.ts       #   R expression generation (deprecated)
-│   │   ├── CrosstabAgentV2.ts     #   V3 question-centric crosstab planning
-│   │   ├── LoopSemanticsPolicyAgent.ts # Loop anchoring policy
-│   │   ├── VerificationAgent.ts   #   QC pass (NETs, T2B, labels)
-│   │   ├── SkipLogicAgent.ts      #   Skip/show rules from survey
-│   │   ├── FilterTranslatorAgent.ts # Rules → R filter expressions
-│   │   ├── tools/                 #   Shared agent tools (scratchpad, ruleEmitter)
-│   │   └── verification/          #   VerificationAgent-specific processors
+│   ├── agents/              # AI agents (see V3 AI AGENTS table above for roles)
+│   │   ├── tools/           #   Shared agent tools (scratchpad, ruleEmitter)
+│   │   └── verification/    #   VerificationAgent-specific processors
 │   ├── lib/
-│   │   ├── env.ts                 # Per-agent model config (34KB)
-│   │   ├── loadEnv.ts             # Environment loading (Node 22 ESM workaround)
-│   │   ├── api/                   # API orchestration (pipelineOrchestrator, reviewCompletion)
-│   │   ├── analysis/              # Chat with Your Data (Phase 15): agent, grounding tools, persistence, model
-│   │   ├── v3/runtime/            # V3 runtime modules (questionId, canonical, planning, compute)
-│   │   ├── pipeline/              # PipelineRunner (CLI path)
-│   │   ├── tables/                # TableGenerator, TablePostProcessor, DataMapGrouper, CutsSpec
-│   │   ├── validation/            # RDataReader, ValidationRunner, LoopDetector, LoopCollapser
-│   │   ├── r/                     # RScriptGeneratorV2, sanitizeRExpression, CutExpressionValidator
-│   │   ├── excel/                 # ExcelFormatter + table renderers
-│   │   ├── filters/               # FilterApplicator, ZeroBaseValidator
-│   │   ├── processors/            # DataMapProcessor, SurveyProcessor
-│   │   ├── questionContext/       # QuestionContext adapters + renderers (V3)
-│   │   ├── bases/                 # Base/segment handling
-│   │   ├── maxdiff/               # MaxDiff-specific logic
-│   │   ├── survey/                # Survey chunking + filtering
-│   │   ├── skiplogic/             # Skip logic utilities
-│   │   ├── errors/                # ErrorPersistence (ndjson)
-│   │   ├── observability/         # AgentMetrics, CostCalculator, Sentry
-│   │   ├── review/                # HITL review management
-│   │   ├── tableReview/           # Table review processing
-│   │   ├── exportData/            # Q and WinCross export
-│   │   │   ├── q/                 #   Q script export (manifest, emitter, filter compiler)
-│   │   │   └── wincross/          #   WinCross .job export (serializer, parser, profile resolver)
-│   │   ├── exporters/             # Legacy export format handlers
-│   │   ├── events/                # Event bus for CLI
-│   │   ├── worker/                 # Pipeline worker (scheduling, run execution, types)
-│   │   ├── r2/                    # Cloudflare R2 storage
-│   │   └── ...                    # auth, rateLimit, convex, storage, etc.
-│   ├── schemas/                   # Zod schemas (25 files, source of truth)
-│   │   ├── aiGateSchema.ts        #   V3 AI gate output
-│   │   ├── loopGateSchema.ts      #   V3 loop gate output
-│   │   ├── questionContextSchema.ts # V3 question context
-│   │   ├── bannerPlanSchema.ts    #   Banner planning
-│   │   ├── verificationAgentSchema.ts # Verification output
-│   │   └── ...                    #   20+ more schema files
-│   ├── prompts/                   # Agent prompt templates (14 dirs)
-│   │   ├── aigate/                #   AIGateAgent
-│   │   ├── loopgate/              #   LoopGateAgent
-│   │   ├── surveyCleanup/         #   SurveyCleanupAgent
-│   │   ├── subtypegate/           #   SubtypeGateAgent
-│   │   ├── structuregate/         #   StructureGateAgent
-│   │   ├── tableContext/          #   TableContextAgent
-│   │   ├── netEnrichment/         #   NETEnrichmentAgent
-│   │   ├── banner/                #   BannerAgent
-│   │   ├── bannerGenerate/        #   BannerGenerateAgent
-│   │   ├── crosstab/              #   CrosstabAgent / CrosstabAgentV2
-│   │   ├── loopSemantics/         #   LoopSemanticsPolicyAgent
-│   │   ├── verification/          #   VerificationAgent
-│   │   ├── skiplogic/             #   SkipLogicAgent
-│   │   └── filtertranslator/      #   FilterTranslatorAgent
-│   ├── app/                       # Next.js app router (API routes, auth, marketing, product)
-│   │   ├── api/runs/[runId]/analysis/  # Phase 15 analysis streaming endpoint
-│   │   └── (product)/projects/[projectId]/runs/[runId]/analysis/  # Chat with Your Data UI route
-│   ├── components/                # React components (shadcn/ui, table review, wizard, upload)
-│   │   └── analysis/              # Phase 15 chat workspace, thread, grounded table cards
-│   ├── hooks/                     # React hooks
-│   ├── providers/                 # Context providers
-│   └── guardrails/                # Agent safety guardrails
-├── scripts/
-│   ├── worker.ts                  # Pipeline worker daemon (entry point)
-│   └── pull-run-artifacts.ts      # Pull run artifacts from R2 for local inspection
-├── convex/                        # Backend schema + mutations (Convex)
-│   ├── analysisSessions.ts        #   Phase 15: durable chat threads per run
-│   ├── analysisMessages.ts        #   Phase 15: user + assistant turns, grounding refs
-│   └── analysisArtifacts.ts       #   Phase 15: durable rendered outputs (table cards)
-├── data/                          # Test datasets (.sav + survey + reference tabs)
+│   │   ├── env.ts           # Per-agent model config
+│   │   ├── loadEnv.ts       # Environment loading (Node 22 ESM workaround)
+│   │   ├── api/             # API orchestration (pipelineOrchestrator, reviewCompletion)
+│   │   ├── analysis/        # Chat with Your Data (Phase 15): agent, grounding, persistence, model
+│   │   ├── v3/runtime/      # V3 runtime modules (questionId, canonical, planning, compute)
+│   │   ├── pipeline/        # PipelineRunner (legacy CLI path)
+│   │   ├── tables/          # TableGenerator, TablePostProcessor, DataMapGrouper, CutsSpec
+│   │   ├── validation/      # RDataReader, ValidationRunner, LoopDetector, LoopCollapser
+│   │   ├── r/               # RScriptGeneratorV2, sanitizeRExpression, CutExpressionValidator
+│   │   ├── excel/           # ExcelFormatter + table renderers
+│   │   ├── filters/         # FilterApplicator, ZeroBaseValidator
+│   │   ├── processors/      # DataMapProcessor, SurveyProcessor
+│   │   ├── questionContext/ # QuestionContext adapters + renderers (V3)
+│   │   ├── bases/ maxdiff/ survey/ skiplogic/  # Domain helpers
+│   │   ├── errors/          # ErrorPersistence (ndjson)
+│   │   ├── observability/   # AgentMetrics, CostCalculator, Sentry
+│   │   ├── review/ tableReview/  # HITL review
+│   │   ├── exportData/      # Q (q/) and WinCross (wincross/) export
+│   │   ├── exporters/ events/    # Legacy export handlers, CLI event bus
+│   │   ├── worker/          # Pipeline worker (scheduling, run execution)
+│   │   ├── r2/              # Cloudflare R2 storage
+│   │   └── ...              # auth, rateLimit, convex, storage, etc.
+│   ├── schemas/             # Zod schemas (25 files, source of truth)
+│   ├── prompts/             # Agent prompt templates — one dir per agent (production.ts + alternative.ts)
+│   ├── app/                 # Next.js app router
+│   │   ├── api/runs/[runId]/analysis/            # Phase 15 analysis streaming endpoint
+│   │   └── (product)/projects/[projectId]/runs/[runId]/analysis/  # Chat with Your Data UI
+│   ├── components/          # React components (shadcn/ui, table review, wizard, upload)
+│   │   └── analysis/        # Phase 15 chat workspace, thread, grounded table cards
+│   ├── hooks/ providers/ guardrails/
+├── scripts/                 # worker.ts (daemon), pull-run-artifacts.ts
+├── convex/                  # Backend schema + mutations
+│   └── analysis{Sessions,Messages,Artifacts}.ts  # Phase 15 tables
+├── data/                    # Test datasets (.sav + survey + reference tabs)
 ├── docs/
-│   ├── v3-roadmap.md              # V3 sprint phases + status
-│   ├── april-sprint.md            # Rolling outreach + product plan (originally April, now ongoing)
-│   ├── wincross-style-contract-implementation-plan.md # WinCross export contract
-│   ├── phase8-implementation-plan.md  # Production hardening plan (complete)
-│   ├── phase10-implementation-plan.md # Derived analytical tables plan
-│   ├── implementation-plans/
-│   │   └── phase15-chat-with-your-data-v1-implementation-plan.md  # Active Phase 15 plan
-│   └── references/                # Reference docs, transcripts, specs
-│       ├── v3-script-targets.md   #   V3 enrichment chain spec
-│       ├── v3-13d-canonical-table-spec.md # Canonical table spec
-│       └── v3-table-generation-rules.md   # Table gen rule reference
-└── outputs/                       # Pipeline outputs (persisted per-dataset per-run)
+│   ├── v3-roadmap.md                # V3 sprint phases + status
+│   ├── april-sprint.md              # Rolling outreach + product plan
+│   ├── implementation-plans/        # Active plans (incl. phase15-chat-with-your-data-v1)
+│   └── references/                  # v3-script-targets, canonical table spec, generation rules
+└── outputs/                 # Pipeline outputs (per-dataset per-run)
 ```
 </directory_structure>
 
@@ -684,22 +565,7 @@ When tuning agent prompts:
 
 BEFORE CHANGING PROMPTS: Check `.env.local` for the active `*_PROMPT_VERSION` for each agent.
 All agents are currently set to `production`. Do not change the env without explicit instruction.
-
-PROMPT FILE LOCATIONS (each agent has production.ts + alternative.ts, selected via env var):
-- `src/prompts/aigate/` — AIGateAgent
-- `src/prompts/loopgate/` — LoopGateAgent
-- `src/prompts/banner/` — BannerAgent
-- `src/prompts/bannerGenerate/` — BannerGenerateAgent
-- `src/prompts/crosstab/` — CrosstabAgent / CrosstabAgentV2
-- `src/prompts/loopSemantics/` — LoopSemanticsPolicyAgent
-- `src/prompts/surveyCleanup/` — SurveyCleanupAgent
-- `src/prompts/tableContext/` — TableContextAgent
-- `src/prompts/netEnrichment/` — NETEnrichmentAgent
-- `src/prompts/subtypegate/` — SubtypeGateAgent
-- `src/prompts/structuregate/` — StructureGateAgent
-- `src/prompts/verification/` — VerificationAgent
-- `src/prompts/skiplogic/` — SkipLogicAgent
-- `src/prompts/filtertranslator/` — FilterTranslatorAgent
+Prompt files live under `src/prompts/<agent>/` — each has `production.ts` + `alternative.ts`, selected via env var.
 </prompt_iteration>
 
 <prompt_hygiene>
