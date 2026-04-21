@@ -296,8 +296,8 @@ export function AnalysisMessage({
         )}
       >
         {isUser ? (
-          <div className="flex flex-col items-end gap-1">
-            <p className="min-w-0 whitespace-pre-wrap break-words rounded-2xl bg-primary/10 px-4 py-2.5 text-sm leading-6 [overflow-wrap:anywhere]">
+          <div className="flex flex-col items-end gap-0.5">
+            <p className="min-w-0 whitespace-pre-wrap break-words rounded-2xl bg-primary/10 px-4 py-2 text-sm leading-6 [overflow-wrap:anywhere]">
               {message.parts.filter(isTextUIPart).map((part) => part.text).join("")}
             </p>
             <CopyMessageButton
@@ -406,7 +406,7 @@ export function AnalysisMessage({
             })}
 
             {!isStreaming && getAnalysisUIMessageText(message).length > 0 ? (
-              <div className="flex justify-start pt-1">
+              <div className="-mt-2 flex justify-start">
                 <CopyMessageButton
                   text={getAnalysisUIMessageText(message)}
                   label="Copy response"
