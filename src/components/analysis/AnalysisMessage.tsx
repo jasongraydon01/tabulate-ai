@@ -157,14 +157,14 @@ export function AnalysisMessage({
   message,
   isStreaming = false,
   onSelectFollowUpSuggestion,
-  followUpSuggestionsDisabled = false,
   feedback = null,
   onSubmitFeedback,
 }: {
   message: UIMessage;
   isStreaming?: boolean;
+  // Only passed when the thread is idle AND this is the tail assistant
+  // message — so this prop doubles as the "show chips" signal.
   onSelectFollowUpSuggestion?: (suggestion: string) => void | Promise<void>;
-  followUpSuggestionsDisabled?: boolean;
   feedback?: AnalysisMessageFeedbackRecord | null;
   onSubmitFeedback?: (input: {
     messageId: string;
@@ -467,23 +467,16 @@ export function AnalysisMessage({
               </div>
             ) : null}
 
-            {followUpSuggestions.length > 0 ? (
+            {followUpSuggestions.length > 0 && onSelectFollowUpSuggestion ? (
               <div className="flex flex-wrap justify-center gap-2 pt-1">
                 {followUpSuggestions.map((suggestion) => (
                   <button
                     key={suggestion}
                     type="button"
-                    disabled={followUpSuggestionsDisabled}
                     onClick={() => {
-                      if (!onSelectFollowUpSuggestion) return;
                       void onSelectFollowUpSuggestion(suggestion);
                     }}
-                    className={cn(
-                      "rounded-full border border-border/70 bg-background/90 px-3 py-1.5 text-xs text-foreground/85 shadow-[0_8px_24px_rgba(15,23,42,0.12)] transition-colors",
-                      followUpSuggestionsDisabled
-                        ? "cursor-not-allowed opacity-60"
-                        : "hover:border-foreground/20 hover:bg-muted/20",
-                    )}
+                    className="rounded-full border border-border/70 bg-background/90 px-3 py-1.5 text-xs text-foreground/85 shadow-[0_8px_24px_rgba(15,23,42,0.12)] transition-colors hover:border-foreground/20 hover:bg-muted/20"
                   >
                     {suggestion}
                   </button>

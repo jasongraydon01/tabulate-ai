@@ -181,15 +181,13 @@ export function AnalysisThread({
             messages.map((message, index) => {
               const isLastMessage = index === messages.length - 1;
               const shouldShowMessageActions = shouldShowAnalysisMessageActions(messages, index);
+              const showFollowUps = shouldShowMessageActions && !isBusy;
               return (
                 <div key={message.id} ref={isLastMessage ? lastMessageRef : undefined}>
                   <AnalysisMessage
                     message={message}
                     isStreaming={isLastMessage && isBusy}
-                    onSelectFollowUpSuggestion={shouldShowMessageActions
-                      ? handleFollowUpSuggestion
-                      : undefined}
-                    followUpSuggestionsDisabled={isBusy || !shouldShowMessageActions}
+                    onSelectFollowUpSuggestion={showFollowUps ? handleFollowUpSuggestion : undefined}
                     feedback={shouldShowMessageActions && persistedAssistantMessageIdSet.has(message.id)
                       ? (messageFeedbackById[message.id] ?? null)
                       : null}
