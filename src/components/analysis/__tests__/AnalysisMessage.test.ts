@@ -1,7 +1,10 @@
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { UIMessage } from "ai";
 
 import {
+  AnalysisMessage,
   getAnalysisMessageEvidenceItems,
   getAnalysisMessageFollowUpItems,
   getAnalysisTraceEntries,
@@ -157,5 +160,48 @@ describe("AnalysisMessage trace presentation", () => {
       "Show this in counts",
       "How was Q1 asked?",
     ]);
+  });
+
+  it("renders a copy affordance on user messages", () => {
+    const userMessage: UIMessage = {
+      id: "user-1",
+      role: "user",
+      parts: [{ type: "text", text: "What stands out overall?" }],
+    };
+
+    const markup = renderToStaticMarkup(
+      React.createElement(AnalysisMessage, { message: userMessage }),
+    );
+
+    expect(markup).toContain("aria-label=\"Copy message\"");
+    expect(markup).toContain("What stands out overall?");
+  });
+
+  it("renders a copy affordance on completed assistant messages", () => {
+    const assistantMessage: UIMessage = {
+      id: "assistant-copy-1",
+      role: "assistant",
+      parts: [{ type: "text", text: "Overall satisfaction is 45%." }],
+    };
+
+    const markup = renderToStaticMarkup(
+      React.createElement(AnalysisMessage, { message: assistantMessage, isStreaming: false }),
+    );
+
+    expect(markup).toContain("aria-label=\"Copy response\"");
+  });
+
+  it("hides the copy affordance on assistant messages while streaming", () => {
+    const assistantMessage: UIMessage = {
+      id: "assistant-streaming-1",
+      role: "assistant",
+      parts: [{ type: "text", text: "Pulling the age breakdown now..." }],
+    };
+
+    const markup = renderToStaticMarkup(
+      React.createElement(AnalysisMessage, { message: assistantMessage, isStreaming: true }),
+    );
+
+    expect(markup).not.toContain("aria-label=\"Copy response\"");
   });
 });

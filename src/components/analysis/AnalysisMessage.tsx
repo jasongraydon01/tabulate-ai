@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
+import { toast } from "sonner";
 import {
   isReasoningUIPart,
   isTextUIPart,
   isToolUIPart,
   type UIMessage,
 } from "ai";
-import { ChevronDown, Link2, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Check, ChevronDown, Copy, Link2, ThumbsDown, ThumbsUp } from "lucide-react";
 
 import { GroundedTableCard } from "@/components/analysis/GroundedTableCard";
 import {
@@ -20,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   getAnalysisMessageFollowUpSuggestions,
   getAnalysisMessageMetadata,
+  getAnalysisUIMessageText,
 } from "@/lib/analysis/messages";
 import { buildAnalysisRenderableBlocks } from "@/lib/analysis/renderAnchors";
 import { getAnalysisToolActivityLabel } from "@/lib/analysis/toolLabels";
@@ -75,6 +77,49 @@ function useAnimationFrameThrottle<T>(value: T, enabled: boolean): T {
 function StreamingMarkdown({ text, isStreaming }: { text: string; isStreaming: boolean }) {
   const throttledText = useAnimationFrameThrottle(text, isStreaming);
   return <Streamdown>{throttledText}</Streamdown>;
+}
+
+function CopyMessageButton({ text, label }: { text: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  const resetTimerRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (resetTimerRef.current !== null) {
+      window.clearTimeout(resetTimerRef.current);
+    }
+  }, []);
+
+  async function handleCopy() {
+    const payload = text.trim();
+    if (!payload) return;
+
+    try {
+      await navigator.clipboard.writeText(payload);
+      setCopied(true);
+      toast.success("Copied to clipboard");
+      if (resetTimerRef.current !== null) {
+        window.clearTimeout(resetTimerRef.current);
+      }
+      resetTimerRef.current = window.setTimeout(() => {
+        setCopied(false);
+        resetTimerRef.current = null;
+      }, 1500);
+    } catch {
+      toast.error("Copy failed");
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => { void handleCopy(); }}
+      aria-label={label}
+      title={label}
+      className="inline-flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground/80"
+    >
+      {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+    </button>
+  );
 }
 
 function truncateReasoning(text: string, maxLength = 120): string {
@@ -248,15 +293,18 @@ export function AnalysisMessage({
         className={cn(
           "min-w-0",
           hasGroundedTableCard ? "w-full max-w-full" : "max-w-[88%]",
-          isUser
-            ? "rounded-2xl bg-primary/10 px-4 py-2.5"
-            : "",
         )}
       >
         {isUser ? (
-          <p className="min-w-0 whitespace-pre-wrap break-words text-sm leading-6 [overflow-wrap:anywhere]">
-            {message.parts.filter(isTextUIPart).map((part) => part.text).join("")}
-          </p>
+          <div className="flex flex-col items-end gap-1">
+            <p className="min-w-0 whitespace-pre-wrap break-words rounded-2xl bg-primary/10 px-4 py-2.5 text-sm leading-6 [overflow-wrap:anywhere]">
+              {message.parts.filter(isTextUIPart).map((part) => part.text).join("")}
+            </p>
+            <CopyMessageButton
+              text={getAnalysisUIMessageText(message)}
+              label="Copy message"
+            />
+          </div>
         ) : (
           <div className="min-w-0 space-y-3">
             {hasTrace ? (
@@ -356,6 +404,15 @@ export function AnalysisMessage({
                 </div>
               );
             })}
+
+            {!isStreaming && getAnalysisUIMessageText(message).length > 0 ? (
+              <div className="flex justify-start pt-1">
+                <CopyMessageButton
+                  text={getAnalysisUIMessageText(message)}
+                  label="Copy response"
+                />
+              </div>
+            ) : null}
 
             {evidenceItems.length > 0 ? (
               <Collapsible open={isEvidenceOpen} onOpenChange={setIsEvidenceOpen}>
