@@ -20,6 +20,7 @@ import {
   buildAnalysisEvidenceItems,
   getAnalysisUIMessageText,
   persistedAnalysisMessagesToUIMessages,
+  sanitizeAnalysisAssistantMessageContent,
   sanitizeAnalysisMessageContent,
 } from "@/lib/analysis/messages";
 import {
@@ -133,7 +134,20 @@ function emitTextPart(writer: UIMessageStreamWriter<UIMessage>, text: string) {
 
   const textPartId = "analysis-final-text";
   writer.write({ type: "text-start", id: textPartId });
-  writer.write({ type: "text-delta", id: textPartId, delta: text });
+
+  const deltas = text
+    .split(/(\n{2,})/)
+    .map((segment) => segment)
+    .filter((segment) => segment.length > 0);
+
+  if (deltas.length === 0) {
+    writer.write({ type: "text-delta", id: textPartId, delta: text });
+  } else {
+    for (const delta of deltas) {
+      writer.write({ type: "text-delta", id: textPartId, delta });
+    }
+  }
+
   writer.write({ type: "text-end", id: textPartId });
 }
 
@@ -526,7 +540,7 @@ export async function POST(
             return;
           }
 
-          const rawAssistantText = sanitizeAnalysisMessageContent(
+          const rawAssistantText = sanitizeAnalysisAssistantMessageContent(
             getAnalysisUIMessageText(finalEvent.responseMessage),
           );
           const trustResult = resolveAssistantMessageTrust({

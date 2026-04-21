@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  getAnalysisThreadBottomDistance,
   getAnalysisThreadMessageScrollTop,
+  isAnalysisThreadNearBottom,
   scrollAnalysisThreadToBottom,
   scrollAnalysisThreadToMessageStart,
   type AnalysisThreadScrollTarget,
@@ -9,10 +11,12 @@ import {
 } from "@/components/analysis/analysisThreadScroll";
 
 function createViewport({
+  clientHeight = 600,
   top,
   scrollTop,
   scrollHeight = 1200,
 }: {
+  clientHeight?: number;
   top: number;
   scrollTop: number;
   scrollHeight?: number;
@@ -20,6 +24,7 @@ function createViewport({
   const scrollToSpy = vi.fn<(options: ScrollToOptions) => void>();
 
   return {
+    clientHeight,
     scrollHeight,
     scrollTop,
     scrollTo: scrollToSpy,
@@ -56,5 +61,34 @@ describe("analysis thread scroll helpers", () => {
     scrollAnalysisThreadToBottom(viewport, "auto");
 
     expect(viewport.scrollTo).toHaveBeenCalledWith({ top: 1850, behavior: "auto" });
+  });
+
+  it("computes remaining distance to the bottom of the viewport", () => {
+    const viewport = createViewport({
+      top: 0,
+      scrollTop: 980,
+      clientHeight: 600,
+      scrollHeight: 1680,
+    });
+
+    expect(getAnalysisThreadBottomDistance(viewport)).toBe(100);
+  });
+
+  it("treats the viewport as sticky only when the user is near the bottom", () => {
+    const nearBottomViewport = createViewport({
+      top: 0,
+      scrollTop: 980,
+      clientHeight: 600,
+      scrollHeight: 1650,
+    });
+    const awayFromBottomViewport = createViewport({
+      top: 0,
+      scrollTop: 700,
+      clientHeight: 600,
+      scrollHeight: 1650,
+    });
+
+    expect(isAnalysisThreadNearBottom(nearBottomViewport)).toBe(true);
+    expect(isAnalysisThreadNearBottom(awayFromBottomViewport)).toBe(false);
   });
 });

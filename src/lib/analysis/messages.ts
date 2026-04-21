@@ -10,6 +10,7 @@ import {
 } from "@/lib/analysis/types";
 
 export const MAX_ANALYSIS_MESSAGE_CHARS = 4000;
+export const MAX_ANALYSIS_ASSISTANT_MESSAGE_CHARS = 16000;
 
 interface PersistedAnalysisMessageRecord {
   _id: string;
@@ -32,11 +33,80 @@ interface PersistedAnalysisArtifactRecord {
   payload: unknown;
 }
 
-export function sanitizeAnalysisMessageContent(content: string): string {
-  return content
+function normalizeAnalysisLineBreaks(content: string): string {
+  return content.replace(/\r\n?/g, "\n");
+}
+
+export function normalizeAssistantMarkdown(content: string): string {
+  const lines = normalizeAnalysisLineBreaks(content).split("\n");
+  const normalized: string[] = [];
+
+  const unorderedBulletOnlyPattern = /^\s*[-*•]\s*$/;
+  const orderedBulletOnlyPattern = /^\s*\d+\.\s*$/;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const trimmedLine = line.trim();
+    const isStandaloneBullet = unorderedBulletOnlyPattern.test(line) || orderedBulletOnlyPattern.test(line);
+
+    if (!isStandaloneBullet) {
+      normalized.push(line);
+      continue;
+    }
+
+    let nextIndex = index + 1;
+    while (nextIndex < lines.length && lines[nextIndex].trim().length === 0) {
+      nextIndex += 1;
+    }
+
+    if (nextIndex >= lines.length) {
+      normalized.push(line);
+      continue;
+    }
+
+    const nextLine = lines[nextIndex];
+    if (unorderedBulletOnlyPattern.test(nextLine) || orderedBulletOnlyPattern.test(nextLine)) {
+      normalized.push(line);
+      continue;
+    }
+
+    const marker = orderedBulletOnlyPattern.test(line)
+      ? trimmedLine
+      : "-";
+
+    normalized.push(`${marker} ${nextLine.trim()}`);
+    index = nextIndex;
+  }
+
+  return normalized.join("\n");
+}
+
+function sanitizeAnalysisContent(
+  content: string,
+  options?: {
+    maxChars?: number;
+    normalizeMarkdown?: boolean;
+  },
+): string {
+  const normalized = options?.normalizeMarkdown
+    ? normalizeAssistantMarkdown(content)
+    : normalizeAnalysisLineBreaks(content);
+
+  return normalized
     .replace(/[<>]/g, "")
     .trim()
-    .slice(0, MAX_ANALYSIS_MESSAGE_CHARS);
+    .slice(0, options?.maxChars ?? MAX_ANALYSIS_MESSAGE_CHARS);
+}
+
+export function sanitizeAnalysisMessageContent(content: string): string {
+  return sanitizeAnalysisContent(content, { maxChars: MAX_ANALYSIS_MESSAGE_CHARS });
+}
+
+export function sanitizeAnalysisAssistantMessageContent(content: string): string {
+  return sanitizeAnalysisContent(content, {
+    maxChars: MAX_ANALYSIS_ASSISTANT_MESSAGE_CHARS,
+    normalizeMarkdown: true,
+  });
 }
 
 export function buildAnalysisEvidenceItems(

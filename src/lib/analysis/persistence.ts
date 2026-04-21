@@ -1,6 +1,6 @@
 import { isReasoningUIPart, isTextUIPart, isToolUIPart, type UIMessage } from "ai";
 
-import { sanitizeAnalysisMessageContent } from "@/lib/analysis/messages";
+import { sanitizeAnalysisAssistantMessageContent } from "@/lib/analysis/messages";
 import {
   TABLE_CARD_TOOL_TYPE,
   isRenderableAnalysisToolType,
@@ -54,7 +54,7 @@ export function buildPersistedAnalysisParts(parts: UIMessage["parts"]): PendingA
 
   for (const part of parts) {
     if (isTextUIPart(part)) {
-      const text = sanitizeAnalysisMessageContent(part.text);
+      const text = sanitizeAnalysisAssistantMessageContent(part.text);
       if (!text) continue;
       pending.push({
         kind: "ready",
@@ -68,7 +68,7 @@ export function buildPersistedAnalysisParts(parts: UIMessage["parts"]): PendingA
     }
 
     if (isReasoningUIPart(part)) {
-      const text = sanitizeAnalysisMessageContent(part.text ?? "");
+      const text = sanitizeAnalysisAssistantMessageContent(part.text ?? "");
       if (!text) continue;
       pending.push({
         kind: "ready",

@@ -8,6 +8,7 @@ import { AlertCircle } from "lucide-react";
 import { AnalysisMessage } from "@/components/analysis/AnalysisMessage";
 import { AnalysisTitleBadge } from "@/components/analysis/AnalysisTitleBadge";
 import {
+  isAnalysisThreadNearBottom,
   scrollAnalysisThreadToBottom,
   scrollAnalysisThreadToMessageStart,
 } from "@/components/analysis/analysisThreadScroll";
@@ -34,6 +35,7 @@ export function AnalysisThread({
   const lastMessageRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const prevMessageCountRef = useRef(initialMessages.length);
+  const shouldStickToBottomRef = useRef(true);
   const transport = useMemo(
     () => new DefaultChatTransport<UIMessage>({
       api: `/api/runs/${encodeURIComponent(runId)}/analysis`,
@@ -59,15 +61,32 @@ export function AnalysisThread({
     const viewport = viewportRef.current;
     if (!viewport) return;
 
+    const syncStickiness = () => {
+      shouldStickToBottomRef.current = isAnalysisThreadNearBottom(viewport);
+    };
+
+    syncStickiness();
+    viewport.addEventListener("scroll", syncStickiness, { passive: true });
+    return () => viewport.removeEventListener("scroll", syncStickiness);
+  }, []);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
     const frame = window.requestAnimationFrame(() => {
+      const shouldAutoScroll = shouldStickToBottomRef.current;
+
       if (messages.length > prevMessageCountRef.current && lastMessageRef.current) {
-        scrollAnalysisThreadToMessageStart(viewport, lastMessageRef.current);
         prevMessageCountRef.current = messages.length;
+        if (shouldAutoScroll) {
+          scrollAnalysisThreadToMessageStart(viewport, lastMessageRef.current);
+        }
         return;
       }
 
-      if (status === "streaming") {
-        scrollAnalysisThreadToBottom(viewport);
+      if (status === "streaming" && shouldStickToBottomRef.current) {
+        scrollAnalysisThreadToBottom(viewport, "auto");
       }
     });
 
@@ -78,6 +97,7 @@ export function AnalysisThread({
     const nextInput = input.trim();
     if (!nextInput || isBusy) return;
     setInput("");
+    shouldStickToBottomRef.current = true;
     await sendMessage(
       { text: nextInput },
       { body: { sessionId } },

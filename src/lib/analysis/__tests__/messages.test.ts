@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MAX_ANALYSIS_ASSISTANT_MESSAGE_CHARS,
   MAX_ANALYSIS_MESSAGE_CHARS,
   getSanitizedConversationMessagesForModel,
   getAnalysisUIMessageText,
+  normalizeAssistantMarkdown,
   persistedAnalysisMessagesToUIMessages,
+  sanitizeAnalysisAssistantMessageContent,
   sanitizeAnalysisMessageContent,
 } from "@/lib/analysis/messages";
 
@@ -16,6 +19,32 @@ describe("analysis message helpers", () => {
     expect(value.includes("<")).toBe(false);
     expect(value.includes(">")).toBe(false);
     expect(value.length).toBe(MAX_ANALYSIS_MESSAGE_CHARS);
+  });
+
+  it("allows longer assistant responses and normalizes split bullet markers", () => {
+    const assistantText = sanitizeAnalysisAssistantMessageContent(
+      `•\n\nFirst point\n\n${"x".repeat(MAX_ANALYSIS_ASSISTANT_MESSAGE_CHARS + 50)}`,
+    );
+
+    expect(assistantText.startsWith("- First point")).toBe(true);
+    expect(assistantText.length).toBe(MAX_ANALYSIS_ASSISTANT_MESSAGE_CHARS);
+  });
+
+  it("repairs standalone ordered and unordered bullet marker lines", () => {
+    const normalized = normalizeAssistantMarkdown([
+      "Client-ready, I'd frame it like this:",
+      "",
+      "•",
+      "",
+      "Younger cohorts lean more active.",
+      "",
+      "2.",
+      "",
+      "Older cohorts skew more supplemental.",
+    ].join("\n"));
+
+    expect(normalized).toContain("- Younger cohorts lean more active.");
+    expect(normalized).toContain("2. Older cohorts skew more supplemental.");
   });
 
   it("extracts text from UI message parts", () => {

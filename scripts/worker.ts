@@ -1,6 +1,7 @@
 import '../src/lib/loadEnv';
 
 import { mutateInternal, queryInternal } from '@/lib/convex';
+import { isTransientConvexError } from '@/lib/convex';
 import { internal } from '../convex/_generated/api';
 import { runClaimedWorkerRun } from '@/lib/worker/runClaimedRun';
 import { cleanupPendingArtifactRuns } from '@/lib/worker/artifactCleanup';
@@ -20,6 +21,11 @@ let lastIdleLogAt = 0;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function describeError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
 }
 
 async function claimNextRun(): Promise<ClaimedWorkerRun | null> {
@@ -107,7 +113,13 @@ async function main(): Promise<void> {
       console.log(`[Worker] Claimed run ${claimedRun.runId} (attempt ${claimedRun.attemptCount})`);
       await runClaimedWorkerRun(claimedRun, workerId);
     } catch (error) {
-      console.error('[Worker] Loop error:', error);
+      if (isTransientConvexError(error)) {
+        console.warn(
+          `[Worker] Convex unavailable, retrying in ${POLL_INTERVAL_MS}ms: ${describeError(error)}`,
+        );
+      } else {
+        console.error('[Worker] Loop error:', error);
+      }
       await sleep(POLL_INTERVAL_MS);
     }
   }

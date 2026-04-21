@@ -1,4 +1,5 @@
 export interface AnalysisThreadScrollViewport {
+  clientHeight: number;
   scrollHeight: number;
   scrollTop: number;
   scrollTo: (options: ScrollToOptions) => void;
@@ -38,4 +39,17 @@ export function scrollAnalysisThreadToBottom(
     top: viewport.scrollHeight,
     behavior,
   });
+}
+
+export function getAnalysisThreadBottomDistance(
+  viewport: AnalysisThreadScrollViewport,
+): number {
+  return Math.max(0, viewport.scrollHeight - (viewport.scrollTop + viewport.clientHeight));
+}
+
+export function isAnalysisThreadNearBottom(
+  viewport: AnalysisThreadScrollViewport,
+  threshold = 96,
+): boolean {
+  return getAnalysisThreadBottomDistance(viewport) <= threshold;
 }
