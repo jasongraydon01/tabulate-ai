@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION,
   buildAnalysisInstructions,
-} from "@/prompts/analysis/production";
+  buildAnalysisQuestionCatalog,
+} from "@/prompts/analysis";
 
 describe("analysis agent production prompt", () => {
   it("contains the mission section", () => {
@@ -92,6 +93,119 @@ describe("analysis agent production prompt", () => {
 
     expect(result).toContain("Artifact gaps:");
     expect(result).toContain("planning/21-crosstab-plan.json");
+  });
+
+  it("omits question catalog block when no catalog is provided", () => {
+    const result = buildAnalysisInstructions({
+      availability: "available",
+      missingArtifacts: [],
+      runContext: {
+        projectName: "TabulateAI Study",
+        runStatus: "success",
+        tableCount: 10,
+        bannerGroupCount: 2,
+        totalCuts: 5,
+        bannerGroupNames: ["Gender", "Age"],
+        bannerSource: "auto_generated",
+        researchObjectives: null,
+        bannerHints: null,
+        surveyAvailable: true,
+        bannerPlanAvailable: true,
+      },
+    });
+
+    expect(result).not.toContain("<question_catalog>");
+  });
+
+  it("appends the question catalog block when provided", () => {
+    const result = buildAnalysisInstructions({
+      availability: "available",
+      missingArtifacts: [],
+      runContext: {
+        projectName: "TabulateAI Study",
+        runStatus: "success",
+        tableCount: 10,
+        bannerGroupCount: 2,
+        totalCuts: 5,
+        bannerGroupNames: ["Gender", "Age"],
+        bannerSource: "auto_generated",
+        researchObjectives: null,
+        bannerHints: null,
+        surveyAvailable: true,
+        bannerPlanAvailable: true,
+      },
+      questionCatalog: "- Q7 (scale): Sample wording.",
+    });
+
+    expect(result).toContain("<question_catalog>");
+    expect(result).toContain("- Q7 (scale): Sample wording.");
+    expect(result).toContain("</question_catalog>");
+  });
+
+  describe("buildAnalysisQuestionCatalog", () => {
+    it("renders one line per question with type and truncated text", () => {
+      const catalog = buildAnalysisQuestionCatalog([
+        {
+          questionId: "Q7",
+          questionText: "How satisfied are you with your overall experience?",
+          normalizedType: "scale",
+          analyticalSubtype: "scale",
+        },
+        {
+          questionId: "Q12",
+          questionText: "Which of the following brands have you purchased in the past year?",
+          normalizedType: "multi_response",
+          analyticalSubtype: "standard",
+        },
+      ]);
+
+      expect(catalog).toContain("- Q7 (scale): How satisfied are you with your overall experience?");
+      expect(catalog).toContain("- Q12 (multi_response/standard): Which of the following brands");
+    });
+
+    it("skips entries without a question id", () => {
+      const catalog = buildAnalysisQuestionCatalog([
+        {
+          questionId: "",
+          questionText: "Orphan row",
+          normalizedType: "scale",
+        },
+        {
+          questionId: "Q3",
+          questionText: "Real question",
+          normalizedType: "numeric",
+        },
+      ]);
+
+      expect(catalog).not.toContain("Orphan row");
+      expect(catalog).toContain("- Q3 (numeric): Real question");
+    });
+
+    it("truncates long question text with an ellipsis", () => {
+      const longText = `Imagine you are considering a new service offering — ${"lorem ipsum dolor sit amet ".repeat(12)}`;
+      const catalog = buildAnalysisQuestionCatalog([
+        {
+          questionId: "Q99",
+          questionText: longText,
+          normalizedType: "open_end",
+        },
+      ]);
+
+      expect(catalog).toMatch(/…$/);
+      expect(catalog.length).toBeLessThan(longText.length + 40);
+    });
+
+    it("handles missing question text gracefully", () => {
+      const catalog = buildAnalysisQuestionCatalog([
+        {
+          questionId: "Hidden_Awareness",
+          questionText: null,
+          normalizedType: "derived",
+        },
+      ]);
+
+      expect(catalog).toBe("- Hidden_Awareness (derived)");
+    });
   });
 
   it("appends unavailable warning when artifacts are missing", () => {

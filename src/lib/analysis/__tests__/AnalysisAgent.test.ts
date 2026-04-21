@@ -35,6 +35,7 @@ vi.mock("@/lib/analysis/grounding", () => ({
 
 vi.mock("@/prompts/analysis", () => ({
   buildAnalysisInstructions: vi.fn(() => "system prompt"),
+  buildAnalysisQuestionCatalog: vi.fn(() => ""),
 }));
 
 vi.mock("@/lib/observability", async () => {

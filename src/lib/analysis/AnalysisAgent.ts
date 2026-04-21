@@ -22,7 +22,7 @@ import {
 } from "@/lib/analysis/grounding";
 import { createAnalysisScratchpadTool } from "@/lib/analysis/scratchpad";
 import type { AnalysisTraceRetryEvent } from "@/lib/analysis/trace";
-import { buildAnalysisInstructions } from "@/prompts/analysis";
+import { buildAnalysisInstructions, buildAnalysisQuestionCatalog } from "@/prompts/analysis";
 import { calculateCostSync, recordAgentMetrics } from "@/lib/observability";
 import { retryWithPolicyHandling } from "@/lib/retryWithPolicyHandling";
 
@@ -44,6 +44,15 @@ export async function streamAnalysisResponse({
     outputTokens: 0,
   };
 
+  const questionCatalog = buildAnalysisQuestionCatalog(
+    groundingContext.questions.map((question) => ({
+      questionId: question.questionId,
+      questionText: question.questionText,
+      normalizedType: question.normalizedType,
+      analyticalSubtype: question.analyticalSubtype ?? null,
+    })),
+  );
+
   const retryResult = await retryWithPolicyHandling(
     async () =>
       streamText({
@@ -64,6 +73,7 @@ export async function streamAnalysisResponse({
             surveyAvailable: groundingContext.surveyQuestions.length > 0 || Boolean(groundingContext.surveyMarkdown),
             bannerPlanAvailable: groundingContext.bannerPlanGroups.length > 0,
           },
+          questionCatalog,
         }),
         messages: await convertToModelMessages(sanitizedMessages),
         stopWhen: stepCountIs(12),
