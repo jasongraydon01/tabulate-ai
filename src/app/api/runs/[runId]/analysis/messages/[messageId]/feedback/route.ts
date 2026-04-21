@@ -53,7 +53,7 @@ export async function POST(
     }
 
     const convex = getConvexClient();
-    const [run, session, message] = await Promise.all([
+    const [run, session] = await Promise.all([
       convex.query(api.runs.get, {
         runId: runId as Id<"runs">,
         orgId: auth.convexOrgId,
@@ -61,10 +61,6 @@ export async function POST(
       convex.query(api.analysisSessions.getById, {
         orgId: auth.convexOrgId,
         sessionId: sessionId as Id<"analysisSessions">,
-      }),
-      convex.query(api.analysisMessages.getById, {
-        orgId: auth.convexOrgId,
-        messageId: messageId as Id<"analysisMessages">,
       }),
     ]);
 
@@ -75,6 +71,12 @@ export async function POST(
     if (!session || String(session.runId) !== runId) {
       return NextResponse.json({ error: "Analysis session not found" }, { status: 404 });
     }
+
+    const sessionMessages = await convex.query(api.analysisMessages.listBySession, {
+      orgId: auth.convexOrgId,
+      sessionId: session._id,
+    });
+    const message = sessionMessages.find((entry) => String(entry._id) === messageId) ?? null;
 
     if (
       !message

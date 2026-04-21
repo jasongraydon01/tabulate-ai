@@ -386,74 +386,47 @@ export function AnalysisMessage({
               </Collapsible>
             ) : null}
 
-            {followUpSuggestions.length > 0 ? (
-              <div className="space-y-2 pt-1">
-                <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground/80">
-                  Try next
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {followUpSuggestions.map((suggestion) => (
+            {message.role === "assistant" && !isStreaming && onSubmitFeedback ? (
+              <div className="space-y-3 pt-1">
+                <div className="flex justify-center">
+                  <div className="flex items-center gap-2 rounded-full border border-border/70 bg-background/90 px-2 py-1 shadow-[0_8px_24px_rgba(15,23,42,0.14)]">
                     <button
-                      key={suggestion}
                       type="button"
-                      disabled={followUpSuggestionsDisabled}
+                      disabled={isSubmittingFeedback}
                       onClick={() => {
-                        if (!onSelectFollowUpSuggestion) return;
-                        void onSelectFollowUpSuggestion(suggestion);
+                        void submitFeedback("up");
                       }}
                       className={cn(
-                        "rounded-full border border-border/70 bg-muted/15 px-3 py-1.5 text-xs text-foreground/85 transition-colors",
-                        followUpSuggestionsDisabled
-                          ? "cursor-not-allowed opacity-60"
-                          : "hover:border-foreground/20 hover:bg-muted/35",
+                        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] transition-colors",
+                        effectiveFeedback?.vote === "up"
+                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
+                          : "text-muted-foreground hover:bg-muted/40 hover:text-foreground/80",
                       )}
                     >
-                      {suggestion}
+                      <ThumbsUp className="h-3 w-3" />
+                      <span>Helpful</span>
                     </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {message.role === "assistant" && !isStreaming ? (
-              <div className="space-y-2 border-t border-border/40 pt-3">
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={isSubmittingFeedback}
-                    onClick={() => {
-                      void submitFeedback("up");
-                    }}
-                    className={cn(
-                      "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition-colors",
-                      effectiveFeedback?.vote === "up"
-                        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
-                        : "border-border/70 text-muted-foreground hover:text-foreground/80",
-                    )}
-                  >
-                    <ThumbsUp className="h-3 w-3" />
-                    <span>Helpful</span>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isSubmittingFeedback}
-                    onClick={() => {
-                      void submitFeedback("down", draftCorrectionText);
-                    }}
-                    className={cn(
-                      "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition-colors",
-                      effectiveFeedback?.vote === "down"
-                        ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                        : "border-border/70 text-muted-foreground hover:text-foreground/80",
-                    )}
-                  >
-                    <ThumbsDown className="h-3 w-3" />
-                    <span>Needs work</span>
-                  </button>
+                    <button
+                      type="button"
+                      disabled={isSubmittingFeedback}
+                      onClick={() => {
+                        void submitFeedback("down", draftCorrectionText);
+                      }}
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] transition-colors",
+                        effectiveFeedback?.vote === "down"
+                          ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                          : "text-muted-foreground hover:bg-muted/40 hover:text-foreground/80",
+                      )}
+                    >
+                      <ThumbsDown className="h-3 w-3" />
+                      <span>Needs work</span>
+                    </button>
+                  </div>
                 </div>
 
                 {isDownvoteOpen ? (
-                  <div className="space-y-2 rounded-xl border border-border/60 bg-muted/10 p-3">
+                  <div className="mx-auto max-w-xl space-y-2 rounded-2xl border border-border/60 bg-background/90 p-3 shadow-[0_14px_36px_rgba(15,23,42,0.12)]">
                     <p className="text-[11px] leading-5 text-muted-foreground">
                       Optional: what should TabulateAI have said instead?
                     </p>
@@ -482,6 +455,30 @@ export function AnalysisMessage({
                     </div>
                   </div>
                 ) : null}
+              </div>
+            ) : null}
+
+            {followUpSuggestions.length > 0 ? (
+              <div className="flex flex-wrap justify-center gap-2 pt-1">
+                {followUpSuggestions.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    disabled={followUpSuggestionsDisabled}
+                    onClick={() => {
+                      if (!onSelectFollowUpSuggestion) return;
+                      void onSelectFollowUpSuggestion(suggestion);
+                    }}
+                    className={cn(
+                      "rounded-full border border-border/70 bg-background/90 px-3 py-1.5 text-xs text-foreground/85 shadow-[0_8px_24px_rgba(15,23,42,0.12)] transition-colors",
+                      followUpSuggestionsDisabled
+                        ? "cursor-not-allowed opacity-60"
+                        : "hover:border-foreground/20 hover:bg-muted/20",
+                    )}
+                  >
+                    {suggestion}
+                  </button>
+                ))}
               </div>
             ) : null}
           </div>

@@ -257,6 +257,9 @@ export function AnalysisWorkspace({
         sessionId={String(selectedSession._id)}
         sessionTitle={selectedSession.title}
         sessionTitleSource={selectedSession.titleSource}
+        persistedAssistantMessageIds={messages
+          .filter((message) => message.role === "assistant")
+          .map((message) => String(message._id))}
         messageFeedbackById={feedbackByMessageId}
         onSubmitMessageFeedback={async (input) => {
           try {

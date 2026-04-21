@@ -23,6 +23,7 @@ interface AnalysisThreadProps {
   sessionTitle: string;
   sessionTitleSource: "default" | "generated" | "manual";
   initialMessages: UIMessage[];
+  persistedAssistantMessageIds: string[];
   messageFeedbackById: Record<string, AnalysisMessageFeedbackRecord | null>;
   onSubmitMessageFeedback: (input: {
     messageId: string;
@@ -31,12 +32,30 @@ interface AnalysisThreadProps {
   }) => Promise<void>;
 }
 
+export function shouldShowAnalysisMessageActions(
+  messages: UIMessage[],
+  messageIndex: number,
+): boolean {
+  const message = messages[messageIndex];
+  if (!message || message.role !== "assistant") {
+    return false;
+  }
+
+  const latestAssistantIndex = messages.findLastIndex((entry) => entry.role === "assistant");
+  if (latestAssistantIndex !== messageIndex) {
+    return false;
+  }
+
+  return !messages.slice(messageIndex + 1).some((entry) => entry.role === "user");
+}
+
 export function AnalysisThread({
   runId,
   sessionId,
   sessionTitle,
   sessionTitleSource,
   initialMessages,
+  persistedAssistantMessageIds,
   messageFeedbackById,
   onSubmitMessageFeedback,
 }: AnalysisThreadProps) {
@@ -45,6 +64,10 @@ export function AnalysisThread({
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const prevMessageCountRef = useRef(initialMessages.length);
   const shouldStickToBottomRef = useRef(true);
+  const persistedAssistantMessageIdSet = useMemo(
+    () => new Set(persistedAssistantMessageIds),
+    [persistedAssistantMessageIds],
+  );
   const transport = useMemo(
     () => new DefaultChatTransport<UIMessage>({
       api: `/api/runs/${encodeURIComponent(runId)}/analysis`,
@@ -157,15 +180,22 @@ export function AnalysisThread({
           ) : (
             messages.map((message, index) => {
               const isLastMessage = index === messages.length - 1;
+              const shouldShowMessageActions = shouldShowAnalysisMessageActions(messages, index);
               return (
                 <div key={message.id} ref={isLastMessage ? lastMessageRef : undefined}>
                   <AnalysisMessage
                     message={message}
                     isStreaming={isLastMessage && isBusy}
-                    onSelectFollowUpSuggestion={handleFollowUpSuggestion}
-                    followUpSuggestionsDisabled={isBusy}
-                    feedback={messageFeedbackById[message.id] ?? null}
-                    onSubmitFeedback={onSubmitMessageFeedback}
+                    onSelectFollowUpSuggestion={shouldShowMessageActions
+                      ? handleFollowUpSuggestion
+                      : undefined}
+                    followUpSuggestionsDisabled={isBusy || !shouldShowMessageActions}
+                    feedback={shouldShowMessageActions && persistedAssistantMessageIdSet.has(message.id)
+                      ? (messageFeedbackById[message.id] ?? null)
+                      : null}
+                    onSubmitFeedback={shouldShowMessageActions && persistedAssistantMessageIdSet.has(message.id)
+                      ? onSubmitMessageFeedback
+                      : undefined}
                   />
                 </div>
               );

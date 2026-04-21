@@ -56,7 +56,7 @@ describe("analysis message feedback route", () => {
     mocks.query
       .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1" })
       .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1" })
-      .mockResolvedValueOnce({ _id: "msg-1", orgId: "org-1", sessionId: "session-1", role: "user" });
+      .mockResolvedValueOnce([{ _id: "msg-1", orgId: "org-1", sessionId: "session-1", role: "user" }]);
 
     const response = await POST(
       new NextRequest("http://localhost/api/runs/run-1/analysis/messages/msg-1/feedback", {
@@ -80,7 +80,7 @@ describe("analysis message feedback route", () => {
     mocks.query
       .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1" })
       .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1" })
-      .mockResolvedValueOnce({ _id: "msg-1", orgId: "org-1", sessionId: "session-1", role: "assistant" });
+      .mockResolvedValueOnce([{ _id: "msg-1", orgId: "org-1", sessionId: "session-1", role: "assistant" }]);
 
     const response = await POST(
       new NextRequest("http://localhost/api/runs/run-1/analysis/messages/msg-1/feedback", {
@@ -123,7 +123,7 @@ describe("analysis message feedback route", () => {
     mocks.query
       .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1" })
       .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1" })
-      .mockResolvedValueOnce({ _id: "msg-1", orgId: "org-1", sessionId: "session-1", role: "assistant" });
+      .mockResolvedValueOnce([{ _id: "msg-1", orgId: "org-1", sessionId: "session-1", role: "assistant" }]);
 
     const response = await POST(
       new NextRequest("http://localhost/api/runs/run-1/analysis/messages/msg-1/feedback", {
@@ -154,5 +154,28 @@ describe("analysis message feedback route", () => {
         correctionText: null,
       }),
     );
+  });
+
+  it("returns 404 instead of throwing when the url message id is not a persisted session message", async () => {
+    mocks.query
+      .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1" })
+      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1" })
+      .mockResolvedValueOnce([{ _id: "msg-1", orgId: "org-1", sessionId: "session-1", role: "assistant" }]);
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/runs/run-1/analysis/messages/iaftIc0LDH0l2rRU/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          vote: "up",
+        }),
+      }),
+      { params: Promise.resolve({ runId: "run-1", messageId: "iaftIc0LDH0l2rRU" }) },
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "Analysis message not found" });
+    expect(mocks.mutateInternal).not.toHaveBeenCalled();
   });
 });
