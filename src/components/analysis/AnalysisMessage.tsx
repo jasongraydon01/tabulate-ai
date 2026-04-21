@@ -21,6 +21,7 @@ import {
   getAnalysisMessageFollowUpSuggestions,
   getAnalysisMessageMetadata,
 } from "@/lib/analysis/messages";
+import { buildAnalysisRenderableBlocks } from "@/lib/analysis/renderAnchors";
 import { getAnalysisToolActivityLabel } from "@/lib/analysis/toolLabels";
 import {
   isAnalysisTableCard,
@@ -186,6 +187,7 @@ export function AnalysisMessage({
   const followUpSuggestions = getAnalysisMessageFollowUpItems(message);
   const effectiveFeedback = optimisticFeedback ?? feedback ?? null;
   const isDownvoteOpen = effectiveFeedback?.vote === "down";
+  const renderableBlocks = buildAnalysisRenderableBlocks(message, { isStreaming });
 
   const hasTrace = traceEntries.length > 0;
 
@@ -308,36 +310,22 @@ export function AnalysisMessage({
               </div>
             ) : null}
 
-            {message.parts.map((part, index) => {
-              if (isTextUIPart(part)) {
+            {renderableBlocks.map((block) => {
+              if (block.kind === "text") {
                 return (
                   <div
-                    key={`${message.id}-text-${index}`}
+                    key={block.key}
                     className="prose-analysis min-w-0 max-w-none break-words [overflow-wrap:anywhere]"
                   >
-                    <StreamingMarkdown text={part.text} isStreaming={isStreaming} />
+                    <StreamingMarkdown text={block.text} isStreaming={isStreaming} />
                   </div>
                 );
               }
 
-              if (isToolUIPart(part) && part.type === "tool-getTableCard") {
-                if (part.state === "output-available" && isAnalysisTableCard(part.output)) {
-                  return (
-                    <div
-                      key={`${message.id}-${part.toolCallId}`}
-                      id={getAnalysisEvidenceAnchorId(part.toolCallId)}
-                      className="scroll-mt-24 rounded-xl transition-shadow duration-300"
-                    >
-                      <GroundedTableCard
-                        card={part.output}
-                      />
-                    </div>
-                  );
-                }
-
+              if (block.kind === "placeholder") {
                 return (
                   <div
-                    key={`${message.id}-${part.toolCallId}`}
+                    key={block.key}
                     className="rounded-xl border border-dashed border-border/80 bg-muted/20 px-3 py-2 text-xs text-muted-foreground"
                   >
                     Loading table...
@@ -345,7 +333,28 @@ export function AnalysisMessage({
                 );
               }
 
-              return null;
+              if (block.kind === "table" && block.part.state === "output-available" && isAnalysisTableCard(block.part.output)) {
+                return (
+                  <div
+                    key={block.key}
+                    id={getAnalysisEvidenceAnchorId(block.part.toolCallId)}
+                    className="scroll-mt-24 rounded-xl transition-shadow duration-300"
+                  >
+                    <GroundedTableCard
+                      card={block.part.output}
+                    />
+                  </div>
+                );
+              }
+
+              return (
+                <div
+                  key={block.key}
+                  className="rounded-xl border border-dashed border-border/80 bg-muted/20 px-3 py-2 text-xs text-muted-foreground"
+                >
+                  Loading table...
+                </div>
+              );
             })}
 
             {evidenceItems.length > 0 ? (

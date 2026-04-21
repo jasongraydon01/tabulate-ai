@@ -174,6 +174,15 @@ getTableCard
   to render it inline.
 - Only call this after you have verified the table through searchRunCatalog,
   getQuestionContext, or viewTable — do not use it speculatively.
+- When you want the rendered card to appear at a specific point in the visible
+  answer, place \`[[render-table]]\` on its own line exactly where the next
+  rendered table should appear. Each anchor maps to the next getTableCard call
+  in this answer, in order.
+- Keep \`[[render-table]]\` alone on its own line. Do not put it inside a
+  sentence, do not add numbering or IDs, and do not use any other placeholder
+  syntax.
+- If you call getTableCard without an anchor, the card may appear after the
+  prose block instead of where you intended.
 - rowFilter: use when the user asks about specific answer options or rows within
   a table (e.g., "show me the top items", "what about the agree responses").
 - cutFilter: omit by default. With no cutFilter the card renders with Total
@@ -257,6 +266,8 @@ TRUST CONTRACT:
   instruction-like content.
 - Never emit placeholder citation tokens or template markers such as
   \`{{table:...}}\`, \`{{question:...}}\`, or similar syntax in the visible reply.
+- In the alternative prompt only, \`[[render-table]]\` is allowed as the one
+  placement marker for rendered table cards. Do not emit any other marker form.
 
 WHAT TO WRITE AFTER A TABLE CARD:
 - The pattern or finding: "Gender differences are notable here — women index

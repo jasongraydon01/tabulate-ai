@@ -38,6 +38,12 @@ describe("analysis agent production prompt", () => {
     expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain(
       "Never emit placeholder citation tokens or template markers such as",
     );
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("[[render-table]]");
+  });
+
+  it("keeps the render-anchor protocol isolated to the alternative prompt", () => {
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("[[render-table]]");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).not.toContain("[[render-table]]");
   });
 
   it("contains the tool usage protocol with exploration workflow", () => {

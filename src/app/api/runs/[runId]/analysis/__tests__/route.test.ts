@@ -749,4 +749,55 @@ describe("analysis chat route", () => {
       title: "Brand Attribute Comparison",
     });
   });
+
+  it("strips render anchors from persisted assistant content and title generation input", async () => {
+    mocks.query
+      .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
+      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Analysis Session 1", titleSource: "default" })
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
+    mocks.mutateInternal
+      .mockResolvedValueOnce("user-msg-1")
+      .mockResolvedValueOnce("assistant-msg-1")
+      .mockResolvedValueOnce({ updated: true });
+    mocks.streamAnalysisResponse.mockResolvedValueOnce({
+      streamResult: makeStreamResult({
+        responseMessage: {
+          parts: [{
+            type: "text",
+            text: "Intro.\n\n[[render-table]]\n\nClose.",
+          }],
+        },
+      }),
+      getTraceCapture: () => makeTraceCapture(),
+      getGroundingCapture: () => [],
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/runs/run-1/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          messages: [{ id: "user-1", role: "user", parts: [{ type: "text", text: "Show me the narrative" }] }],
+        }),
+      }),
+      { params: Promise.resolve({ runId: "run-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(mocks.mutateInternal.mock.calls[1][1]).toEqual(expect.objectContaining({
+      content: "Intro.\n\nClose.",
+      parts: [
+        { type: "text", text: "Intro.\n\n[[render-table]]\n\nClose." },
+      ],
+    }));
+    expect(mocks.generateAnalysisSessionTitle).toHaveBeenCalledWith({
+      userPrompt: "Show me the narrative",
+      assistantResponse: "Intro.\n\nClose.",
+      abortSignal: expect.any(AbortSignal),
+    });
+  });
 });

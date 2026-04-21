@@ -24,6 +24,7 @@ import {
   sanitizeAnalysisAssistantMessageContent,
   sanitizeAnalysisMessageContent,
 } from "@/lib/analysis/messages";
+import { stripAnalysisRenderAnchors } from "@/lib/analysis/renderAnchors";
 import {
   buildPersistedAnalysisParts,
   type PersistedAnalysisPart,
@@ -64,7 +65,7 @@ function summarizeAssistantResponseForTitle(parts: UIMessage["parts"]): string {
 
   for (const part of parts) {
     if (part.type === "text" && typeof part.text === "string") {
-      const text = sanitizeAnalysisMessageContent(part.text);
+      const text = sanitizeAnalysisMessageContent(stripAnalysisRenderAnchors(part.text));
       if (text) segments.push(text);
       continue;
     }
@@ -564,12 +565,13 @@ export async function POST(
             assistantText: trustResult.assistantText,
             injectedTableCards: trustResult.injectedTableCards,
           });
+          const persistedAssistantText = stripAnalysisRenderAnchors(trustResult.assistantText);
           const followUpSuggestions = buildDeterministicFollowUpSuggestions({
             groundingContext,
             groundingRefs: trustResult.groundingRefs,
             responseParts: finalResponseParts,
           });
-          const assistantTitleBasis = trustResult.assistantText || summarizeAssistantResponseForTitle(finalResponseParts);
+          const assistantTitleBasis = persistedAssistantText || summarizeAssistantResponseForTitle(finalResponseParts);
           const traceCapture = getTraceCapture();
 
           const streamMetadata = toStreamMetadata(trustResult.groundingRefs, followUpSuggestions);
@@ -598,14 +600,14 @@ export async function POST(
             trustResult.groundingRefs,
             artifactIdsByToolCallId,
           );
-          if (!trustResult.assistantText && persistedParts.length === 0) return;
+          if (!persistedAssistantText && persistedParts.length === 0) return;
 
           const createdAt = new Date().toISOString();
           const assistantMessageId = await mutateInternal(internal.analysisMessages.create, {
             sessionId: session._id,
             orgId: auth.convexOrgId,
             role: "assistant",
-            content: trustResult.assistantText,
+            content: persistedAssistantText,
             ...(persistedParts.length > 0 ? { parts: persistedParts } : {}),
             ...(persistedGroundingRefs.length > 0 ? { groundingRefs: persistedGroundingRefs } : {}),
             ...(followUpSuggestions.length > 0 ? { followUpSuggestions } : {}),
@@ -627,7 +629,7 @@ export async function POST(
               sessionTitle: session.title,
               messageId: String(assistantMessageId),
               createdAt,
-              assistantText: trustResult.assistantText,
+              assistantText: persistedAssistantText,
               responseParts: finalResponseParts,
               traceCapture,
             });
