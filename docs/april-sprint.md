@@ -17,6 +17,8 @@ Every workday follows this order. No exceptions.
 
 The reasoning: outreach compounds with consistency. Skipping a day to chase a code fix is always tempting and always wrong at this stage — and the compounding horizon is months, not weeks.
 
+> Everything below this section is strategic framing for traceability. The day-to-day is simpler than the structure suggests: outreach first, product second, LinkedIn presence and content opportunistic. Reference, not daily checklist.
+
 ---
 
 ## Track 1: Outreach (rolling)
@@ -38,12 +40,7 @@ The original plan was 20 workdays of processor-profile outreach against 221 Apol
 |--------|-------|
 | Accounts in original pool | 221 (→ 201 after de-dupe / bad-entry cleanup) |
 | Accounts researched + tiered | 201 |
-| Accounts skipped | 122 (61% — pool noise) |
-| Accounts outreached (pre-4/16 weekend) | 25 |
-| Accounts queued, contacts pulled, ready to send | 54 |
-| Accounts needing LinkedIn-only sourcing | 9 (Apollo returned nothing usable) |
-| Accounts with thin Apollo pool (1 contact) | 4 (supplement via LinkedIn) |
-| Total accounts that will be touched | ~79 (39% of original pool) |
+| Accounts queued or outreached | ~79 (39% of pool — rest skipped as pool noise) |
 
 **Emails sent by batch day (pre-4/16 weekend):**
 
@@ -56,9 +53,7 @@ The original plan was 20 workdays of processor-profile outreach against 221 Apol
 | 2026-04-14 | 5 | 31 |
 | **Totals** | **25** | **~105** |
 
-**Still queued:** 54 accounts, ~291 contacts (avg ~5.4 per account). Tier mix: 8 strong, 46 regular. Send work is manual, one account at a time, personalized per contact.
-
-See `batch-logs/` for per-day batch logs, `batch-logs/outreach-tracker.md` for the per-account send queue, and `batch-logs/sprint-complete.md` for the 4/16 weekend completion summary.
+Detailed breakdowns live in `batch-logs/`: per-day batch logs, `batch-logs/outreach-tracker.md` for the per-account send queue, and `batch-logs/sprint-complete.md` for the 4/16 weekend completion summary.
 
 ### Strategy (revised)
 
@@ -98,22 +93,13 @@ Both audiences work together: selling processor-facing crosstabs produces the ve
 - SEO goal: rank for searches that MR ops leads and insights managers actually run ("WinCross automation," "crosstab software," "survey data chat AI," etc.).
 - Content feeds both outbound (reference in emails) and inbound (organic discovery).
 
-**6. Reddit (existing, maintain).**
-- Post in market research subreddits where relevant and authentic. Focus on genuine value, not spam.
+### Rolling checkpoints
 
-**7. Direct warm outreach (existing).**
-- Sago, Testset, and other known prospects already in conversation.
-- Follow-ups on all open threads.
+Three forcing functions to keep the rolling plan honest:
 
-### Weekly cadence (revised, rolling)
-
-No longer a fixed five-week window. Rough rhythm:
-
-| Phase | Window | Focus |
-|-------|--------|-------|
-| **April 2026** | Completed / ongoing | Processor send queue from 4/16 weekend sprint (54 accounts). Follow-ups on 25 already sent. |
-| **May 2026** | Starts | First insights-professional outreach batch. Lead with Chat with Your Data. Continue processor follow-ups. Begin steady-state blog cadence. |
-| **June 2026+** | Ongoing | Rolling multi-channel cadence: direct outreach, LinkedIn activity, blog posts, Reddit, warm intros. Re-contact non-responders with new material (product updates, blog posts, case studies). |
+- **End of April 2026** — Antares-profile (processor) original list sends complete. The queued accounts from the 4/16 weekend sprint are out the door.
+- **End of May 2026** — Insights-professional original list sends complete. First pass through the new audience done, leading with Chat with Your Data.
+- **End of June 2026** — Reevaluate. Which channels produced signal? Which didn't? Double down, expand, or pivot.
 
 ### Success metrics (unchanged framing, longer horizon)
 
@@ -203,3 +189,5 @@ Track key decisions and pivots here as the plan evolves.
 | Apr 21 | Plan scope expanded from fixed April sprint to rolling multi-month effort | B2B cycles exceed 20-workday window; channel breadth (LinkedIn page, personal brand, blog/SEO) compounds over months not weeks |
 | Apr 21 | Phase 15 (Chat with Your Data) pulled forward from post-PMF backlog to active Track 2a | Unlocks May insights-professional outreach; ships alongside audience expansion rather than waiting for the market-validation gate |
 | Apr 21 | May 2026 scheduled as start of insights-professional outreach (Audience 2) | Phase 15 Slices 0–2 shipped + Slice 3 underway; conversational analysis is the differentiated hook for consultancy/brand-team audience |
+| Apr 21 | Dropped Reddit and "direct warm outreach" from the Channels list | Neither is a deliberate channel — Reddit activity is sporadic, and warm conversations (Sago, Testset, etc.) continue naturally without a doc entry. Channel list kept to work that requires weekly attention. |
+| Apr 21 | Added end-of-month checkpoints (Apr / May / Jun) in place of weekly cadence table | Rolling plans drift without forcing functions. Checkpoints keep the multi-channel mix honest without reintroducing a hard sprint deadline. |
