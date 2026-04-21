@@ -125,7 +125,7 @@ It is **not** a direct UI model for TabulateAI. Thunderbolt is a general AI clie
 
 ### Still missing before V1 feels usable in-product
 
-- the Slice 3 trust layer that repairs unsupported dataset-specific claims before display
+- the Slice 3 trust layer: structured per-claim citations, claim-check and repair for unsupported dataset-specific claims, and tool-output injection hardening
 - follow-up polish so the workspace feels productized rather than developer-accessible
 
 ### Explicitly out of scope for initial v1
@@ -553,6 +553,26 @@ Not needed in the first implementation slice:
 - `recharts`
 - resumable stream storage
 
+## Harness Alignment Notes
+
+After Slices 0–2 shipped, the remaining plan was pressure-tested against the 2025 consensus on agentic-chat harnesses — tool design, loop control, context management, grounding and citations, injection safety, prompt caching, observability. The review confirmed the core direction is on the right side of current practice: orthogonal tools, an inspect-vs-act tool split (`viewTable` / `getTableCard`), structured error returns over throws, streamed reasoning display, provider-isolated model selection, per-turn traces, and a structured prompt with delimited sections.
+
+The review also surfaced additions worth folding into the remaining slices so the product stands up against what users now expect from ChatGPT, Claude.ai, and comparable platforms:
+
+- structured per-claim citations — folded into **Slice 3**
+- tool-output injection hardening — folded into **Slice 3**
+- tool-call deduplication and stuck-loop detection — new **Slice 3.5**
+- prompt-cache behavior audit for Anthropic — new **Slice 3.5**
+- feedback capture on assistant messages — folded into **Slice 4**
+- context compaction policy for long sessions — new **Slice 6** (late-phase)
+
+Items considered and deliberately deferred beyond v1:
+
+- a dedicated eval harness for grounding fidelity — acknowledged as the right long-term investment, but a cross-cutting concern across the entire pipeline rather than something analysis-specific. Revisit once the product has real users and regressions actually start to matter.
+- resumable streams, mid-stream interjection, TodoWrite-style task tracking, subagent patterns, tool-search / progressive disclosure of tools, and model routing for main synthesis — all legitimate 2025 patterns, but none are felt gaps at our current tool count, session length, or cost profile.
+
+These additions are flagged at the slice level below with **Harness alignment note:** markers so future slices know which items came from this review and why.
+
 ## Slice-by-Slice Build Plan
 
 ### Slice 0: Schema and route scaffolding
@@ -613,31 +633,60 @@ Exit criteria:
 
 The "Chat with your data" CTA on the project page (`src/app/(product)/projects/[projectId]/page.tsx`) routes the user into the analysis workspace for the latest eligible run.
 
-### Slice 3: Claim-check and repair lane
+### Slice 3: Trust layer — citations, claim-check, injection hardening
 
 Status: Next implementation slice
 
 Deliver:
-- dataset-claim detection
-- repair pass for unsupported numeric claims
-- grounding refs stored on assistant messages
+- dataset-claim detection on the assistant's draft response
+- a repair pass that either strips unsupported numeric specifics or forces a lookup-backed rewrite
+- structured per-claim citation tokens emitted in assistant prose, resolved at render time to inline links that point back to the originating table card or question metadata
+- `groundingRefs` persisted on assistant messages at per-claim granularity so the trust decision is auditable and available to future UI
+- tool-output injection hardening: tool outputs are wrapped in XML delimiters before re-entering the model context, and control-token / system-prompt-lookalike patterns in retrieved survey verbatims and labels are stripped or escaped
+- harness-level validation that the model cannot act on tool-call IDs outside the current run's artifact set
 
 Exit criteria:
 - unsupported numerical answers are revised before display
-- methodology conversation remains natural
+- methodology conversation remains natural — no wall of disclaimers
+- assistant prose with numeric claims renders with visible citations that resolve to the grounding source
+- survey free-text containing injection-shaped strings cannot redirect tool use or system behavior
 
-### Slice 4: Session polish
+Harness alignment note: structured per-claim citations are the 2025 consensus for grounded chat, stronger than card-level "From your tabs" badges alone. Tool-output injection hardening addresses the primary attack vector for grounded-chat agents — untrusted content flowing back into the model context through retrieval — and is cheap to add while we are already in the trust layer.
 
-Status: High-level follow-on after Slice 3
+### Slice 3.5: Harness robustness checkpoints
+
+Status: Small-PR scope, lands alongside or immediately after Slice 3
+
+Deliver:
+- tool-call deduplication within a single turn — identical tool + args returns the cached prior result rather than re-running
+- stuck-loop detection — a nudge or forced-synthesis turn when the agent calls the same tool with near-identical args multiple times in a row
+- prompt-cache behavior audit for Anthropic: verify the system prompt + tool definitions are byte-stable across turns within a session, confirm cache hits via API response headers, and document what invalidates the cache for future prompt changes
+- revisit the `stopWhen: stepCountIs(12)` budget against real turn traces; tighten toward the 5–8 range if turns do not use the headroom
+
+Exit criteria:
+- traces show no duplicate tool calls within a turn for identical args
+- repeat-pattern nudges land in-context when they apply
+- measurable cache hit rate across multi-turn sessions
+- step budget calibrated to observed usage
+
+Harness alignment note: tool-call dedup and stuck-loop detection are standard 2025 chat-harness guards that research calls out specifically for chat agents, which have lower silence tolerance than coding agents. The prompt-cache audit is a one-shot verification that often uncovers easy cost wins within the 5-minute Anthropic TTL.
+
+### Slice 4: Session polish and feedback capture
+
+Status: High-level follow-on after Slice 3 / 3.5
 
 Deliver:
 - session titles
-- follow-up suggestions
+- follow-up suggestions after grounded responses
 - cleaner thread list
 - better empty states and inline status copy
+- feedback capture on assistant messages: thumbs up / down plus an optional inline correction ("this number is wrong — it should be X"), persisted per assistant message
 
 Exit criteria:
 - analysis surface feels productized, not experimental
+- user feedback is captured per assistant message and inspectable per run / session
+
+Harness alignment note: feedback capture is cheap UX that gives us ground truth on grounding failures and will feed any future evaluation work. Adding it here means we accumulate signal before we need it, rather than retrofitting once regressions become a real problem.
 
 ### Slice 5: Durable artifact polish
 
@@ -645,18 +694,33 @@ Status: High-level follow-on
 
 Deliver:
 - richer `analysisArtifacts`
-- copy/export hooks for table cards
+- copy / export hooks for table cards
 - artifact-focused references in the UI
 
 Exit criteria:
 - the assistant's structured outputs feel reusable, not ephemeral
 
-### Slice 6: Compute-lane design checkpoint
+### Slice 6: Context compaction policy
+
+Status: Late-phase. Policy work happens after the rest of v1 is stable; implementation may or may not land within Phase 15 depending on scope at that point.
+
+Deliver:
+- a written compaction policy covering: utilization threshold at which summarization kicks in, what stays verbatim (recent N turns + rendered table cards + any session-level user preferences), what gets dropped vs. collapsed into structured summaries, and how `groundingRefs` on older turns are preserved through compaction
+- an implementation only if the policy resolves cleanly and the change stays contained; otherwise ship the policy document and defer the code
+
+Exit criteria:
+- long sessions (40+ turns) do not risk context-window exhaustion
+- compaction — when it runs — preserves enough context that the assistant remains coherent across turns
+- policy is documented even if implementation is deferred
+
+Harness alignment note: coding agents get natural context resets per task; chat agents do not. Deciding this policy before sessions actually grow long avoids a migration later. Leaving it until the tail of Phase 15 is a deliberate choice: we want real session-length data before we freeze the policy.
+
+### Slice 7: Compute-lane design checkpoint
 
 Status: Deliberately deferred
 
 Deliver:
-- decision memo after actual usage of slices 1-5
+- decision memo after actual usage of slices 1–5
 
 Questions to answer before building compute:
 - how often do users ask for unavailable cuts?
@@ -672,20 +736,24 @@ Questions to answer before building compute:
 
 ## Recommended Next Step
 
-**Slice 3 — claim-check and repair lane.**
+**Slice 3 — trust layer (citations, claim-check, injection hardening).**
 
-The Phase 15 interface feedback pass is closed. The workspace is surfaced from the project page, clusters 1–6 have landed, and the additional observations (default-to-Total adherence, horizontal overflow containment, tool activity nesting, and full thinking-trace persistence) are all in. What remains is the durable trust layer.
+The Phase 15 interface feedback pass is closed. The workspace is surfaced from the project page, clusters 1–6 have landed, and the additional observations (default-to-Total adherence, horizontal overflow containment, tool activity nesting, and full thinking-trace persistence) are all in. What remains is the durable trust layer, now expanded off the harness pressure-test.
 
 Slice 3 delivers:
+- structured per-claim citation tokens in assistant prose, resolved to inline links back to the originating table card or question metadata
 - dataset-claim detection on the assistant's draft response
 - a repair pass that either strips unsupported numeric specifics or forces a lookup-backed rewrite
-- `groundingRefs` persisted on assistant messages so the trust decision is auditable and available to future UI
+- tool-output injection hardening so untrusted content retrieved via tools cannot redirect agent behavior
+- `groundingRefs` persisted on assistant messages at per-claim granularity so the trust decision is auditable and available to future UI
 
 Exit criteria (restated from the slice plan):
 - unsupported numerical answers are revised before display
 - methodology conversation remains natural — no wall of disclaimers
+- assistant prose with numeric claims renders with visible citations that resolve to the grounding source
+- survey free-text containing injection-shaped strings cannot redirect tool use or system behavior
 
-This is the right moment: the conversational surface feels coherent enough that trust becomes the next felt gap rather than polish.
+This is the right moment: the conversational surface feels coherent enough that trust becomes the next felt gap rather than polish. Slice 3.5 (harness robustness checkpoints) follows immediately and is small enough to land alongside or right after Slice 3.
 
 ## Sources Consulted
 
