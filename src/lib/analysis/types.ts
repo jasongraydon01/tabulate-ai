@@ -53,6 +53,15 @@ export interface AnalysisMessageMetadata {
   followUpSuggestions?: string[];
 }
 
+export type AnalysisMessageFeedbackVote = "up" | "down";
+
+export interface AnalysisMessageFeedbackRecord {
+  messageId: string;
+  vote: AnalysisMessageFeedbackVote;
+  correctionText: string | null;
+  updatedAt: number;
+}
+
 export interface AnalysisCatalogQuestionMatch {
   questionId: string;
   questionText: string;

@@ -13,7 +13,7 @@ import { AnalysisEmptyState } from "@/components/analysis/AnalysisEmptyState";
 import { AnalysisSessionList } from "@/components/analysis/AnalysisSessionList";
 import { AnalysisThread } from "@/components/analysis/AnalysisThread";
 import { persistedAnalysisMessagesToUIMessages } from "@/lib/analysis/messages";
-import type { AnalysisGroundingRef } from "@/lib/analysis/types";
+import type { AnalysisGroundingRef, AnalysisMessageFeedbackRecord, AnalysisMessageFeedbackVote } from "@/lib/analysis/types";
 import { useAuthContext } from "@/providers/auth-provider";
 
 interface AnalysisWorkspaceProps {
@@ -61,7 +61,7 @@ export function AnalysisWorkspace({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { convexOrgId } = useAuthContext();
+  const { convexOrgId, convexUserId } = useAuthContext();
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
@@ -94,6 +94,27 @@ export function AnalysisWorkspace({
       sessionId: selectedSession._id,
     } : "skip",
   );
+
+  const feedback = useQuery(
+    api.analysisMessageFeedback.listBySessionForUser,
+    convexOrgId && convexUserId && selectedSession ? {
+      orgId: convexOrgId as Id<"organizations">,
+      sessionId: selectedSession._id,
+      userId: convexUserId as Id<"users">,
+    } : "skip",
+  );
+
+  const feedbackByMessageId = Object.fromEntries(
+    (feedback ?? []).map((entry) => [
+      String(entry.messageId),
+      {
+        messageId: String(entry.messageId),
+        vote: entry.vote,
+        correctionText: entry.correctionText ?? null,
+        updatedAt: entry.updatedAt,
+      } satisfies AnalysisMessageFeedbackRecord,
+    ]),
+  ) as Record<string, AnalysisMessageFeedbackRecord>;
 
   async function handleCreateSession() {
     setIsCreatingSession(true);
@@ -168,6 +189,35 @@ export function AnalysisWorkspace({
     toast.success("Chat deleted");
   }
 
+  async function handleSubmitMessageFeedback(input: {
+    messageId: string;
+    vote: AnalysisMessageFeedbackVote;
+    correctionText?: string | null;
+  }) {
+    if (!selectedSession) {
+      throw new Error("No active analysis session");
+    }
+
+    const response = await fetch(
+      `/api/runs/${encodeURIComponent(runId)}/analysis/messages/${encodeURIComponent(input.messageId)}/feedback`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sessionId: String(selectedSession._id),
+          vote: input.vote,
+          correctionText: input.correctionText ?? "",
+        }),
+      },
+    );
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+    if (!response.ok) {
+      throw new Error(payload.error ?? "Failed to save message feedback");
+    }
+  }
+
   function renderThreadContent() {
     if (sessions === undefined) {
       return (
@@ -187,7 +237,11 @@ export function AnalysisWorkspace({
       );
     }
 
-    if (messages === undefined || artifacts === undefined) {
+    if (
+      messages === undefined
+      || artifacts === undefined
+      || (convexUserId && feedback === undefined)
+    ) {
       return (
         <div className="flex min-h-[520px] items-center justify-center gap-3 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -203,6 +257,17 @@ export function AnalysisWorkspace({
         sessionId={String(selectedSession._id)}
         sessionTitle={selectedSession.title}
         sessionTitleSource={selectedSession.titleSource}
+        messageFeedbackById={feedbackByMessageId}
+        onSubmitMessageFeedback={async (input) => {
+          try {
+            await handleSubmitMessageFeedback(input);
+          } catch (error) {
+            toast.error("Failed to save feedback", {
+              description: error instanceof Error ? error.message : "Unknown error",
+            });
+            throw error;
+          }
+        }}
         initialMessages={persistedAnalysisMessagesToUIMessages(
           messages.map((message) => ({
             _id: String(message._id),

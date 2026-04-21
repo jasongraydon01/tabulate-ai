@@ -175,10 +175,14 @@ export const deleteCascade = internalMutation({
       throw new Error("Analysis session not found");
     }
 
-    const [messages, artifacts] = await Promise.all([
+    const [messages, feedback, artifacts] = await Promise.all([
       ctx.db
         .query("analysisMessages")
         .withIndex("by_session_created", (q) => q.eq("sessionId", args.sessionId))
+        .collect(),
+      ctx.db
+        .query("analysisMessageFeedback")
+        .withIndex("by_session_user", (q) => q.eq("sessionId", args.sessionId))
         .collect(),
       ctx.db
         .query("analysisArtifacts")
@@ -190,6 +194,10 @@ export const deleteCascade = internalMutation({
       await ctx.db.delete(message._id);
     }
 
+    for (const feedbackEntry of feedback) {
+      await ctx.db.delete(feedbackEntry._id);
+    }
+
     for (const artifact of artifacts) {
       await ctx.db.delete(artifact._id);
     }
@@ -198,6 +206,7 @@ export const deleteCascade = internalMutation({
 
     return {
       deletedMessages: messages.length,
+      deletedFeedback: feedback.length,
       deletedArtifacts: artifacts.length,
     };
   },

@@ -392,6 +392,23 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_session_created", ["sessionId", "createdAt"]),
 
+  analysisMessageFeedback: defineTable({
+    orgId: v.id("organizations"),
+    projectId: v.id("projects"),
+    runId: v.id("runs"),
+    sessionId: v.id("analysisSessions"),
+    messageId: v.id("analysisMessages"),
+    userId: v.id("users"),
+    vote: v.union(v.literal("up"), v.literal("down")),
+    correctionText: v.union(v.string(), v.null()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_session_user", ["sessionId", "userId"])
+    .index("by_message_user", ["messageId", "userId"])
+    .index("by_org", ["orgId"])
+    .index("by_run", ["runId"]),
+
   analysisArtifacts: defineTable({
     sessionId: v.id("analysisSessions"),
     orgId: v.id("organizations"),

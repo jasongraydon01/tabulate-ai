@@ -8,7 +8,7 @@ import {
   isToolUIPart,
   type UIMessage,
 } from "ai";
-import { ChevronDown, Link2 } from "lucide-react";
+import { ChevronDown, Link2, ThumbsDown, ThumbsUp } from "lucide-react";
 
 import { GroundedTableCard } from "@/components/analysis/GroundedTableCard";
 import {
@@ -16,12 +16,18 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { Textarea } from "@/components/ui/textarea";
 import {
   getAnalysisMessageFollowUpSuggestions,
   getAnalysisMessageMetadata,
 } from "@/lib/analysis/messages";
 import { getAnalysisToolActivityLabel } from "@/lib/analysis/toolLabels";
-import { isAnalysisTableCard, type AnalysisEvidenceItem } from "@/lib/analysis/types";
+import {
+  isAnalysisTableCard,
+  type AnalysisEvidenceItem,
+  type AnalysisMessageFeedbackRecord,
+  type AnalysisMessageFeedbackVote,
+} from "@/lib/analysis/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -151,11 +157,19 @@ export function AnalysisMessage({
   isStreaming = false,
   onSelectFollowUpSuggestion,
   followUpSuggestionsDisabled = false,
+  feedback = null,
+  onSubmitFeedback,
 }: {
   message: UIMessage;
   isStreaming?: boolean;
   onSelectFollowUpSuggestion?: (suggestion: string) => void | Promise<void>;
   followUpSuggestionsDisabled?: boolean;
+  feedback?: AnalysisMessageFeedbackRecord | null;
+  onSubmitFeedback?: (input: {
+    messageId: string;
+    vote: AnalysisMessageFeedbackVote;
+    correctionText?: string | null;
+  }) => Promise<void>;
 }) {
   const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
   const isUser = message.role === "user";
@@ -163,12 +177,22 @@ export function AnalysisMessage({
     (part) => isToolUIPart(part) && part.type === "tool-getTableCard",
   );
   const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
+  const [draftCorrectionText, setDraftCorrectionText] = useState(feedback?.correctionText ?? "");
+  const [optimisticFeedback, setOptimisticFeedback] = useState<AnalysisMessageFeedbackRecord | null>(feedback ?? null);
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 
   const traceEntries = getAnalysisTraceEntries(message);
   const evidenceItems = getAnalysisMessageEvidenceItems(message);
   const followUpSuggestions = getAnalysisMessageFollowUpItems(message);
+  const effectiveFeedback = optimisticFeedback ?? feedback ?? null;
+  const isDownvoteOpen = effectiveFeedback?.vote === "down";
 
   const hasTrace = traceEntries.length > 0;
+
+  useEffect(() => {
+    setOptimisticFeedback(feedback ?? null);
+    setDraftCorrectionText(feedback?.correctionText ?? "");
+  }, [feedback]);
 
   const collapsedSummary = (() => {
     if (!hasTrace) return null;
@@ -187,6 +211,34 @@ export function AnalysisMessage({
     }
     return null;
   })();
+
+  async function submitFeedback(vote: AnalysisMessageFeedbackVote, correctionText?: string | null) {
+    if (!onSubmitFeedback || isSubmittingFeedback) return;
+
+    const trimmedCorrectionText = correctionText?.trim() || null;
+    const nextFeedback: AnalysisMessageFeedbackRecord = {
+      messageId: message.id,
+      vote,
+      correctionText: vote === "down" ? trimmedCorrectionText : null,
+      updatedAt: Date.now(),
+    };
+
+    const previousFeedback = effectiveFeedback;
+    setOptimisticFeedback(nextFeedback);
+    setIsSubmittingFeedback(true);
+
+    try {
+      await onSubmitFeedback({
+        messageId: message.id,
+        vote,
+        correctionText: vote === "down" ? trimmedCorrectionText : null,
+      });
+    } catch (_error) {
+      setOptimisticFeedback(previousFeedback ?? null);
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  }
 
   return (
     <div className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}>
@@ -360,6 +412,76 @@ export function AnalysisMessage({
                     </button>
                   ))}
                 </div>
+              </div>
+            ) : null}
+
+            {message.role === "assistant" && !isStreaming ? (
+              <div className="space-y-2 border-t border-border/40 pt-3">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={isSubmittingFeedback}
+                    onClick={() => {
+                      void submitFeedback("up");
+                    }}
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition-colors",
+                      effectiveFeedback?.vote === "up"
+                        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
+                        : "border-border/70 text-muted-foreground hover:text-foreground/80",
+                    )}
+                  >
+                    <ThumbsUp className="h-3 w-3" />
+                    <span>Helpful</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSubmittingFeedback}
+                    onClick={() => {
+                      void submitFeedback("down", draftCorrectionText);
+                    }}
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition-colors",
+                      effectiveFeedback?.vote === "down"
+                        ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                        : "border-border/70 text-muted-foreground hover:text-foreground/80",
+                    )}
+                  >
+                    <ThumbsDown className="h-3 w-3" />
+                    <span>Needs work</span>
+                  </button>
+                </div>
+
+                {isDownvoteOpen ? (
+                  <div className="space-y-2 rounded-xl border border-border/60 bg-muted/10 p-3">
+                    <p className="text-[11px] leading-5 text-muted-foreground">
+                      Optional: what should TabulateAI have said instead?
+                    </p>
+                    <Textarea
+                      value={draftCorrectionText}
+                      onChange={(event) => setDraftCorrectionText(event.target.value)}
+                      disabled={isSubmittingFeedback}
+                      className="min-h-20 resize-y text-sm"
+                      placeholder="Add a correction or a better framing."
+                      maxLength={1000}
+                    />
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[11px] text-muted-foreground">
+                        {draftCorrectionText.trim().length}/1000
+                      </span>
+                      <button
+                        type="button"
+                        disabled={isSubmittingFeedback}
+                        onClick={() => {
+                          void submitFeedback("down", draftCorrectionText);
+                        }}
+                        className="rounded-full border border-border/70 px-3 py-1 text-[11px] text-foreground/85 transition-colors hover:border-foreground/20 hover:bg-muted/25 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Save feedback
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>

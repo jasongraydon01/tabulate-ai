@@ -47,6 +47,18 @@ export const listBySession = query({
   },
 });
 
+export const getById = query({
+  args: {
+    orgId: v.id("organizations"),
+    messageId: v.id("analysisMessages"),
+  },
+  handler: async (ctx, args) => {
+    const message = await ctx.db.get(args.messageId);
+    if (!message || message.orgId !== args.orgId) return null;
+    return message;
+  },
+});
+
 export const create = internalMutation({
   args: {
     sessionId: v.id("analysisSessions"),

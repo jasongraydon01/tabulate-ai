@@ -15,6 +15,7 @@ import {
 import { PromptComposer } from "@/components/analysis/PromptComposer";
 import { GridLoader } from "@/components/ui/grid-loader";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import type { AnalysisMessageFeedbackRecord, AnalysisMessageFeedbackVote } from "@/lib/analysis/types";
 
 interface AnalysisThreadProps {
   runId: string;
@@ -22,6 +23,12 @@ interface AnalysisThreadProps {
   sessionTitle: string;
   sessionTitleSource: "default" | "generated" | "manual";
   initialMessages: UIMessage[];
+  messageFeedbackById: Record<string, AnalysisMessageFeedbackRecord | null>;
+  onSubmitMessageFeedback: (input: {
+    messageId: string;
+    vote: AnalysisMessageFeedbackVote;
+    correctionText?: string | null;
+  }) => Promise<void>;
 }
 
 export function AnalysisThread({
@@ -30,6 +37,8 @@ export function AnalysisThread({
   sessionTitle,
   sessionTitleSource,
   initialMessages,
+  messageFeedbackById,
+  onSubmitMessageFeedback,
 }: AnalysisThreadProps) {
   const [input, setInput] = useState("");
   const lastMessageRef = useRef<HTMLDivElement | null>(null);
@@ -155,6 +164,8 @@ export function AnalysisThread({
                     isStreaming={isLastMessage && isBusy}
                     onSelectFollowUpSuggestion={handleFollowUpSuggestion}
                     followUpSuggestionsDisabled={isBusy}
+                    feedback={messageFeedbackById[message.id] ?? null}
+                    onSubmitFeedback={onSubmitMessageFeedback}
                   />
                 </div>
               );
