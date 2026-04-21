@@ -256,7 +256,6 @@ export function AnalysisWorkspace({
         runId={runId}
         sessionId={String(selectedSession._id)}
         sessionTitle={selectedSession.title}
-        sessionTitleSource={selectedSession.titleSource}
         persistedAssistantMessageIds={messages
           .filter((message) => message.role === "assistant")
           .map((message) => String(message._id))}

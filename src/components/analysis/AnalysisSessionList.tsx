@@ -11,7 +11,6 @@ import {
   Trash2,
 } from "lucide-react";
 
-import { AnalysisTitleBadge } from "@/components/analysis/AnalysisTitleBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -286,14 +285,9 @@ export function AnalysisSessionList({
                         <p className="w-full break-words text-sm font-medium leading-snug whitespace-normal text-foreground">
                           {session.title}
                         </p>
-                        <div className="flex min-w-0 flex-wrap items-center gap-2">
-                          {session.titleSource === "generated" ? (
-                            <AnalysisTitleBadge className="shrink-0" />
-                          ) : null}
-                          <p className="text-[11px] text-muted-foreground">
-                            {formatSessionTime(session.lastMessageAt)}
-                          </p>
-                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          {formatSessionTime(session.lastMessageAt)}
+                        </p>
                       </div>
                     </button>
                     <DropdownMenu>

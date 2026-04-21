@@ -42,7 +42,7 @@ describe("AnalysisSessionList", () => {
     expect(formatSessionTime(Date.UTC(2026, 2, 12, 15, 30), now)).toContain("Mar");
   });
 
-  it("shows a generated-title indicator for AI-generated chat titles", () => {
+  it("renders the session title and timestamp without any title-source badge", () => {
     const markup = renderToStaticMarkup(
       React.createElement(AnalysisSessionList, {
         sessions: [
@@ -68,7 +68,7 @@ describe("AnalysisSessionList", () => {
     );
 
     expect(markup).toContain("Brand Attribute Comparison");
-    expect(markup).toContain("Generated");
+    expect(markup).not.toContain("Generated");
     expect(markup).toMatch(/(Today|Yesterday|[A-Z][a-z]{2} \d{1,2}:\d{2}|[A-Z][a-z]{2} \d{1,2})/);
   });
 

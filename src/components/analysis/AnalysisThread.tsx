@@ -6,7 +6,6 @@ import { useChat } from "@ai-sdk/react";
 import { AlertCircle } from "lucide-react";
 
 import { AnalysisMessage } from "@/components/analysis/AnalysisMessage";
-import { AnalysisTitleBadge } from "@/components/analysis/AnalysisTitleBadge";
 import {
   isAnalysisThreadNearBottom,
   scrollAnalysisThreadToBottom,
@@ -21,7 +20,6 @@ interface AnalysisThreadProps {
   runId: string;
   sessionId: string;
   sessionTitle: string;
-  sessionTitleSource: "default" | "generated" | "manual";
   initialMessages: UIMessage[];
   persistedAssistantMessageIds: string[];
   messageFeedbackById: Record<string, AnalysisMessageFeedbackRecord | null>;
@@ -53,7 +51,6 @@ export function AnalysisThread({
   runId,
   sessionId,
   sessionTitle,
-  sessionTitleSource,
   initialMessages,
   persistedAssistantMessageIds,
   messageFeedbackById,
@@ -150,14 +147,9 @@ export function AnalysisThread({
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div className="border-b border-border/60 px-5 py-3">
-        <div className="flex min-w-0 flex-col items-start gap-1">
-          <h2 className="w-full break-words text-sm font-medium leading-snug whitespace-normal text-foreground">
-            {sessionTitle}
-          </h2>
-          {sessionTitleSource === "generated" ? (
-            <AnalysisTitleBadge className="shrink-0" />
-          ) : null}
-        </div>
+        <h2 className="w-full break-words text-sm font-medium leading-snug whitespace-normal text-foreground">
+          {sessionTitle}
+        </h2>
       </div>
       <ScrollArea
         className="min-h-0 min-w-0 flex-1"
@@ -166,16 +158,15 @@ export function AnalysisThread({
       >
         <div className="min-w-0 space-y-4 px-5 py-3 pb-24">
           {messages.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-border/60 bg-muted/15 px-5 py-6 text-left">
-              <p className="text-sm font-medium text-foreground">
-                Start with a grounded question
-              </p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Ask for the overall story first, then narrow into a subgroup, banner cut, or question wording when something needs a closer read.
-              </p>
-              <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                Example: “What stands out overall?” or “Break this down by age.”
-              </p>
+            <div className="flex min-h-[calc(100vh-18rem)] items-center justify-center px-6 py-10">
+              <div className="mx-auto flex max-w-xl flex-col items-center gap-3 text-center">
+                <h3 className="font-serif text-3xl tracking-tight text-foreground sm:text-4xl">
+                  Start with a grounded question
+                </h3>
+                <p className="text-sm leading-6 text-muted-foreground sm:text-base sm:leading-7">
+                  Ask for the overall story first, then narrow into a subgroup, banner cut, or question wording when something needs a closer read.
+                </p>
+              </div>
             </div>
           ) : (
             messages.map((message, index) => {
