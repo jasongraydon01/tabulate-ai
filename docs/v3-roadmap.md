@@ -460,9 +460,10 @@ Natural-language conversational analysis on top of the crosstab output. Users as
 **Architecture (shipped v1):**
 - The assistant reads verified pipeline artifacts only (`results/tables.json`, `enrichment/12-questionid-final.json`, `planning/20-banner-plan.json`, `planning/21-crosstab-plan.json`) — never raw `.sav`
 - Grounded lookup tools: `searchRunCatalog`, `getTableCard`, `getQuestionContext`, `listBannerCuts`
-- Durable Convex tables: `analysisSessions`, `analysisMessages`, `analysisArtifacts`
+- Durable Convex tables: `analysisSessions`, `analysisMessages`, `analysisArtifacts`, `analysisMessageFeedback`
 - Two-lane answer policy: conversational reasoning flows naturally; dataset-specific claims go through a claim-check + repair pass
 - Inline table cards with `From your tabs` provenance distinguish grounded evidence from AI interpretation
+- Analysis model selection (Anthropic) isolated from the pipeline model path so each surface can pick its own provider
 
 **What we do NOT want to build (reaffirmed):**
 - A generic SQL/dataframe chat agent with no grounding — hallucinates, commodity
@@ -478,11 +479,13 @@ Natural-language conversational analysis on top of the crosstab output. Users as
 | 2 | ✓ | Grounded lookup tools, inline table cards |
 | Intermediate | ✓ | Workspace surfaced from project page CTA |
 | 3 | ✓ | Claim-check + repair lane, evidence panel, message-level grounding refs, injection hardening |
-| 4 | Follow-on | Session polish, follow-up suggestions |
-| 5 | Follow-on | Durable artifact polish, copy/export hooks |
-| 6 | Deferred | Compute-lane design checkpoint (after real usage) |
+| 4 | ✓ | Session titles, deterministic follow-up chips, per-message thumbs/correction feedback, anchored table placement |
+| 5 | Next | Durable artifact polish, copy/export hooks on table cards |
+| 6 | Late-phase | Context compaction policy for long sessions |
+| 3.5 | Backlog | Tool-call dedup, stuck-loop detection, prompt-cache audit |
+| 7 | Deferred | Compute-lane design checkpoint (after real usage) |
 
-**Exit:** Users can ask natural-language questions about their dataset and receive answers grounded in verified pipeline artifacts. Unsupported dataset-specific claims are revised before display. The surface feels productized — session list, follow-up suggestions, durable artifacts. Compute-lane decision informed by actual usage, not speculation.
+**Exit:** Users can ask natural-language questions about their dataset and receive answers grounded in verified pipeline artifacts. Unsupported dataset-specific claims are revised before display. The surface feels productized — session list, follow-up suggestions, per-message feedback, durable artifacts. Compute-lane decision informed by actual usage, not speculation.
 
 ---
 
