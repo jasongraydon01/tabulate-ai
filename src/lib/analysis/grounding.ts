@@ -179,16 +179,54 @@ export interface AnalysisGroundingContext {
 }
 
 const TOOL_OUTPUT_TEXT_MAX_LENGTH = 4000;
+const TOOL_OUTPUT_XML_MAX_LENGTH = 2000;
+
+const INJECTION_SHAPED_LINE_RE = /^\s*(?:system|assistant|user|tool|developer)\s*:|^\s*(?:ignore|disregard|override|forget|follow these instructions|act as|you are now|system prompt|developer message|tool result|call the|use the)\b|^\s*call\s+(?:get|view|list|search)[a-z0-9_]*\b/i;
+const INJECTION_SHAPED_TAG_RE = /<\/?(?:system|assistant|user|tool|developer|instruction|instructions|prompt|analysis|policy|message)[^>]*>/gim;
+const CODE_FENCE_RE = /```+/g;
+const ZERO_WIDTH_RE = /[\u200B-\u200D\uFEFF]/g;
 
 function sanitizeGroundingText(value: string): string {
-  return value
-    .replace(/[<>]/g, "")
-    .replace(/(^|\n)\s*(system|assistant|user|tool|developer)\s*:/gim, "$1")
-    .replace(/(^|\n)\s*(ignore|disregard|override|forget)\b[^\n]*/gim, "$1")
-    .replace(/<\/?(system|assistant|user|tool|developer|instruction|prompt|analysis)[^>]*>/gim, "")
+  const normalized = value
+    .replace(/\r\n?/g, "\n")
+    .replace(ZERO_WIDTH_RE, "")
+    .replace(CODE_FENCE_RE, "")
+    .replace(INJECTION_SHAPED_TAG_RE, "")
+    .replace(/[<>]/g, "");
+
+  const filteredLines = normalized
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !INJECTION_SHAPED_LINE_RE.test(line));
+
+  return filteredLines
+    .join(" ")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, TOOL_OUTPUT_TEXT_MAX_LENGTH);
+}
+
+function escapeXmlText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function buildRetrievedContextXml(toolName: string, value: unknown): string {
+  const serialized = (() => {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  })();
+
+  const sanitized = sanitizeGroundingText(serialized).slice(0, TOOL_OUTPUT_XML_MAX_LENGTH);
+  return `<retrieved_context tool="${escapeXmlText(toolName)}">${escapeXmlText(sanitized)}</retrieved_context>`;
 }
 
 function shouldPreserveGroundingKey(key: string): boolean {
@@ -217,6 +255,17 @@ export function sanitizeGroundingToolOutput<T>(value: T): T {
   });
 
   return Object.fromEntries(entries) as T;
+}
+
+export function attachRetrievedContextXml<T>(toolName: string, value: T): T {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+
+  return {
+    ...(value as Record<string, unknown>),
+    retrievedContextXml: buildRetrievedContextXml(toolName, value),
+  } as T;
 }
 
 function normalizeText(value: string | null | undefined): string {

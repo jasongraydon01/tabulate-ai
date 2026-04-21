@@ -11,6 +11,7 @@ import {
   getAnalysisProviderOptions,
 } from "@/lib/analysis/model";
 import {
+  attachRetrievedContextXml,
   getBannerPlanContext,
   getQuestionContext,
   getRunContext,
@@ -83,7 +84,10 @@ export async function streamAnalysisResponse({
     resolve: () => Promise<T> | T,
     options?: { toolCallId?: string },
   ): Promise<T> {
-    const result = sanitizeGroundingToolOutput(await resolve());
+    const sanitized = sanitizeGroundingToolOutput(await resolve());
+    const result = toolName === "getTableCard"
+      ? sanitized
+      : attachRetrievedContextXml(toolName, sanitized);
     captureGroundingEvent({
       toolName,
       toolCallId: options?.toolCallId,

@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
-  const instances: any[] = [];
-  const queryPlans: any[] = [];
-  const mutationPlans: any[] = [];
+  type MockFn = (...args: unknown[]) => unknown;
+  const instances: MockConvexHttpClient[] = [];
+  const queryPlans: MockFn[] = [];
+  const mutationPlans: MockFn[] = [];
 
   class MockConvexHttpClient {
     url: string;
-    queryImpl: any;
-    mutationImpl: any;
+    queryImpl: MockFn;
+    mutationImpl: MockFn;
     setAdminAuth = vi.fn();
 
     constructor(url: string) {

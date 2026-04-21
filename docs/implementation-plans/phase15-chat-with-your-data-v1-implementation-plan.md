@@ -125,7 +125,7 @@ It is **not** a direct UI model for TabulateAI. Thunderbolt is a general AI clie
 
 ### Still missing before V1 feels usable in-product
 
-- the Slice 3 trust layer: structured per-claim citations, claim-check and repair for unsupported dataset-specific claims, and tool-output injection hardening
+- Slice 4 polish: follow-up suggestions, tighter session UX, and lightweight feedback capture
 - follow-up polish so the workspace feels productized rather than developer-accessible
 
 ### Explicitly out of scope for initial v1
@@ -633,25 +633,25 @@ Exit criteria:
 
 The "Chat with your data" CTA on the project page (`src/app/(product)/projects/[projectId]/page.tsx`) routes the user into the analysis workspace for the latest eligible run.
 
-### Slice 3: Trust layer — citations, claim-check, injection hardening
+### Slice 3: Trust layer — evidence panel, claim-check, injection hardening
 
-Status: Next implementation slice
+Status: Completed in simplified v1 form
 
 Deliver:
 - dataset-claim detection on the assistant's draft response
 - a repair pass that either strips unsupported numeric specifics or forces a lookup-backed rewrite
-- structured per-claim citation tokens emitted in assistant prose, resolved at render time to inline links that point back to the originating table card or question metadata
-- `groundingRefs` persisted on assistant messages at per-claim granularity so the trust decision is auditable and available to future UI
-- tool-output injection hardening: tool outputs are wrapped in XML delimiters before re-entering the model context, and control-token / system-prompt-lookalike patterns in retrieved survey verbatims and labels are stripped or escaped
-- harness-level validation that the model cannot act on tool-call IDs outside the current run's artifact set
+- a message-level evidence panel that links grounded numeric answers back to the originating table card or contextual source without cluttering prose
+- `groundingRefs` persisted on assistant messages at message level so the trust decision is auditable and available to future UI
+- tool-output injection hardening: retrieved tool text is sanitized before re-entering model context, tool outputs carry a sanitized XML-delimited retrieved-context envelope for model-side handling, and control-token / system-prompt-lookalike patterns in survey verbatims and labels are stripped
+- render/persistence allowlists so only approved analysis tool parts and run-scoped artifacts survive into the thread UI
 
 Exit criteria:
 - unsupported numerical answers are revised before display
 - methodology conversation remains natural — no wall of disclaimers
-- assistant prose with numeric claims renders with visible citations that resolve to the grounding source
+- numeric answers expose visible evidence links through the message evidence panel
 - survey free-text containing injection-shaped strings cannot redirect tool use or system behavior
 
-Harness alignment note: structured per-claim citations are the 2025 consensus for grounded chat, stronger than card-level "From your tabs" badges alone. Tool-output injection hardening addresses the primary attack vector for grounded-chat agents — untrusted content flowing back into the model context through retrieval — and is cheap to add while we are already in the trust layer.
+Harness alignment note: for v1 we are intentionally choosing a lighter trust presentation than full per-claim inline citations. The evidence panel keeps trust signals available at the message level without turning every grounded answer into citation-heavy prose. Tool-output injection hardening still addresses the primary attack vector for grounded-chat agents — untrusted content flowing back into the model context through retrieval — and remains part of the core Slice 3 contract.
 
 ### Slice 3.5: Harness robustness checkpoints
 
@@ -736,24 +736,22 @@ Questions to answer before building compute:
 
 ## Recommended Next Step
 
-**Slice 3 — trust layer (citations, claim-check, injection hardening).**
+**Slice 4 — session polish and feedback capture.**
 
-The Phase 15 interface feedback pass is closed. The workspace is surfaced from the project page, clusters 1–6 have landed, and the additional observations (default-to-Total adherence, horizontal overflow containment, tool activity nesting, and full thinking-trace persistence) are all in. What remains is the durable trust layer, now expanded off the harness pressure-test.
+The trust layer is now in place in a simpler v1 shape: claim-check + repair, message-level grounding refs, an evidence panel for grounded answers, and tightened tool-output hardening. The next useful work is productizing the session experience rather than adding heavier citation machinery.
 
-Slice 3 delivers:
-- structured per-claim citation tokens in assistant prose, resolved to inline links back to the originating table card or question metadata
-- dataset-claim detection on the assistant's draft response
-- a repair pass that either strips unsupported numeric specifics or forces a lookup-backed rewrite
-- tool-output injection hardening so untrusted content retrieved via tools cannot redirect agent behavior
-- `groundingRefs` persisted on assistant messages at per-claim granularity so the trust decision is auditable and available to future UI
+Slice 4 should deliver:
+- session titles and thread-list cleanup
+- follow-up suggestions after grounded responses
+- better empty states and inline status copy
+- lightweight per-message feedback capture for correction signals
 
-Exit criteria (restated from the slice plan):
-- unsupported numerical answers are revised before display
-- methodology conversation remains natural — no wall of disclaimers
-- assistant prose with numeric claims renders with visible citations that resolve to the grounding source
-- survey free-text containing injection-shaped strings cannot redirect tool use or system behavior
+Exit criteria:
+- the analysis surface feels productized rather than experimental
+- follow-up paths are obvious after grounded answers
+- message-level user feedback is captured per assistant response and inspectable per run/session
 
-This is the right moment: the conversational surface feels coherent enough that trust becomes the next felt gap rather than polish. Slice 3.5 (harness robustness checkpoints) follows immediately and is small enough to land alongside or right after Slice 3.
+Slice 3.5 (harness robustness checkpoints) remains a valid follow-on when we want tighter loop control and cache verification, but it is no longer a blocker for moving into Slice 4.
 
 ## Sources Consulted
 

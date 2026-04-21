@@ -477,7 +477,7 @@ Natural-language conversational analysis on top of the crosstab output. Users as
 | 1 | ✓ | AI SDK streaming chat shell, persistent messages |
 | 2 | ✓ | Grounded lookup tools, inline table cards |
 | Intermediate | ✓ | Workspace surfaced from project page CTA |
-| 3 | Next | Claim-check + repair lane, grounding refs on messages |
+| 3 | ✓ | Claim-check + repair lane, evidence panel, message-level grounding refs, injection hardening |
 | 4 | Follow-on | Session polish, follow-up suggestions |
 | 5 | Follow-on | Durable artifact polish, copy/export hooks |
 | 6 | Deferred | Compute-lane design checkpoint (after real usage) |
