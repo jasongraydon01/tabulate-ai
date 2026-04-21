@@ -142,14 +142,28 @@ Recently shipped:
 - `GENERATED` title pill removed from session cards and thread header.
 - In-session empty state rewritten to centered-serif treatment matching the no-sessions empty state.
 - Reasoning summaries now stream on the OpenAI/Azure analysis path (routed through the Responses API instead of Chat Completions so `reasoningSummary` is actually honored).
+- Copy action on user and assistant messages — `navigator.clipboard.writeText`, sonner toast, icon flips to a check for 1.5s after success. Hidden on assistant messages while streaming so partial prose doesn't get copied.
 
 Outstanding under this track, in rough priority order:
 
-1. **Copy message action** — copy icon on both user and assistant messages; `navigator.clipboard.writeText`; toast confirmation. No backend. Universal chat expectation — no excuse to delay.
-2. **Auto-delete abandoned sessions** — if a session is created but never gets a user message, it should not persist. Implement as a Convex cron that sweeps `analysisSessions` with zero messages older than a threshold (10–30 min). Server-side sweep is more reliable than client-side "on navigate away" (which leaks on browser close / tab crash / network failure). Mind the race between "just created" and "first message about to send" — threshold handles that if it's generous enough.
-3. **Edit user message** — click-to-edit on any user message; saving truncates the thread after that point and resends the edited text. Convex work: new `truncateAndResend` mutation that deletes subsequent `analysisMessages` + their `analysisArtifacts` + their `analysisMessageFeedback` records atomically. In-flight streaming turn must be stopped before truncation. Feedback and artifacts tied to deleted assistant turns should be cleaned up, not orphaned.
-4. **Slice 5 — Durable artifact polish.** Copy / export hooks on table cards, artifact-focused references, richer artifact metadata when it unlocks concrete UI. Exit: structured outputs feel reusable, not ephemeral. Conceptually a sibling of the message-level copy action above — both make the conversation's outputs keepable.
-5. **Ongoing fit-and-finish** as real usage surfaces friction. Don't pre-design — ship as it surfaces.
+1. **Edit user message** — click-to-edit on any user message; saving truncates the thread after that point and resends the edited text. Convex work: new `truncateAndResend` mutation that deletes subsequent `analysisMessages` + their `analysisArtifacts` + their `analysisMessageFeedback` records atomically. In-flight streaming turn must be stopped before truncation. Feedback and artifacts tied to deleted assistant turns should be cleaned up, not orphaned.
+2. **Slice 5 — Durable artifact polish.** Copy / export hooks on table cards, artifact-focused references, richer artifact metadata when it unlocks concrete UI. Exit: structured outputs feel reusable, not ephemeral. Conceptually a sibling of the message-level copy action that shipped — both make the conversation's outputs keepable.
+3. **Ongoing fit-and-finish** as real usage surfaces friction. Don't pre-design — ship as it surfaces.
+
+### Deferred from Track A: abandoned-session cleanup
+
+Originally queued as a Track A polish item ("if a user clicks New Chat and walks away, don't leave an empty session"). Rejected the quick-and-dirty approach (server-side cron sweep of sessions with zero messages) because it would leave ghost sessions flickering in the sidebar for the sweep window and doesn't match how users expect chat apps to behave. ChatGPT and Claude don't create a session record until the first user message is actually sent — the "New Chat" button just opens a blank composer in-place.
+
+The right implementation:
+
+1. Introduce a draft-session UI path. URL has no `sessionId`; `AnalysisThread` mounts in a "no selected session" mode where Convex queries skip and messages start empty. Composer stays enabled.
+2. "New Chat" button stops calling `handleCreateSession` — it just navigates to the analysis route with no `sessionId`.
+3. Composer submit becomes: if no `sessionId`, call the create-session mutation, get the new id, update the URL, then send the message against the new id. Race to watch: `useChat({ id })` transitions from draft key to real sessionId mid-flow and the first turn's streaming must not drop.
+4. Optionally: make the API atomic server-side — `POST /api/runs/[runId]/analysis` accepts an optional `sessionId`; if absent, it creates the session + first message in one call. Cleaner but bigger surface change.
+
+Estimated effort: 2–3 hours of careful work, not a polish tweak. Deferred as its own small slice rather than forcing it into Track A or accepting the cron band-aid. Pick up when a batch of session-related work makes sense, or when the ghost-session problem actually surfaces in real use.
+
+Touchpoints when we implement it: `AnalysisWorkspace.tsx` (`handleCreateSession`, `selectedSession` derivation, URL handling), `AnalysisThread.tsx` (draft mode, `useChat` keying), `AnalysisEmptyState.tsx` (may simplify to "just let them type"), `src/app/api/runs/[runId]/analysis/route.ts` (optional atomic create-and-send shape), `convex/analysisSessions.ts` (mutation contract).
 
 ### Chat sharing (new standalone slice candidate — not Track A polish)
 
