@@ -148,18 +148,37 @@ Outstanding under this track:
 
 ### Track B — Prompt intentionality + analytical depth (deferred, design first)
 
-The piece that pushes the surface from "grounded Q&A" toward "analysis partner." Two sub-areas that reinforce each other:
+The piece that pushes the surface from "grounded Q&A" toward "analysis partner." Three sub-areas that reinforce each other:
 
 **1. Prompt workflow and intentionality.** The analysis prompt today is a tool-usage protocol plus a trust contract. It does not ask the agent to think about what the user is actually after before it starts calling tools. Borrow from the V3 pipeline agents: give it an explicit internal workflow — classify the request (exploration / synthesis / methodology / narrow lookup / follow-up on prior evidence), write down a one-line goal, decide what scope is sufficient, then act.
 
 Concrete friction this would address, observed in real sessions:
-- Agent refusing to summarize grounded evidence that is already in-thread ("I need a supporting table card") — claim-check over-firing on retrospective synthesis of already-rendered cards.
+- Agent refusing to summarize grounded evidence that is already in-thread ("I need a supporting table card") — see sub-area 2 for the root cause; the prompt-side fix is teaching the agent to recognize synthesis-of-prior-evidence as a legitimate request shape.
 - Over-matching `cutFilter` — user says "primary bank," agent pulls a separate "bank type" cut because the word "bank" matched both.
 - Agent rendering more cuts than the user's question justified, instead of picking the one that answers it.
 
 The prompt does not have to stay at its current length. It might grow; it might also shrink once intentionality is expressed as a workflow rather than as a wall of constraints.
 
-**2. Analytical capability expansion.** More tools, so the agent can actually *help* rather than only read. None of these ship in v1, but they belong in the design space so we don't paint ourselves into a corner with the current grounding layer.
+**2. Agent context optimality — what the agent sees, and when.** The current turn transport is lossy in both directions and we have not been deliberate about it. Design a policy before we pile more capabilities on top of it.
+
+What the agent sees *today*:
+- On the turn it calls `viewTable` / `getTableCard`: the full `AnalysisTableCard` payload (every USED cut, every row × cut cell, full metadata). See `grounding.ts`.
+- On every subsequent turn: **tool outputs are stripped**. `getSanitizedConversationMessagesForModel` in `src/lib/analysis/messages.ts` keeps only text parts before `convertToModelMessages`. Prior table cards, prior catalog searches, prior question-context lookups — all dropped from model context. The UI thread still has them (rehydrated from `analysisArtifacts`) and the claim-check post-pass still uses them via `priorTableArtifacts`, but the *model itself* is blind to prior tool results.
+
+Why stripping exists: (a) cost — a single card can be 5–30KB and carrying every prior card across turns grows context linearly with session length; (b) determinism — forces re-fetch through grounded tools, preserving lookup discipline; (c) prompt-cache safety — variable-size tool outputs in the transcript would invalidate the Anthropic prompt cache every turn.
+
+Why it hurts: the agent cannot synthesize across its own prior evidence without re-calling tools, which manifests as the "I need a supporting card" refusal Jason hit. Tool-call history is also absent, so the agent cannot see what it already tried and has to rediscover dead ends. More broadly, we have not asked "what is the minimum set of prior context the agent needs to answer well?" — we just default to text-only. There is a lot of room between "drop everything" and "carry everything."
+
+Design options in scope when this slice opens (not decided):
+- Compact text summary of each prior table card (title, cuts present, rows present, a handful of key values) injected into the conversation — the agent knows what's available without carrying full payloads. Cheap, cache-friendly.
+- A system-level card inventory injected per turn listing `artifactId`s + titles of cards rendered earlier so the agent can re-`viewTable` them deliberately instead of re-searching.
+- Full pass-through within a rolling window (last 3–5 turns) + summarization for older turns. Higher cost, simpler agent behavior.
+- Tool-call history summarization — a short trace of "already tried X with args Y, got Z" so the agent doesn't re-search.
+- Any combination of the above, gated on session length.
+
+This sub-area shares design DNA with Slice 6 (context compaction policy). They should be worked as one policy document, not two.
+
+**3. Analytical capability expansion.** More tools, so the agent can actually *help* rather than only read. None of these ship in v1, but they belong in the design space so we don't paint ourselves into a corner with the current grounding layer.
 
 - Building new cuts on the fly when the banner doesn't carry one the user asked for (the "what about gender?" case).
 - Expanding cuts — compute combinations the crosstab pipeline didn't emit.
@@ -173,9 +192,9 @@ These cross into the compute-lane design checkpoint (Slice 7) — they can't shi
 | Slice | Track | Status |
 |-------|-------|--------|
 | 5 — Durable artifact polish | A | Outstanding, opportunistic |
-| 6 — Context compaction policy | Cross-cutting | Late-phase; implementation contingent on real session-length data |
+| 6 — Context compaction policy | B (sub-area 2) | Merge with the agent-context-optimality design note — one policy covers both |
 | 3.5 — Harness robustness (dedup, stuck-loop, cache audit) | B | Backlog; becomes load-bearing as the prompt workflow grows |
-| 7 — Compute-lane design checkpoint | B | Deferred; gating milestone for capability expansion |
+| 7 — Compute-lane design checkpoint | B (sub-area 3) | Deferred; gating milestone for capability expansion |
 
 ### Slice 6 — Context compaction policy (cross-cutting)
 
@@ -211,7 +230,12 @@ Decision memo after real usage. Questions to answer:
 
 Continue **Track A** opportunistically — finish Slice 5 when a concrete "I want to copy/export this card" moment surfaces, and keep picking off UX friction as real sessions expose it.
 
-Before touching **Track B**, write a prompt-workflow design note: what intentionality stages the agent should run through, what request taxonomy to classify against, how to surface the scope check without cluttering responses. Pressure-test the note against real session transcripts (especially cases where the assistant refused to synthesize already-grounded evidence, or over-matched cutFilter) before editing the alternative prompt. The production prompt stays frozen — workflow experiments land on alternative first.
+Before touching **Track B**, write two design notes and resolve them before any prompt or transport change lands:
+
+1. **Prompt workflow design note** — intentionality stages, request taxonomy, how to surface the scope check without cluttering responses.
+2. **Agent context policy note** — what survives from prior turns (summaries? tool-call trace? full payloads within a window?), what gets reconstructed on demand, how it composes with Slice 6 compaction.
+
+Pressure-test both against real session transcripts — especially cases where the assistant refused to synthesize already-grounded evidence, over-matched `cutFilter`, or re-ran a tool it had already tried. The production prompt stays frozen — workflow experiments land on alternative first. Transport changes (what survives sanitization) are independent of prompt changes and can be trialed behind a feature flag without touching either prompt.
 
 ## Sources Consulted
 
