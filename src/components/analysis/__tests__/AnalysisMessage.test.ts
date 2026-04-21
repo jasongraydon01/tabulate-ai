@@ -3,6 +3,7 @@ import type { UIMessage } from "ai";
 
 import {
   getAnalysisMessageEvidenceItems,
+  getAnalysisMessageFollowUpItems,
   getAnalysisTraceEntries,
   getAnalysisTraceHeaderLabel,
 } from "@/components/analysis/AnalysisMessage";
@@ -136,6 +137,25 @@ describe("AnalysisMessage trace presentation", () => {
         refId: "q1",
         anchorId: "artifact-1",
       }),
+    ]);
+  });
+
+  it("reads follow-up suggestions from message metadata", () => {
+    const message: UIMessage = {
+      id: "assistant-5",
+      role: "assistant",
+      metadata: {
+        followUpSuggestions: [
+          "Show this in counts",
+          "How was Q1 asked?",
+        ],
+      },
+      parts: [{ type: "text", text: "Overall satisfaction is 45%." }],
+    };
+
+    expect(getAnalysisMessageFollowUpItems(message)).toEqual([
+      "Show this in counts",
+      "How was Q1 asked?",
     ]);
   });
 });

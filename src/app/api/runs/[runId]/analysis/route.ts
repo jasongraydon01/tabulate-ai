@@ -15,6 +15,7 @@ import {
   type AnalysisSessionTableArtifact,
   type InjectedAnalysisTableCard,
 } from "@/lib/analysis/claimCheck";
+import { buildDeterministicFollowUpSuggestions } from "@/lib/analysis/followups";
 import { loadAnalysisGroundingContext } from "@/lib/analysis/grounding";
 import {
   buildAnalysisEvidenceItems,
@@ -175,12 +176,20 @@ function emitInjectedTableCards(
   }
 }
 
-function toStreamMetadata(groundingRefs: AnalysisGroundingRef[]): AnalysisMessageMetadata | undefined {
-  if (groundingRefs.length === 0) return undefined;
+function toStreamMetadata(
+  groundingRefs: AnalysisGroundingRef[],
+  followUpSuggestions: string[],
+): AnalysisMessageMetadata | undefined {
+  if (groundingRefs.length === 0 && followUpSuggestions.length === 0) return undefined;
 
   return {
-    hasGroundedClaims: true,
-    evidence: buildAnalysisEvidenceItems(groundingRefs),
+    ...(groundingRefs.length > 0
+      ? {
+          hasGroundedClaims: true,
+          evidence: buildAnalysisEvidenceItems(groundingRefs),
+        }
+      : {}),
+    ...(followUpSuggestions.length > 0 ? { followUpSuggestions } : {}),
   };
 }
 
@@ -555,10 +564,15 @@ export async function POST(
             assistantText: trustResult.assistantText,
             injectedTableCards: trustResult.injectedTableCards,
           });
+          const followUpSuggestions = buildDeterministicFollowUpSuggestions({
+            groundingContext,
+            groundingRefs: trustResult.groundingRefs,
+            responseParts: finalResponseParts,
+          });
           const assistantTitleBasis = trustResult.assistantText || summarizeAssistantResponseForTitle(finalResponseParts);
           const traceCapture = getTraceCapture();
 
-          const streamMetadata = toStreamMetadata(trustResult.groundingRefs);
+          const streamMetadata = toStreamMetadata(trustResult.groundingRefs, followUpSuggestions);
           emitInjectedTableCards(writer, trustResult.injectedTableCards);
           emitTextPart(writer, trustResult.assistantText);
           if (streamMetadata) {
@@ -594,6 +608,7 @@ export async function POST(
             content: trustResult.assistantText,
             ...(persistedParts.length > 0 ? { parts: persistedParts } : {}),
             ...(persistedGroundingRefs.length > 0 ? { groundingRefs: persistedGroundingRefs } : {}),
+            ...(followUpSuggestions.length > 0 ? { followUpSuggestions } : {}),
             agentMetrics: {
               model: traceCapture.usage.model,
               inputTokens: traceCapture.usage.inputTokens,

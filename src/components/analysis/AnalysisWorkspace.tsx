@@ -209,6 +209,7 @@ export function AnalysisWorkspace({
             role: message.role,
             content: message.content,
             groundingRefs: message.groundingRefs?.map(normalizeGroundingRefForUI),
+            followUpSuggestions: message.followUpSuggestions,
             parts: message.parts?.map((part) => ({
               type: part.type,
               text: part.text,

@@ -387,6 +387,7 @@ export default defineSchema({
     content: v.string(),
     parts: v.optional(v.array(analysisMessagePartValidator)),
     groundingRefs: v.optional(v.array(analysisGroundingRefValidator)),
+    followUpSuggestions: v.optional(v.array(v.string())),
     agentMetrics: v.optional(analysisAgentMetricsValidator),
     createdAt: v.number(),
   }).index("by_session_created", ["sessionId", "createdAt"]),

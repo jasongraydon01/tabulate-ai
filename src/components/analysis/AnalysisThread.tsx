@@ -104,6 +104,17 @@ export function AnalysisThread({
     );
   }
 
+  async function handleFollowUpSuggestion(suggestion: string) {
+    const nextSuggestion = suggestion.trim();
+    if (!nextSuggestion || isBusy) return;
+
+    shouldStickToBottomRef.current = true;
+    await sendMessage(
+      { text: nextSuggestion },
+      { body: { sessionId } },
+    );
+  }
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div className="border-b border-border/60 px-5 py-3">
@@ -142,6 +153,8 @@ export function AnalysisThread({
                   <AnalysisMessage
                     message={message}
                     isStreaming={isLastMessage && isBusy}
+                    onSelectFollowUpSuggestion={handleFollowUpSuggestion}
+                    followUpSuggestionsDisabled={isBusy}
                   />
                 </div>
               );

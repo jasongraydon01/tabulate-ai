@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_ANALYSIS_ASSISTANT_MESSAGE_CHARS,
   MAX_ANALYSIS_MESSAGE_CHARS,
+  getAnalysisMessageFollowUpSuggestions,
   getSanitizedConversationMessagesForModel,
   getAnalysisUIMessageText,
   normalizeAssistantMarkdown,
@@ -73,6 +74,25 @@ describe("analysis message helpers", () => {
         role: "assistant",
         parts: [{ type: "text", text: "Ready to help." }],
       },
+    ]);
+  });
+
+  it("rehydrates persisted follow-up suggestions into message metadata", () => {
+    const messages = persistedAnalysisMessagesToUIMessages([
+      {
+        _id: "msg-1",
+        role: "assistant",
+        content: "Ready to help.",
+        followUpSuggestions: [
+          "Show this in counts",
+          "How was Q1 asked?",
+        ],
+      },
+    ]);
+
+    expect(getAnalysisMessageFollowUpSuggestions(messages[0])).toEqual([
+      "Show this in counts",
+      "How was Q1 asked?",
     ]);
   });
 

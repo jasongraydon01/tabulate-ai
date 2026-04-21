@@ -408,6 +408,11 @@ describe("analysis chat route", () => {
         },
         { type: "text", text: "Here is the grounded table." },
       ],
+      followUpSuggestions: [
+        "Show this in counts",
+        "Show the base sizes here",
+        "How was Q1 asked?",
+      ],
       agentMetrics: {
         model: "gpt-analysis",
         inputTokens: 120,

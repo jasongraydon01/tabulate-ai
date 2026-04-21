@@ -25,6 +25,7 @@ interface PersistedAnalysisMessageRecord {
     toolCallId?: string;
   }>;
   groundingRefs?: AnalysisGroundingRef[];
+  followUpSuggestions?: string[];
 }
 
 interface PersistedAnalysisArtifactRecord {
@@ -156,11 +157,19 @@ export function getAnalysisMessageMetadata(
   }
 
   const candidate = message.metadata as AnalysisMessageMetadata;
-  if (!candidate.hasGroundedClaims && (!candidate.evidence || candidate.evidence.length === 0)) {
+  if (
+    !candidate.hasGroundedClaims
+    && (!candidate.evidence || candidate.evidence.length === 0)
+    && (!candidate.followUpSuggestions || candidate.followUpSuggestions.length === 0)
+  ) {
     return null;
   }
 
   return candidate;
+}
+
+export function getAnalysisMessageFollowUpSuggestions(message: Pick<UIMessage, "metadata">): string[] {
+  return getAnalysisMessageMetadata(message)?.followUpSuggestions ?? [];
 }
 
 export function getAnalysisUIMessageText(message: Pick<UIMessage, "parts">): string {
@@ -200,11 +209,19 @@ export function persistedAnalysisMessagesToUIMessages(
   return messages.map((message) => ({
     id: String(message._id),
     role: message.role,
-    ...(message.groundingRefs && message.groundingRefs.length > 0
+    ...((message.groundingRefs && message.groundingRefs.length > 0)
+      || (message.followUpSuggestions && message.followUpSuggestions.length > 0)
       ? {
           metadata: {
-            hasGroundedClaims: true,
-            evidence: buildAnalysisEvidenceItems(message.groundingRefs),
+            ...(message.groundingRefs && message.groundingRefs.length > 0
+              ? {
+                  hasGroundedClaims: true,
+                  evidence: buildAnalysisEvidenceItems(message.groundingRefs),
+                }
+              : {}),
+            ...(message.followUpSuggestions && message.followUpSuggestions.length > 0
+              ? { followUpSuggestions: message.followUpSuggestions }
+              : {}),
           } satisfies AnalysisMessageMetadata,
         }
       : {}),

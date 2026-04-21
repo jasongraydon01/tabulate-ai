@@ -16,7 +16,10 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { getAnalysisMessageMetadata } from "@/lib/analysis/messages";
+import {
+  getAnalysisMessageFollowUpSuggestions,
+  getAnalysisMessageMetadata,
+} from "@/lib/analysis/messages";
 import { getAnalysisToolActivityLabel } from "@/lib/analysis/toolLabels";
 import { isAnalysisTableCard, type AnalysisEvidenceItem } from "@/lib/analysis/types";
 import { cn } from "@/lib/utils";
@@ -124,6 +127,10 @@ export function getAnalysisMessageEvidenceItems(message: UIMessage): AnalysisEvi
   return getAnalysisMessageMetadata(message)?.evidence ?? [];
 }
 
+export function getAnalysisMessageFollowUpItems(message: UIMessage): string[] {
+  return getAnalysisMessageFollowUpSuggestions(message);
+}
+
 function getAnalysisEvidenceAnchorId(anchorId: string): string {
   return `analysis-evidence-${anchorId.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
 }
@@ -142,9 +149,13 @@ function scrollToEvidenceAnchor(anchorId: string) {
 export function AnalysisMessage({
   message,
   isStreaming = false,
+  onSelectFollowUpSuggestion,
+  followUpSuggestionsDisabled = false,
 }: {
   message: UIMessage;
   isStreaming?: boolean;
+  onSelectFollowUpSuggestion?: (suggestion: string) => void | Promise<void>;
+  followUpSuggestionsDisabled?: boolean;
 }) {
   const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
   const isUser = message.role === "user";
@@ -155,6 +166,7 @@ export function AnalysisMessage({
 
   const traceEntries = getAnalysisTraceEntries(message);
   const evidenceItems = getAnalysisMessageEvidenceItems(message);
+  const followUpSuggestions = getAnalysisMessageFollowUpItems(message);
 
   const hasTrace = traceEntries.length > 0;
 
@@ -320,6 +332,35 @@ export function AnalysisMessage({
                   </CollapsibleContent>
                 </div>
               </Collapsible>
+            ) : null}
+
+            {followUpSuggestions.length > 0 ? (
+              <div className="space-y-2 pt-1">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground/80">
+                  Try next
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {followUpSuggestions.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      disabled={followUpSuggestionsDisabled}
+                      onClick={() => {
+                        if (!onSelectFollowUpSuggestion) return;
+                        void onSelectFollowUpSuggestion(suggestion);
+                      }}
+                      className={cn(
+                        "rounded-full border border-border/70 bg-muted/15 px-3 py-1.5 text-xs text-foreground/85 transition-colors",
+                        followUpSuggestionsDisabled
+                          ? "cursor-not-allowed opacity-60"
+                          : "hover:border-foreground/20 hover:bg-muted/35",
+                      )}
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </div>
             ) : null}
           </div>
         )}

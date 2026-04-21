@@ -59,6 +59,7 @@ export const create = internalMutation({
     content: v.string(),
     parts: v.optional(v.array(messagePartValidator)),
     groundingRefs: v.optional(v.array(groundingRefValidator)),
+    followUpSuggestions: v.optional(v.array(v.string())),
     agentMetrics: v.optional(agentMetricsValidator),
   },
   handler: async (ctx, args) => {
@@ -76,6 +77,7 @@ export const create = internalMutation({
       createdAt,
       ...(args.parts ? { parts: args.parts } : {}),
       ...(args.groundingRefs ? { groundingRefs: args.groundingRefs } : {}),
+      ...(args.followUpSuggestions ? { followUpSuggestions: args.followUpSuggestions } : {}),
       ...(args.agentMetrics ? { agentMetrics: args.agentMetrics } : {}),
     });
 
