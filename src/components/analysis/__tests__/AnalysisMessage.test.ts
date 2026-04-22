@@ -204,4 +204,53 @@ describe("AnalysisMessage trace presentation", () => {
 
     expect(markup).not.toContain("aria-label=\"Copy response\"");
   });
+
+  it("renders an edit affordance on user messages when an edit handler is provided", () => {
+    const userMessage: UIMessage = {
+      id: "user-edit-1",
+      role: "user",
+      parts: [{ type: "text", text: "What stands out overall?" }],
+    };
+
+    const markup = renderToStaticMarkup(
+      React.createElement(AnalysisMessage, {
+        message: userMessage,
+        onEditUserMessage: async () => {},
+      }),
+    );
+
+    expect(markup).toContain("aria-label=\"Edit message\"");
+  });
+
+  it("omits the edit affordance when no edit handler is provided", () => {
+    const userMessage: UIMessage = {
+      id: "user-noedit-1",
+      role: "user",
+      parts: [{ type: "text", text: "What stands out overall?" }],
+    };
+
+    const markup = renderToStaticMarkup(
+      React.createElement(AnalysisMessage, { message: userMessage }),
+    );
+
+    expect(markup).not.toContain("aria-label=\"Edit message\"");
+  });
+
+  it("does not render an edit affordance on assistant messages", () => {
+    const assistantMessage: UIMessage = {
+      id: "assistant-noedit-1",
+      role: "assistant",
+      parts: [{ type: "text", text: "Here's the overall picture." }],
+    };
+
+    const markup = renderToStaticMarkup(
+      React.createElement(AnalysisMessage, {
+        message: assistantMessage,
+        // Even when passed, assistant messages should ignore the prop.
+        onEditUserMessage: async () => {},
+      }),
+    );
+
+    expect(markup).not.toContain("aria-label=\"Edit message\"");
+  });
 });

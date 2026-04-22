@@ -218,6 +218,29 @@ export function AnalysisWorkspace({
     }
   }
 
+  async function handleTruncateFromMessage(messageId: string) {
+    if (!selectedSession) {
+      throw new Error("No active analysis session");
+    }
+
+    const response = await fetch(
+      `/api/runs/${encodeURIComponent(runId)}/analysis/messages/${encodeURIComponent(messageId)}/truncate`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sessionId: String(selectedSession._id),
+        }),
+      },
+    );
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+    if (!response.ok) {
+      throw new Error(payload.error ?? "Failed to edit message");
+    }
+  }
+
   function renderThreadContent() {
     if (sessions === undefined) {
       return (
@@ -259,12 +282,25 @@ export function AnalysisWorkspace({
         persistedAssistantMessageIds={messages
           .filter((message) => message.role === "assistant")
           .map((message) => String(message._id))}
+        persistedUserMessageIds={messages
+          .filter((message) => message.role === "user")
+          .map((message) => String(message._id))}
         messageFeedbackById={feedbackByMessageId}
         onSubmitMessageFeedback={async (input) => {
           try {
             await handleSubmitMessageFeedback(input);
           } catch (error) {
             toast.error("Failed to save feedback", {
+              description: error instanceof Error ? error.message : "Unknown error",
+            });
+            throw error;
+          }
+        }}
+        onTruncateFromMessage={async (messageId) => {
+          try {
+            await handleTruncateFromMessage(messageId);
+          } catch (error) {
+            toast.error("Failed to edit message", {
               description: error instanceof Error ? error.message : "Unknown error",
             });
             throw error;

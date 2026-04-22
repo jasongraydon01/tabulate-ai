@@ -59,6 +59,90 @@ export const getById = query({
   },
 });
 
+/**
+ * Delete the target message and every message after it in the session,
+ * along with the feedback records attached to those messages and any
+ * artifacts created at or after the target's timestamp.
+ *
+ * Used by the edit-user-message flow: truncate forward from the edited
+ * message, then the client resends the edited text as a fresh turn.
+ *
+ * Idempotent: if the target message is already gone, returns zeros.
+ */
+export const truncateFromMessage = internalMutation({
+  args: {
+    orgId: v.id("organizations"),
+    sessionId: v.id("analysisSessions"),
+    messageId: v.id("analysisMessages"),
+  },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session || session.orgId !== args.orgId) {
+      throw new Error("Analysis session not found");
+    }
+
+    const target = await ctx.db.get(args.messageId);
+    if (!target || target.sessionId !== args.sessionId || target.orgId !== args.orgId) {
+      return {
+        deletedMessages: 0,
+        deletedFeedback: 0,
+        deletedArtifacts: 0,
+      };
+    }
+
+    const messagesToDelete = await ctx.db
+      .query("analysisMessages")
+      .withIndex("by_session_created", (q) =>
+        q.eq("sessionId", args.sessionId).gte("createdAt", target.createdAt),
+      )
+      .collect();
+
+    const messageIdsToDelete = new Set(messagesToDelete.map((message) => message._id));
+
+    const sessionFeedback = await ctx.db
+      .query("analysisMessageFeedback")
+      .withIndex("by_session_user", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+    const feedbackToDelete = sessionFeedback.filter((entry) =>
+      messageIdsToDelete.has(entry.messageId),
+    );
+
+    const sessionArtifacts = await ctx.db
+      .query("analysisArtifacts")
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+    const artifactsToDelete = sessionArtifacts.filter(
+      (artifact) => artifact.createdAt >= target.createdAt,
+    );
+
+    for (const message of messagesToDelete) {
+      await ctx.db.delete(message._id);
+    }
+    for (const entry of feedbackToDelete) {
+      await ctx.db.delete(entry._id);
+    }
+    for (const artifact of artifactsToDelete) {
+      await ctx.db.delete(artifact._id);
+    }
+
+    const remainingMessages = await ctx.db
+      .query("analysisMessages")
+      .withIndex("by_session_created", (q) => q.eq("sessionId", args.sessionId))
+      .order("desc")
+      .take(1);
+    const newLastMessageAt = remainingMessages[0]?.createdAt ?? session.createdAt;
+    await ctx.db.patch(args.sessionId, {
+      lastMessageAt: newLastMessageAt,
+    });
+
+    return {
+      deletedMessages: messagesToDelete.length,
+      deletedFeedback: feedbackToDelete.length,
+      deletedArtifacts: artifactsToDelete.length,
+    };
+  },
+});
+
 export const create = internalMutation({
   args: {
     sessionId: v.id("analysisSessions"),

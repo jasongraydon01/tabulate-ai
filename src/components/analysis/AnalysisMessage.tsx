@@ -9,7 +9,7 @@ import {
   isToolUIPart,
   type UIMessage,
 } from "ai";
-import { Check, ChevronDown, Copy, Link2, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Check, ChevronDown, Copy, Link2, Pencil, ThumbsDown, ThumbsUp } from "lucide-react";
 
 import { GroundedTableCard } from "@/components/analysis/GroundedTableCard";
 import {
@@ -204,6 +204,7 @@ export function AnalysisMessage({
   onSelectFollowUpSuggestion,
   feedback = null,
   onSubmitFeedback,
+  onEditUserMessage,
 }: {
   message: UIMessage;
   isStreaming?: boolean;
@@ -216,6 +217,10 @@ export function AnalysisMessage({
     vote: AnalysisMessageFeedbackVote;
     correctionText?: string | null;
   }) => Promise<void>;
+  // Passed on persisted user messages when editing is available. Called with
+  // the new text — the thread owns the stop / truncate / resend choreography
+  // so this can be invoked at any time, including during streaming.
+  onEditUserMessage?: (input: { messageId: string; text: string }) => Promise<void>;
 }) {
   const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
   const isUser = message.role === "user";
@@ -226,6 +231,9 @@ export function AnalysisMessage({
   const [draftCorrectionText, setDraftCorrectionText] = useState(feedback?.correctionText ?? "");
   const [optimisticFeedback, setOptimisticFeedback] = useState<AnalysisMessageFeedbackRecord | null>(feedback ?? null);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [draftEditText, setDraftEditText] = useState("");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   const traceEntries = getAnalysisTraceEntries(message);
   const evidenceItems = getAnalysisMessageEvidenceItems(message);
@@ -240,6 +248,38 @@ export function AnalysisMessage({
     setOptimisticFeedback(feedback ?? null);
     setDraftCorrectionText(feedback?.correctionText ?? "");
   }, [feedback]);
+
+  function openEditor() {
+    if (!onEditUserMessage) return;
+    setDraftEditText(getAnalysisUIMessageText(message));
+    setIsEditing(true);
+  }
+
+  function cancelEdit() {
+    setIsEditing(false);
+    setDraftEditText("");
+  }
+
+  async function saveEdit() {
+    if (!onEditUserMessage) return;
+    const nextText = draftEditText.trim();
+    const currentText = getAnalysisUIMessageText(message);
+    if (!nextText || nextText === currentText) {
+      cancelEdit();
+      return;
+    }
+
+    setIsSavingEdit(true);
+    try {
+      await onEditUserMessage({ messageId: message.id, text: nextText });
+      setIsEditing(false);
+      setDraftEditText("");
+    } catch (_error) {
+      // Parent surfaces the error toast; keep the editor open so the user can retry.
+    } finally {
+      setIsSavingEdit(false);
+    }
+  }
 
   const collapsedSummary = (() => {
     if (!hasTrace) return null;
@@ -296,15 +336,70 @@ export function AnalysisMessage({
         )}
       >
         {isUser ? (
-          <div className="flex flex-col items-end gap-0.5">
-            <p className="min-w-0 whitespace-pre-wrap break-words rounded-2xl bg-primary/10 px-4 py-2 text-sm leading-6 [overflow-wrap:anywhere]">
-              {message.parts.filter(isTextUIPart).map((part) => part.text).join("")}
-            </p>
-            <CopyMessageButton
-              text={getAnalysisUIMessageText(message)}
-              label="Copy message"
-            />
-          </div>
+          isEditing ? (
+            <div className="flex w-full flex-col items-stretch gap-2">
+              <Textarea
+                value={draftEditText}
+                onChange={(event) => setDraftEditText(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    cancelEdit();
+                    return;
+                  }
+                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                    event.preventDefault();
+                    void saveEdit();
+                  }
+                }}
+                autoFocus
+                disabled={isSavingEdit}
+                className="min-h-24 resize-y rounded-2xl bg-primary/10 px-4 py-2 text-sm leading-6"
+                placeholder="Edit your message"
+              />
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={cancelEdit}
+                  disabled={isSavingEdit}
+                  className="rounded-full border border-border/70 px-3 py-1 text-[11px] text-muted-foreground transition-colors hover:border-foreground/20 hover:bg-muted/25 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { void saveEdit(); }}
+                  disabled={isSavingEdit || draftEditText.trim().length === 0}
+                  className="rounded-full bg-primary px-3 py-1 text-[11px] text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSavingEdit ? "Saving..." : "Save & resend"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-end gap-0.5">
+              <p className="min-w-0 whitespace-pre-wrap break-words rounded-2xl bg-primary/10 px-4 py-2 text-sm leading-6 [overflow-wrap:anywhere]">
+                {message.parts.filter(isTextUIPart).map((part) => part.text).join("")}
+              </p>
+              <div className="flex items-center gap-0.5">
+                {onEditUserMessage ? (
+                  <button
+                    type="button"
+                    onClick={openEditor}
+                    aria-label="Edit message"
+                    title="Edit message"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground/80"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                ) : null}
+                <CopyMessageButton
+                  text={getAnalysisUIMessageText(message)}
+                  label="Copy message"
+                />
+              </div>
+            </div>
+          )
         ) : (
           <div className="min-w-0 space-y-3">
             {hasTrace ? (

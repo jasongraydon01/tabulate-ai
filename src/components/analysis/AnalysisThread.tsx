@@ -22,12 +22,16 @@ interface AnalysisThreadProps {
   sessionTitle: string;
   initialMessages: UIMessage[];
   persistedAssistantMessageIds: string[];
+  persistedUserMessageIds: string[];
   messageFeedbackById: Record<string, AnalysisMessageFeedbackRecord | null>;
   onSubmitMessageFeedback: (input: {
     messageId: string;
     vote: AnalysisMessageFeedbackVote;
     correctionText?: string | null;
   }) => Promise<void>;
+  // Called with just the messageId to truncate. The thread owns the client
+  // state dance (stop → setMessages truncate → resend) internally.
+  onTruncateFromMessage: (messageId: string) => Promise<void>;
 }
 
 export function shouldShowAnalysisMessageActions(
@@ -53,8 +57,10 @@ export function AnalysisThread({
   sessionTitle,
   initialMessages,
   persistedAssistantMessageIds,
+  persistedUserMessageIds,
   messageFeedbackById,
   onSubmitMessageFeedback,
+  onTruncateFromMessage,
 }: AnalysisThreadProps) {
   const [input, setInput] = useState("");
   const lastMessageRef = useRef<HTMLDivElement | null>(null);
@@ -64,6 +70,10 @@ export function AnalysisThread({
   const persistedAssistantMessageIdSet = useMemo(
     () => new Set(persistedAssistantMessageIds),
     [persistedAssistantMessageIds],
+  );
+  const persistedUserMessageIdSet = useMemo(
+    () => new Set(persistedUserMessageIds),
+    [persistedUserMessageIds],
   );
   const transport = useMemo(
     () => new DefaultChatTransport<UIMessage>({
@@ -75,6 +85,7 @@ export function AnalysisThread({
   const {
     messages,
     sendMessage,
+    setMessages,
     status,
     error,
     stop,
@@ -144,6 +155,33 @@ export function AnalysisThread({
     );
   }
 
+  async function handleEditUserMessage(input: { messageId: string; text: string }) {
+    // Abort any in-flight turn before truncating so the aborted response
+    // doesn't race with the subsequent send.
+    if (isBusy) {
+      stop();
+    }
+
+    const targetIndex = messages.findIndex((entry) => entry.id === input.messageId);
+    if (targetIndex === -1) {
+      throw new Error("Edited message not found in thread");
+    }
+
+    // Truncate the local message state so the edited turn doesn't briefly
+    // appear alongside the original before the new response streams.
+    setMessages(messages.slice(0, targetIndex));
+
+    // Server truncation (messages, artifacts, feedback) so the next POST
+    // doesn't see stale context.
+    await onTruncateFromMessage(input.messageId);
+
+    shouldStickToBottomRef.current = true;
+    await sendMessage(
+      { text: input.text },
+      { body: { sessionId } },
+    );
+  }
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div className="border-b border-border/60 px-5 py-3">
@@ -173,6 +211,8 @@ export function AnalysisThread({
               const isLastMessage = index === messages.length - 1;
               const shouldShowMessageActions = shouldShowAnalysisMessageActions(messages, index);
               const showFollowUps = shouldShowMessageActions && !isBusy;
+              const isPersistedUserMessage = message.role === "user"
+                && persistedUserMessageIdSet.has(message.id);
               return (
                 <div key={message.id} ref={isLastMessage ? lastMessageRef : undefined}>
                   <AnalysisMessage
@@ -185,6 +225,7 @@ export function AnalysisThread({
                     onSubmitFeedback={shouldShowMessageActions && persistedAssistantMessageIdSet.has(message.id)
                       ? onSubmitMessageFeedback
                       : undefined}
+                    onEditUserMessage={isPersistedUserMessage ? handleEditUserMessage : undefined}
                   />
                 </div>
               );
