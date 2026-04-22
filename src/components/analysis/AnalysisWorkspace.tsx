@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, startTransition } from "react";
+import { useMemo, useState, startTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { Loader2 } from "lucide-react";
@@ -115,6 +115,16 @@ export function AnalysisWorkspace({
       } satisfies AnalysisMessageFeedbackRecord,
     ]),
   ) as Record<string, AnalysisMessageFeedbackRecord>;
+
+  // Convex-authoritative message ids in order. Handed down so the thread
+  // can reconcile useChat's client-generated message ids against the real
+  // Convex ids once a turn persists — otherwise the edit icon never shows
+  // on messages sent in the current session (they only match by id after
+  // a page reload).
+  const persistedMessageIdsInOrder = useMemo(
+    () => (messages ?? []).map((message) => String(message._id)),
+    [messages],
+  );
 
   async function handleCreateSession() {
     setIsCreatingSession(true);
@@ -285,6 +295,7 @@ export function AnalysisWorkspace({
         persistedUserMessageIds={messages
           .filter((message) => message.role === "user")
           .map((message) => String(message._id))}
+        persistedMessageIdsInOrder={persistedMessageIdsInOrder}
         messageFeedbackById={feedbackByMessageId}
         onSubmitMessageFeedback={async (input) => {
           try {

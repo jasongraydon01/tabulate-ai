@@ -23,6 +23,10 @@ interface AnalysisThreadProps {
   initialMessages: UIMessage[];
   persistedAssistantMessageIds: string[];
   persistedUserMessageIds: string[];
+  // Full message id list in the order Convex holds them for this session.
+  // Used to reconcile useChat's client-generated ids with real Convex ids
+  // after a turn finishes so the edit affordance lights up without a reload.
+  persistedMessageIdsInOrder: string[];
   messageFeedbackById: Record<string, AnalysisMessageFeedbackRecord | null>;
   onSubmitMessageFeedback: (input: {
     messageId: string;
@@ -58,6 +62,7 @@ export function AnalysisThread({
   initialMessages,
   persistedAssistantMessageIds,
   persistedUserMessageIds,
+  persistedMessageIdsInOrder,
   messageFeedbackById,
   onSubmitMessageFeedback,
   onTruncateFromMessage,
@@ -96,6 +101,28 @@ export function AnalysisThread({
   });
 
   const isBusy = status === "submitted" || status === "streaming";
+
+  // Reconcile useChat's client-generated message ids against the Convex
+  // authoritative list after a turn persists. Only acts when both lists are
+  // the same length and the chat is idle — if anything's off, we leave the
+  // ids alone so the edit affordance simply stays hidden until the next
+  // safe reconciliation point. Never fires mid-stream.
+  useEffect(() => {
+    if (status !== "ready") return;
+    if (persistedMessageIdsInOrder.length === 0) return;
+
+    setMessages((current) => {
+      if (current.length !== persistedMessageIdsInOrder.length) return current;
+      const needsReconciliation = current.some(
+        (msg, i) => msg.id !== persistedMessageIdsInOrder[i],
+      );
+      if (!needsReconciliation) return current;
+      return current.map((msg, i) => ({
+        ...msg,
+        id: persistedMessageIdsInOrder[i] ?? msg.id,
+      }));
+    });
+  }, [status, persistedMessageIdsInOrder, setMessages]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
