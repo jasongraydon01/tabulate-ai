@@ -227,6 +227,19 @@ The broader question: which tools give the model *too much* context (bloated too
 
 These cross into the compute-lane design checkpoint (Slice 7) — they can't ship without it — so the design conversation is one conversation, not two.
 
+### Cross-cutting observation: inline reference markers as the rendering primitive
+
+We already use this pattern for table cards without having named it. `[[render-table]]` anchors are lightweight placement markers the model emits inline; `renderAnchors.ts` deterministically swaps them for rendered table cards against data fetched earlier in the turn. The model doesn't produce the rich UI, it points at it.
+
+Generalizing: **tools fetch and validate grounded data; inline markers in prose declare what to do with it.** This is structurally the same pattern every hosted chat product uses for citations (ChatGPT's `【n:m†source】`, Anthropic's Citations API, Perplexity's `[n]`) — the model emits cheap tokens inline and a deterministic renderer resolves them against data already in memory. Streaming stays fast because markers are a handful of tokens, not generated UI; validation is a lookup against retrieved structured data.
+
+Why this matters for Track B:
+- **Sub-area 3 (tool surface).** Collapsing `viewTable` / `getTableCard` falls out naturally if the split becomes "tools fetch, markers render." `getTableCard` exists today because rendering and fetching are fused in one tool; separating them removes the redundancy rather than papering over it.
+- **Sub-area 2 (context policy).** What survives across turns becomes "fetched grounded data, indexed by stable IDs (`tableId`/`rowKey`/`cutKey`)", not rendered UI. Prior markers can be replayed against retained data without re-fetching.
+- **Future per-claim citations.** A natural extension rather than a new subsystem. Cells in a grounded table card already have the ideal citation target (`tableId × rowKey × cutKey`) — higher-resolution than the document-chunk IDs hosted products cite against, because the artifact is structured. Would be a new marker type (e.g. `<cite t=... r=... c=.../>`) rendered through the same primitive, not a separate pipeline. Low added latency: marker emission is inline with streaming, validation is O(1) ID resolution.
+
+Not shipping in v1. Flagging as the direction-of-travel so the Track B design notes (context policy, tool-surface review) can be written against a coherent rendering model rather than treating each inline surface element as its own ad-hoc pipeline.
+
 ### Cross-cutting observation: reasoning summaries in the pipeline
 
 The V3 pipeline agents (`VerificationAgent`, `CrosstabAgentV2`, `LoopSemanticsPolicyAgent`, etc.) currently do not capture reasoning summaries, even though they run on reasoning models. Now that we have the OpenAI Responses API plumbing working on the analysis path, the same fix mechanically applies to the pipeline: switch `.chat()` → `.responses()` on reasoning-capable models, enable `reasoningSummary`, and the summaries would flow into agent metrics / traces. Not Phase 15 work, not Track B strictly — flagging here so it doesn't get lost when we think about observability improvements across the stack.
