@@ -2,27 +2,30 @@ import { describe, expect, it } from "vitest";
 import type { UIMessage } from "ai";
 
 import {
-  ANALYSIS_TABLE_RENDER_ANCHOR,
   buildAnalysisRenderableBlocks,
+  buildAnalysisRenderMarker,
+  extractAnalysisRenderMarkers,
   stripAnalysisRenderAnchors,
+  stripInvalidAnalysisRenderMarkers,
+  validateAnalysisRenderMarkers,
 } from "@/lib/analysis/renderAnchors";
 
-function makeTablePart(toolCallId: string): UIMessage["parts"][number] {
+function makeTablePart(toolCallId: string, tableId: string = "q1"): UIMessage["parts"][number] {
   return {
-    type: "tool-getTableCard",
+    type: "tool-fetchTable",
     toolCallId,
     state: "output-available",
     input: {
-      tableId: "q1",
+      tableId,
       rowFilter: null,
       cutFilter: null,
       valueMode: "pct",
     },
     output: {
       status: "available",
-      tableId: "q1",
-      title: "Q1 overall",
-      questionId: "Q1",
+      tableId,
+      title: `${tableId} overall`,
+      questionId: tableId.toUpperCase(),
       questionText: "How satisfied are you?",
       tableType: "frequency",
       surveySection: null,
@@ -47,17 +50,21 @@ function makeTablePart(toolCallId: string): UIMessage["parts"][number] {
   } as UIMessage["parts"][number];
 }
 
-describe("analysis render anchors", () => {
-  it("strips render anchors from assistant text", () => {
-    expect(stripAnalysisRenderAnchors(`Before\n${ANALYSIS_TABLE_RENDER_ANCHOR}\nAfter`)).toBe("Before\n\nAfter");
+describe("analysis render markers", () => {
+  it("builds the expected marker form", () => {
+    expect(buildAnalysisRenderMarker("A3")).toBe("[[render tableId=A3]]");
   });
 
-  it("places table cards at render anchors in text order", () => {
+  it("strips render markers from assistant text", () => {
+    expect(stripAnalysisRenderAnchors("Before\n[[render tableId=A3]]\nAfter")).toBe("Before\n\nAfter");
+  });
+
+  it("places the table card at the marker position when tableId matches", () => {
     const blocks = buildAnalysisRenderableBlocks({
       id: "assistant-1",
       parts: [
-        makeTablePart("tool-1"),
-        { type: "text", text: `Intro\n\n${ANALYSIS_TABLE_RENDER_ANCHOR}\n\nClose` },
+        makeTablePart("tool-1", "A3"),
+        { type: "text", text: "Intro\n\n[[render tableId=A3]]\n\nClose" },
       ],
     });
 
@@ -67,37 +74,112 @@ describe("analysis render anchors", () => {
     expect(blocks[2]).toEqual(expect.objectContaining({ kind: "text", text: "Close" }));
   });
 
-  it("appends unanchored table cards after the prose block", () => {
+  it("accepts quoted tableIds in markers", () => {
+    const blocks = buildAnalysisRenderableBlocks({
+      id: "assistant-1q",
+      parts: [
+        makeTablePart("tool-q", "A3"),
+        { type: "text", text: `Before\n\n[[render tableId="A3"]]\n\nAfter` },
+      ],
+    });
+    expect(blocks.map((block) => block.kind)).toEqual(["text", "table", "text"]);
+  });
+
+  it("appends unreferenced table cards after the prose when no marker points at them", () => {
     const blocks = buildAnalysisRenderableBlocks({
       id: "assistant-2",
       parts: [
-        makeTablePart("tool-1"),
-        { type: "text", text: "No anchor here." },
+        makeTablePart("tool-1", "A3"),
+        { type: "text", text: "No marker here." },
       ],
     });
 
     expect(blocks.map((block) => block.kind)).toEqual(["text", "table"]);
   });
 
-  it("hides streamed table cards until text arrives when no anchor can be resolved yet", () => {
+  it("emits a missing block when the marker's tableId was not fetched this turn (stream settled)", () => {
+    const blocks = buildAnalysisRenderableBlocks({
+      id: "assistant-m",
+      parts: [
+        { type: "text", text: "Ref\n\n[[render tableId=Z9]]\n\nEnd" },
+      ],
+    });
+
+    expect(blocks.map((block) => block.kind)).toEqual(["text", "missing", "text"]);
+    expect(blocks[1]).toEqual(expect.objectContaining({ kind: "missing", tableId: "Z9" }));
+  });
+
+  it("emits a placeholder (not missing) for unresolved markers while still streaming", () => {
+    const blocks = buildAnalysisRenderableBlocks({
+      id: "assistant-s",
+      parts: [
+        { type: "text", text: "Ref\n\n[[render tableId=A3]]\n\nEnd" },
+      ],
+    }, { isStreaming: true });
+
+    expect(blocks.map((block) => block.kind)).toEqual(["text", "placeholder", "text"]);
+  });
+
+  it("hides fetched tables while text hasn't arrived yet during streaming", () => {
     const blocks = buildAnalysisRenderableBlocks({
       id: "assistant-3",
-      parts: [makeTablePart("tool-1")],
+      parts: [makeTablePart("tool-1", "A3")],
     }, { isStreaming: true });
 
     expect(blocks).toEqual([]);
   });
 
-  it("reserves an anchored slot while the table card is still pending in the stream", () => {
+  it("extracts every marker occurrence with its raw text and tableId", () => {
+    const text = "First [[render tableId=A3]] then [[render tableId=\"B4\"]] end.";
+    expect(extractAnalysisRenderMarkers(text)).toEqual([
+      { tableId: "A3", raw: "[[render tableId=A3]]" },
+      { tableId: "B4", raw: "[[render tableId=\"B4\"]]" },
+    ]);
+  });
+
+  it("validates markers against fetched and catalog id sets", () => {
+    const text = "Here [[render tableId=A3]] and [[render tableId=B4]] plus [[render tableId=Z9]].";
+    const issues = validateAnalysisRenderMarkers({
+      text,
+      fetchedTableIds: ["A3"],
+      catalogTableIds: ["A3", "B4"],
+    });
+    expect(issues).toEqual([
+      { tableId: "B4", raw: "[[render tableId=B4]]", reason: "not_fetched_this_turn" },
+      { tableId: "Z9", raw: "[[render tableId=Z9]]", reason: "not_in_run" },
+    ]);
+  });
+
+  it("returns no issues when every marker is fetched and in the catalog", () => {
+    const issues = validateAnalysisRenderMarkers({
+      text: "Answer: [[render tableId=A3]].",
+      fetchedTableIds: ["A3"],
+      catalogTableIds: ["A3", "B4"],
+    });
+    expect(issues).toEqual([]);
+  });
+
+  it("strips only the invalid marker occurrences and keeps valid ones", () => {
+    const text = "Good [[render tableId=A3]] bad [[render tableId=Z9]] end.";
+    const issues = validateAnalysisRenderMarkers({
+      text,
+      fetchedTableIds: ["A3"],
+      catalogTableIds: ["A3"],
+    });
+    expect(stripInvalidAnalysisRenderMarkers(text, issues))
+      .toBe("Good [[render tableId=A3]] bad  end.");
+  });
+
+  it("resolves multiple markers pointing at different tableIds in order", () => {
     const blocks = buildAnalysisRenderableBlocks({
       id: "assistant-4",
-      parts: [{ type: "text", text: `Intro\n\n${ANALYSIS_TABLE_RENDER_ANCHOR}\n\nClose` }],
-    }, { isStreaming: true });
+      parts: [
+        makeTablePart("tool-1", "A3"),
+        makeTablePart("tool-2", "B4"),
+        { type: "text", text: "First:\n\n[[render tableId=A3]]\n\nSecond:\n\n[[render tableId=B4]]" },
+      ],
+    });
 
-    expect(blocks).toEqual([
-      expect.objectContaining({ kind: "text", text: "Intro" }),
-      expect.objectContaining({ kind: "placeholder" }),
-      expect.objectContaining({ kind: "text", text: "Close" }),
-    ]);
+    expect(blocks.map((block) => block.kind)).toEqual(["text", "table", "text", "table"]);
   });
 });

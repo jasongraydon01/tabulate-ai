@@ -69,29 +69,56 @@ export function buildAnalysisInstructions(context: {
   runContext: {
     projectName: string | null;
     runStatus: string | null;
+    studyMethodology: string | null;
+    analysisMethod: string | null;
     tableCount: number | null;
     bannerGroupCount: number | null;
     totalCuts: number | null;
     bannerGroupNames: string[];
     bannerSource: "uploaded" | "auto_generated" | null;
+    bannerMode: "upload" | "auto_generate" | null;
     researchObjectives: string | null;
     bannerHints: string | null;
     surveyAvailable: boolean;
     bannerPlanAvailable: boolean;
+    intakeFiles?: {
+      dataFile: string | null;
+      survey: string | null;
+      bannerPlan: string | null;
+      messageList: string | null;
+    };
   };
   questionCatalog?: string;
   promptVersion?: string;
 }): string {
   const basePrompt = getAnalysisPrompt(context.promptVersion);
 
+  const intakeLines: string[] = [];
+  const intake = context.runContext.intakeFiles;
+  if (intake) {
+    if (intake.dataFile) intakeLines.push(`Data file: ${intake.dataFile}.`);
+    if (intake.survey) intakeLines.push(`Survey document: ${intake.survey}.`);
+    if (intake.bannerPlan) intakeLines.push(`Banner plan document: ${intake.bannerPlan}.`);
+    if (intake.messageList) intakeLines.push(`Message list: ${intake.messageList}.`);
+  }
+
   const runContextSection = [
     "<run_context>",
     `Project name: ${context.runContext.projectName ?? "Unknown"}.`,
     `Run status: ${context.runContext.runStatus ?? "Unknown"}.`,
+    context.runContext.studyMethodology
+      ? `Study methodology: ${context.runContext.studyMethodology}.`
+      : "Study methodology: not specified.",
+    context.runContext.analysisMethod
+      ? `Analysis method: ${context.runContext.analysisMethod}.`
+      : "Analysis method: not specified.",
     `Computed tables available: ${context.runContext.tableCount ?? "Unknown"}.`,
     `Banner groups available: ${context.runContext.bannerGroupCount ?? "Unknown"}.`,
     `Total banner cuts available: ${context.runContext.totalCuts ?? "Unknown"}.`,
     `Banner source: ${context.runContext.bannerSource ?? "Unknown"}.`,
+    context.runContext.bannerMode
+      ? `Banner mode: ${context.runContext.bannerMode}.`
+      : null,
     context.runContext.bannerGroupNames.length > 0
       ? `Banner groups: ${context.runContext.bannerGroupNames.join(", ")}.`
       : "Banner groups: unavailable.",
@@ -103,8 +130,9 @@ export function buildAnalysisInstructions(context: {
       : "Banner hints: not provided.",
     `Survey context available: ${context.runContext.surveyAvailable ? "yes" : "no"}.`,
     `Stage-20 banner plan available: ${context.runContext.bannerPlanAvailable ? "yes" : "no"}.`,
+    ...(intakeLines.length > 0 ? intakeLines : []),
     "</run_context>",
-  ].join("\n");
+  ].filter((line): line is string => line !== null).join("\n");
 
   const groundingStatus = (() => {
     if (context.availability === "unavailable") {

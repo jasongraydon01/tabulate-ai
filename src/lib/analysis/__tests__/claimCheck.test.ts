@@ -60,7 +60,7 @@ describe("resolveAssistantMessageTrust", () => {
       assistantText: "Overall satisfaction is 45%.",
       responseParts: [
         {
-          type: "tool-getTableCard",
+          type: "tool-fetchTable",
           toolCallId: "tool-1",
           state: "output-available",
           input: { tableId: "q1" },
@@ -86,7 +86,7 @@ describe("resolveAssistantMessageTrust", () => {
     ]);
   });
 
-  it("reuses a prior table artifact when the current turn only inspects the table", () => {
+  it("reuses a prior table artifact when this turn only references the table without fetching", () => {
     const card = makeTableCard();
 
     const result = resolveAssistantMessageTrust({
@@ -94,8 +94,8 @@ describe("resolveAssistantMessageTrust", () => {
       responseParts: [{ type: "text", text: "Overall satisfaction is 45%." }],
       groundingEvents: [
         {
-          toolName: "viewTable",
-          toolCallId: "view-1",
+          toolName: "searchRunCatalog",
+          toolCallId: "search-1",
           sourceRefs: [{ refType: "table", refId: "q1", label: "Q1 overall" }],
           tableCard: card,
         },
@@ -115,38 +115,6 @@ describe("resolveAssistantMessageTrust", () => {
         artifactId: "artifact-1",
         anchorId: "artifact-1",
         renderedInCurrentMessage: false,
-      }),
-    ]);
-  });
-
-  it("injects a table card when the turn has numeric claims and only a silent viewTable result", () => {
-    const card = makeTableCard();
-
-    const result = resolveAssistantMessageTrust({
-      assistantText: "Overall satisfaction is 45%.",
-      responseParts: [{ type: "text", text: "Overall satisfaction is 45%." }],
-      groundingEvents: [
-        {
-          toolName: "viewTable",
-          toolCallId: "view-1",
-          sourceRefs: [{ refType: "table", refId: "q1", label: "Q1 overall" }],
-          tableCard: card,
-        },
-      ],
-      priorTableArtifacts: [],
-    });
-
-    expect(result.hasGroundedClaims).toBe(true);
-    expect(result.injectedTableCards).toEqual([
-      {
-        toolCallId: "evidence-q1",
-        card,
-      },
-    ]);
-    expect(result.groundingRefs).toEqual([
-      expect.objectContaining({
-        anchorId: "evidence-q1",
-        renderedInCurrentMessage: true,
       }),
     ]);
   });
@@ -182,7 +150,7 @@ describe("resolveAssistantMessageTrust", () => {
       ].join("\n"),
       responseParts: [
         {
-          type: "tool-getTableCard",
+          type: "tool-fetchTable",
           toolCallId: "tool-1",
           state: "output-available",
           input: { tableId: "q1" },

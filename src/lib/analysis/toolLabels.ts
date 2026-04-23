@@ -4,22 +4,19 @@
  * only these tool types survive to Convex, and only these types are
  * rehydrated from persisted records.
  *
- * `tool-getTableCard` is not listed here because it is rendered as a full
- * table card, not as a chip in the thinking trace, and it is persisted
- * through the `analysisArtifacts` flow rather than inline part fields.
+ * `tool-fetchTable` plays two roles: it is the data source for inline table
+ * card rendering (via `[[render tableId=…]]` prose markers) AND it appears as
+ * an activity chip in the thinking trace. The renderer resolves markers
+ * against this-turn's fetchTable results.
  */
 export const ANALYSIS_TOOL_ACTIVITY_LABELS: Record<string, string> = {
   "tool-searchRunCatalog": "Searching run catalog",
-  "tool-viewTable": "Inspecting table",
+  "tool-fetchTable": "Fetching table",
   "tool-getQuestionContext": "Checking question metadata",
-  "tool-getSurveyQuestion": "Reading survey wording",
   "tool-listBannerCuts": "Listing available cuts",
-  "tool-getBannerPlanContext": "Reviewing banner plan",
-  "tool-getRunContext": "Loading run context",
-  "tool-scratchpad": "Internal note",
 };
 
-export const TABLE_CARD_TOOL_TYPE = "tool-getTableCard";
+export const FETCH_TABLE_TOOL_TYPE = "tool-fetchTable";
 
 export function getAnalysisToolActivityLabel(toolType: string): string | null {
   return ANALYSIS_TOOL_ACTIVITY_LABELS[toolType] ?? null;

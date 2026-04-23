@@ -2,7 +2,7 @@ import { isReasoningUIPart, isTextUIPart, isToolUIPart, type UIMessage } from "a
 
 import { sanitizeAnalysisAssistantMessageContent } from "@/lib/analysis/messages";
 import {
-  TABLE_CARD_TOOL_TYPE,
+  FETCH_TABLE_TOOL_TYPE,
   isRenderableAnalysisToolType,
 } from "@/lib/analysis/toolLabels";
 import { isAnalysisTableCard, type AnalysisTableCard } from "@/lib/analysis/types";
@@ -45,7 +45,7 @@ export type PendingAnalysisPart =
  *
  * Allowlist policy: text and reasoning parts always pass through (after
  * sanitization / whitespace-only filtering). Tool parts pass through only if
- * they are `tool-getTableCard` (handled via the artifact flow) or in the
+ * they are `tool-fetchTable` (handled via the artifact flow) or in the
  * renderable-tool allowlist. Unknown tool types are dropped so the UI never
  * has to render a chip it does not know how to label.
  */
@@ -83,7 +83,7 @@ export function buildPersistedAnalysisParts(parts: UIMessage["parts"]): PendingA
 
     if (!isToolUIPart(part)) continue;
 
-    if (part.type === TABLE_CARD_TOOL_TYPE) {
+    if (part.type === FETCH_TABLE_TOOL_TYPE) {
       if (part.state === "output-available" && isAnalysisTableCard(part.output)) {
         pending.push({
           kind: "tableCard",

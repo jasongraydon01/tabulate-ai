@@ -1,6 +1,6 @@
 import { isToolUIPart, type UIMessage } from "ai";
 
-import { TABLE_CARD_TOOL_TYPE } from "@/lib/analysis/toolLabels";
+import { FETCH_TABLE_TOOL_TYPE } from "@/lib/analysis/toolLabels";
 import type {
   AnalysisGroundingRef,
   AnalysisSourceRef,
@@ -137,7 +137,7 @@ function dedupeGroundingRefs(refs: AnalysisGroundingRef[]): AnalysisGroundingRef
 
 function collectRenderedTableCards(parts: UIMessage["parts"]): InjectedAnalysisTableCard[] {
   return parts.flatMap((part) => {
-    if (!isToolUIPart(part) || part.type !== TABLE_CARD_TOOL_TYPE) return [];
+    if (!isToolUIPart(part) || part.type !== FETCH_TABLE_TOOL_TYPE) return [];
     if (part.state !== "output-available") return [];
     if (!part.output || typeof part.output !== "object") return [];
 
@@ -173,10 +173,10 @@ export function resolveAssistantMessageTrust(params: {
   }
 
   const currentRenderedCards = collectRenderedTableCards(params.responseParts);
-  const inspectOnlyCards = params.groundingEvents.filter(
-    (event) => event.toolName === "viewTable" && event.tableCard,
-  ) as Array<AnalysisTurnGroundingEvent & { tableCard: AnalysisTableCard }>;
 
+  // Every fetchTable call this turn produces a part in the message (rendered
+  // inline via marker, or silently appended as fallback by the renderer).
+  // Treat them all as candidate support for numeric claims.
   const numericRefs: AnalysisGroundingRef[] = currentRenderedCards.map(({ toolCallId, card }) =>
     buildNumericTableRef({
       label: card.title,
@@ -187,7 +187,13 @@ export function resolveAssistantMessageTrust(params: {
       renderedInCurrentMessage: true,
     }));
 
+  const injectedTableCards: InjectedAnalysisTableCard[] = [];
+
   if (numericRefs.length === 0) {
+    // Claim but no fetchTable this turn — look for a prior-turn artifact that
+    // the agent's grounding events referenced. Surface it as a grounding ref
+    // so the evidence panel links back to the original rendered card without
+    // re-injecting a duplicate card in this message.
     const usedTableIds = new Set(
       params.groundingEvents
         .flatMap((event) => event.sourceRefs)
@@ -209,24 +215,6 @@ export function resolveAssistantMessageTrust(params: {
         renderedInCurrentMessage: false,
       }));
     }
-  }
-
-  const injectedTableCards: InjectedAnalysisTableCard[] = [];
-  if (numericRefs.length === 0 && inspectOnlyCards.length > 0) {
-    const [firstCard] = inspectOnlyCards;
-    const toolCallId = `evidence-${firstCard.tableCard.tableId}`;
-    injectedTableCards.push({
-      toolCallId,
-      card: firstCard.tableCard,
-    });
-    numericRefs.push(buildNumericTableRef({
-      label: firstCard.tableCard.title,
-      refId: firstCard.tableCard.tableId,
-      sourceTableId: firstCard.tableCard.tableId,
-      sourceQuestionId: firstCard.tableCard.questionId,
-      anchorId: toolCallId,
-      renderedInCurrentMessage: true,
-    }));
   }
 
   if (numericRefs.length === 0) {

@@ -7,7 +7,7 @@ describe("deterministic follow-up suggestions", () => {
   it("builds stable suggestions from grounded table cards", () => {
     const responseParts: UIMessage["parts"] = [
       {
-        type: "tool-getTableCard",
+        type: "tool-fetchTable",
         toolCallId: "tool-1",
         state: "output-available",
         input: {

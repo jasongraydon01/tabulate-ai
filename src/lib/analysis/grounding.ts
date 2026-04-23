@@ -11,15 +11,11 @@ import { parseRunResult } from "@/schemas/runResultSchema";
 
 import type {
   AnalysisAvailabilityStatus,
-  AnalysisBannerPlanContextResult,
-  AnalysisBannerPlanGroupResult,
   AnalysisBannerCutsResult,
   AnalysisBannerGroupResult,
   AnalysisCatalogSearchResult,
   AnalysisQuestionContextResult,
-  AnalysisRunContextResult,
   AnalysisSourceRef,
-  AnalysisSurveyQuestionResult,
   AnalysisTableCardCell,
   AnalysisTableCardColumn,
   AnalysisTableCardColumnGroup,
@@ -1116,179 +1112,6 @@ function resolveSurveyQuestionMatch(
   };
 }
 
-export function getRunContext(
-  context: AnalysisGroundingContext,
-): AnalysisRunContextResult {
-  return {
-    status: context.availability,
-    projectName: context.projectContext.projectName,
-    runStatus: context.projectContext.runStatus,
-    studyMethodology: context.projectContext.studyMethodology,
-    analysisMethod: context.projectContext.analysisMethod,
-    bannerSource: context.projectContext.bannerSource,
-    bannerMode: context.projectContext.bannerMode,
-    tableCount: context.projectContext.tableCount,
-    bannerGroupCount: context.projectContext.bannerGroupCount,
-    totalCuts: context.projectContext.totalCuts,
-    bannerGroupNames: context.projectContext.bannerGroupNames,
-    researchObjectives: context.projectContext.researchObjectives,
-    bannerHints: context.projectContext.bannerHints,
-    intakeFiles: context.projectContext.intakeFiles,
-    sourceRefs: [
-      ...(context.projectContext.projectName
-        ? [{ refType: "project" as const, refId: context.projectContext.projectName, label: context.projectContext.projectName }]
-        : []),
-      ...(context.projectContext.runStatus
-        ? [{ refType: "run" as const, refId: context.projectContext.runStatus, label: context.projectContext.runStatus }]
-        : []),
-    ],
-    ...(context.missingArtifacts.length > 0 ? { message: buildMissingMessage(context.missingArtifacts) } : {}),
-  };
-}
-
-export function getBannerPlanContext(
-  context: AnalysisGroundingContext,
-  filter: string | null | undefined,
-): AnalysisBannerPlanContextResult {
-  const normalizedFilter = filter?.trim() || null;
-
-  if (context.availability === "unavailable" && context.bannerPlanGroups.length === 0) {
-    return {
-      status: "unavailable",
-      filter: normalizedFilter,
-      routeUsed: context.bannerRouteMetadata?.routeUsed ?? null,
-      bannerSource: context.projectContext.bannerSource,
-      usedFallbackFromBannerAgent: context.bannerRouteMetadata?.usedFallbackFromBannerAgent ?? null,
-      researchObjectives: context.projectContext.researchObjectives,
-      bannerHints: context.projectContext.bannerHints,
-      groups: [],
-      totalGroups: 0,
-      totalCuts: 0,
-      sourceRefs: [],
-      message: buildMissingMessage(context.missingArtifacts),
-    };
-  }
-
-  const groups = context.bannerPlanGroups
-    .map<AnalysisBannerPlanGroupResult>((group) => ({
-      groupName: group.groupName,
-      columns: group.columns.map((column) => ({
-        name: column.name,
-        original: column.original,
-      })),
-    }))
-    .filter((group) => {
-      if (!normalizedFilter) return true;
-      if (scoreMatch(normalizedFilter, group.groupName) > 0) return true;
-      return group.columns.some((column) => scoreMatch(normalizedFilter, group.groupName, column.name, column.original) > 0);
-    })
-    .map((group) => ({
-      ...group,
-      columns: normalizedFilter
-        ? group.columns.filter((column) => scoreMatch(normalizedFilter, group.groupName, column.name, column.original) > 0)
-        : group.columns,
-    }))
-    .filter((group) => group.columns.length > 0);
-
-  if (normalizedFilter && groups.length === 0) {
-    return {
-      status: "not_found",
-      filter: normalizedFilter,
-      routeUsed: context.bannerRouteMetadata?.routeUsed ?? null,
-      bannerSource: context.projectContext.bannerSource,
-      usedFallbackFromBannerAgent: context.bannerRouteMetadata?.usedFallbackFromBannerAgent ?? null,
-      researchObjectives: context.projectContext.researchObjectives,
-      bannerHints: context.projectContext.bannerHints,
-      groups: [],
-      totalGroups: 0,
-      totalCuts: 0,
-      sourceRefs: [],
-      message: `No banner plan groups matched "${normalizedFilter}".`,
-    };
-  }
-
-  return {
-    status: context.availability,
-    filter: normalizedFilter,
-    routeUsed: context.bannerRouteMetadata?.routeUsed ?? null,
-    bannerSource: context.projectContext.bannerSource,
-    usedFallbackFromBannerAgent: context.bannerRouteMetadata?.usedFallbackFromBannerAgent ?? null,
-    researchObjectives: context.projectContext.researchObjectives,
-    bannerHints: context.projectContext.bannerHints,
-    groups,
-    totalGroups: groups.length,
-    totalCuts: groups.reduce((sum, group) => sum + group.columns.length, 0),
-    sourceRefs: [{ refType: "banner_plan", refId: BANNER_PLAN_PATH, label: "Banner plan" }],
-    ...(context.missingArtifacts.length > 0 ? { message: buildMissingMessage(context.missingArtifacts) } : {}),
-  };
-}
-
-export function getSurveyQuestion(
-  context: AnalysisGroundingContext,
-  query: string,
-): AnalysisSurveyQuestionResult {
-  if (context.availability === "unavailable" && context.surveyQuestions.length === 0) {
-    return {
-      status: "unavailable",
-      query,
-      questionId: null,
-      questionText: null,
-      sequenceNumber: null,
-      sectionHeader: null,
-      instructionText: null,
-      questionType: null,
-      format: null,
-      answerOptions: [],
-      scaleLabels: [],
-      progNotes: [],
-      documentSnippet: null,
-      sourceRefs: [],
-      message: buildMissingMessage(context.missingArtifacts),
-    };
-  }
-
-  const match = resolveSurveyQuestionMatch(context, query);
-  if (!match) {
-    return {
-      status: "not_found",
-      query,
-      questionId: null,
-      questionText: null,
-      sequenceNumber: null,
-      sectionHeader: null,
-      instructionText: null,
-      questionType: null,
-      format: null,
-      answerOptions: [],
-      scaleLabels: [],
-      progNotes: [],
-      documentSnippet: null,
-      sourceRefs: [],
-      message: `Survey question "${query}" was not found in this run's survey context.`,
-    };
-  }
-
-  return {
-    status: context.availability,
-    query,
-    questionId: match.question.questionId,
-    questionText: match.question.questionText,
-    sequenceNumber: match.sequenceNumber,
-    sectionHeader: match.question.sectionHeader,
-    instructionText: match.question.instructionText,
-    questionType: match.question.questionType,
-    format: match.question.format,
-    answerOptions: match.question.answerOptions,
-    scaleLabels: match.question.scaleLabels,
-    progNotes: match.question.progNotes,
-    documentSnippet: resolveSurveyDocumentSnippet(context.surveyMarkdown, match.question),
-    sourceRefs: [
-      { refType: "survey_question", refId: match.question.questionId, label: match.question.questionText },
-      ...(context.surveyMarkdown ? [{ refType: "survey_document" as const, refId: SURVEY_MARKDOWN_PATH, label: "Survey document" }] : []),
-    ],
-    ...(context.missingArtifacts.length > 0 ? { message: buildMissingMessage(context.missingArtifacts) } : {}),
-  };
-}
 
 export function getQuestionContext(
   context: AnalysisGroundingContext,
@@ -1351,6 +1174,46 @@ export function getQuestionContext(
     valueLabels: item.valueLabels,
   }));
 
+  // Resolve the survey-document match for this question (when available) so
+  // survey wording, answer options, scale labels, and a document snippet all
+  // return from the same tool. Prior behavior split this across a separate
+  // getSurveyQuestion tool that the agent rarely picked.
+  const surveyMatchResolved = resolveSurveyQuestionMatch(context, match.questionId);
+
+  const baseSourceRefs: AnalysisSourceRef[] = [
+    { refType: "question", refId: match.questionId, label: match.questionText },
+  ];
+  const surveySourceRefs: AnalysisSourceRef[] = surveyMatchResolved
+    ? [
+        {
+          refType: "survey_question",
+          refId: surveyMatchResolved.question.questionId,
+          label: surveyMatchResolved.question.questionText,
+        },
+        ...(context.surveyMarkdown
+          ? [{
+              refType: "survey_document" as const,
+              refId: SURVEY_MARKDOWN_PATH,
+              label: "Survey document",
+            }]
+          : []),
+      ]
+    : [];
+
+  const surveyFields: Partial<AnalysisQuestionContextResult> = surveyMatchResolved
+    ? {
+        sequenceNumber: surveyMatchResolved.sequenceNumber,
+        sectionHeader: surveyMatchResolved.question.sectionHeader,
+        instructionText: surveyMatchResolved.question.instructionText,
+        surveyQuestionType: surveyMatchResolved.question.questionType,
+        surveyFormat: surveyMatchResolved.question.format,
+        answerOptions: surveyMatchResolved.question.answerOptions,
+        scaleLabels: surveyMatchResolved.question.scaleLabels,
+        progNotes: surveyMatchResolved.question.progNotes,
+        documentSnippet: resolveSurveyDocumentSnippet(context.surveyMarkdown, surveyMatchResolved.question),
+      }
+    : {};
+
   return {
     status: context.availability,
     questionId: match.questionId,
@@ -1366,7 +1229,8 @@ export function getQuestionContext(
     totalItems: match.items.length,
     truncatedItems: Math.max(match.items.length - items.length, 0),
     relatedTableIds,
-    sourceRefs: [{ refType: "question", refId: match.questionId, label: match.questionText }],
+    ...surveyFields,
+    sourceRefs: [...baseSourceRefs, ...surveySourceRefs],
     ...(context.missingArtifacts.length > 0 ? { message: buildMissingMessage(context.missingArtifacts) } : {}),
   };
 }

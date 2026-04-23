@@ -89,11 +89,11 @@ describe("buildPersistedAnalysisParts", () => {
         output: { matches: [] },
       } as UIMessage["parts"][number],
       {
-        type: "tool-scratchpad",
+        type: "tool-listBannerCuts",
         toolCallId: "call-2",
         state: "output-available",
-        input: { action: "add", note: "checking" },
-        output: undefined,
+        input: { filter: "age" },
+        output: { groups: [] },
       } as UIMessage["parts"][number],
     ];
 
@@ -111,7 +111,7 @@ describe("buildPersistedAnalysisParts", () => {
       {
         kind: "ready",
         part: {
-          type: "tool-scratchpad",
+          type: "tool-listBannerCuts",
           state: "output-available",
           toolCallId: "call-2",
         },
@@ -137,7 +137,7 @@ describe("buildPersistedAnalysisParts", () => {
     const payload = makeTableCardPayload();
     const parts: UIMessage["parts"] = [
       {
-        type: "tool-getTableCard",
+        type: "tool-fetchTable",
         toolCallId: "call-table",
         state: "output-available",
         input: { tableId: "q1" },
@@ -163,7 +163,7 @@ describe("buildPersistedAnalysisParts", () => {
   it("drops getTableCard parts that are not output-available", () => {
     const parts: UIMessage["parts"] = [
       {
-        type: "tool-getTableCard",
+        type: "tool-fetchTable",
         toolCallId: "call-table",
         state: "input-available",
         input: { tableId: "q1" },
@@ -177,7 +177,7 @@ describe("buildPersistedAnalysisParts", () => {
   it("drops getTableCard parts whose output is not a valid analysis table card", () => {
     const parts: UIMessage["parts"] = [
       {
-        type: "tool-getTableCard",
+        type: "tool-fetchTable",
         toolCallId: "call-table",
         state: "output-available",
         input: { tableId: "q1" },
@@ -200,7 +200,7 @@ describe("buildPersistedAnalysisParts", () => {
         output: { matches: [] },
       } as UIMessage["parts"][number],
       {
-        type: "tool-getTableCard",
+        type: "tool-fetchTable",
         toolCallId: "call-2",
         state: "output-available",
         input: { tableId: "q1" },

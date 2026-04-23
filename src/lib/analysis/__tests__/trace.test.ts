@@ -30,18 +30,6 @@ function makeTraceCapture(): AnalysisTraceCapture {
       durationMs: 890,
       estimatedCostUsd: 0.0123,
     },
-    scratchpadEntries: [
-      {
-        timestamp: "2026-04-20T12:00:00.000Z",
-        action: "add",
-        content: "Search the awareness tables first.",
-      },
-      {
-        timestamp: "2026-04-20T12:00:01.000Z",
-        action: "review",
-        content: "The grouped banner cuts still look relevant.",
-      },
-    ],
     retryEvents: [
       {
         attempt: 1,
@@ -61,7 +49,7 @@ function makeTraceCapture(): AnalysisTraceCapture {
 
 function makeTableCardPart() {
   return {
-    type: "tool-getTableCard" as const,
+    type: "tool-fetchTable" as const,
     toolCallId: "table-1",
     state: "output-available" as const,
     input: {
@@ -167,7 +155,7 @@ describe("analysis trace helpers", () => {
         },
       },
       {
-        toolName: "tool-getTableCard",
+        toolName: "tool-fetchTable",
         toolCallId: "table-1",
         state: "output-available",
         inputPreview: {
@@ -224,7 +212,7 @@ describe("analysis trace helpers", () => {
     expect(trace.kind).toBe("success");
     expect(trace.sessionTitle).toBe("Audit Session");
     expect(trace.reasoningParts).toEqual(["First check the grounded survey wording."]);
-    expect(trace.scratchpadEntries).toHaveLength(2);
+    expect(trace.scratchpadEntries).toBeUndefined();
     expect(trace.toolTimeline).toHaveLength(1);
     expect(trace.retrySummary).toEqual({
       totalAttempts: 2,

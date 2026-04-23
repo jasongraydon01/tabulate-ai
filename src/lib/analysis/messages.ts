@@ -1,6 +1,6 @@
 import { isTextUIPart, type UIMessage } from "ai";
 
-import { isRenderableAnalysisToolType, TABLE_CARD_TOOL_TYPE } from "@/lib/analysis/toolLabels";
+import { isRenderableAnalysisToolType, FETCH_TABLE_TOOL_TYPE } from "@/lib/analysis/toolLabels";
 import {
   isAnalysisTableCard,
   type AnalysisEvidenceItem,
@@ -185,7 +185,7 @@ function persistedTableCardPart(
   payload: AnalysisTableCard,
 ) {
   return {
-    type: "tool-getTableCard" as const,
+    type: "tool-fetchTable" as const,
     toolCallId: artifactId,
     state: "output-available" as const,
     input: {
@@ -246,7 +246,7 @@ export function persistedAnalysisMessagesToUIMessages(
           continue;
         }
 
-        if (part.type === TABLE_CARD_TOOL_TYPE && part.artifactId) {
+        if (part.type === FETCH_TABLE_TOOL_TYPE && part.artifactId) {
           const artifact = artifactLookup.get(part.artifactId);
           if (artifact?.artifactType === "table_card" && isAnalysisTableCard(artifact.payload)) {
             parts.push(persistedTableCardPart(String(artifact._id), artifact.payload));

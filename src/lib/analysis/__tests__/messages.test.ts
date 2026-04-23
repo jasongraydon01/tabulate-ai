@@ -105,7 +105,7 @@ describe("analysis message helpers", () => {
           content: "Here is the table.",
           parts: [
             { type: "text", text: "Here is the table." },
-            { type: "tool-getTableCard", state: "output-available", artifactId: "artifact-1" },
+            { type: "tool-fetchTable", state: "output-available", artifactId: "artifact-1" },
           ],
         },
       ],
@@ -158,7 +158,7 @@ describe("analysis message helpers", () => {
     expect(messages[0].parts).toEqual([
       { type: "text", text: "Here is the table." },
       {
-        type: "tool-getTableCard",
+        type: "tool-fetchTable",
         toolCallId: "artifact-1",
         state: "output-available",
         input: {
@@ -281,7 +281,7 @@ describe("analysis message helpers", () => {
         parts: [
           { type: "text", text: "  <b>Summary</b>  " },
           {
-            type: "tool-getTableCard",
+            type: "tool-fetchTable",
             toolCallId: "artifact-1",
             state: "output-available",
             input: {

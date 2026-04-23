@@ -12,21 +12,21 @@ import {
 } from "@/components/analysis/AnalysisMessage";
 
 describe("AnalysisMessage trace presentation", () => {
-  it("treats scratchpad and tool activity as analysis steps, not reasoning summaries", () => {
+  it("surfaces fetchTable and other tool activity as analysis steps with friendly labels", () => {
     const message: UIMessage = {
       id: "assistant-1",
       role: "assistant",
       parts: [
         {
-          type: "tool-scratchpad",
-          toolCallId: "scratch-1",
+          type: "tool-searchRunCatalog",
+          toolCallId: "search-1",
           state: "output-available",
-          input: { action: "add" },
+          input: { query: "awareness" },
           output: undefined,
         } as UIMessage["parts"][number],
         {
-          type: "tool-viewTable",
-          toolCallId: "view-1",
+          type: "tool-fetchTable",
+          toolCallId: "fetch-1",
           state: "output-available",
           input: { tableId: "f9__standard_overview" },
           output: undefined,
@@ -39,19 +39,39 @@ describe("AnalysisMessage trace presentation", () => {
     expect(traceEntries).toEqual([
       {
         kind: "tool",
-        id: "scratch-1",
-        label: "Internal note",
+        id: "search-1",
+        label: "Searching run catalog",
         state: "output-available",
       },
       {
         kind: "tool",
-        id: "view-1",
-        label: "Inspecting table",
+        id: "fetch-1",
+        label: "Fetching table",
         state: "output-available",
       },
     ]);
-    expect(getAnalysisTraceHeaderLabel(traceEntries, "Inspecting table", false)).toBe("Inspecting table");
-    expect(getAnalysisTraceHeaderLabel(traceEntries, "Inspecting table", true)).toBe("Analysis steps");
+    expect(getAnalysisTraceHeaderLabel(traceEntries, "Fetching table", false)).toBe("Fetching table");
+    expect(getAnalysisTraceHeaderLabel(traceEntries, "Fetching table", true)).toBe("Analysis steps");
+  });
+
+  it("strips markdown markers from reasoning summaries so they render cleanly as plain text", () => {
+    const message: UIMessage = {
+      id: "assistant-md",
+      role: "assistant",
+      parts: [
+        {
+          type: "reasoning",
+          text: "**Filtering bank data**\n\nI need to check _aided_ awareness for `CSB` and ~~others~~.\n\n- step one\n- step two",
+        },
+      ],
+    };
+
+    const entries = getAnalysisTraceEntries(message);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      kind: "reasoning",
+      text: "Filtering bank data\n\nI need to check aided awareness for CSB and others.\n\nstep one\nstep two",
+    });
   });
 
   it("shows reasoning when the model emits real reasoning summary text", () => {
@@ -87,10 +107,10 @@ describe("AnalysisMessage trace presentation", () => {
       parts: [
         { type: "reasoning", text: "   " },
         {
-          type: "tool-scratchpad",
-          toolCallId: "scratch-2",
+          type: "tool-listBannerCuts",
+          toolCallId: "list-2",
           state: "output-available",
-          input: { action: "add" },
+          input: { filter: null },
           output: undefined,
         } as UIMessage["parts"][number],
       ],
@@ -101,8 +121,8 @@ describe("AnalysisMessage trace presentation", () => {
     expect(traceEntries).toEqual([
       {
         kind: "tool",
-        id: "scratch-2",
-        label: "Internal note",
+        id: "list-2",
+        label: "Listing available cuts",
         state: "output-available",
       },
     ]);

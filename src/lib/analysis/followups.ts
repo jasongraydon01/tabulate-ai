@@ -30,7 +30,7 @@ function getRenderedTableCards(parts: UIMessage["parts"]) {
   return parts.flatMap((part) => {
     if (
       isToolUIPart(part)
-      && part.type === "tool-getTableCard"
+      && part.type === "tool-fetchTable"
       && part.state === "output-available"
       && isAnalysisTableCard(part.output)
     ) {

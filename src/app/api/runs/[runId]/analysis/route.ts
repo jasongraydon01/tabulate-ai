@@ -24,7 +24,13 @@ import {
   sanitizeAnalysisAssistantMessageContent,
   sanitizeAnalysisMessageContent,
 } from "@/lib/analysis/messages";
-import { stripAnalysisRenderAnchors } from "@/lib/analysis/renderAnchors";
+import {
+  stripAnalysisRenderAnchors,
+  stripInvalidAnalysisRenderMarkers,
+  validateAnalysisRenderMarkers,
+} from "@/lib/analysis/renderAnchors";
+import { attemptAnalysisRenderMarkerRepair } from "@/lib/analysis/markerRepair";
+import { buildAnalysisInstructions, buildAnalysisQuestionCatalog } from "@/prompts/analysis";
 import {
   buildPersistedAnalysisParts,
   type PersistedAnalysisPart,
@@ -37,7 +43,7 @@ import {
   generateAnalysisSessionTitle,
   isDefaultAnalysisSessionTitle,
 } from "@/lib/analysis/title";
-import { TABLE_CARD_TOOL_TYPE } from "@/lib/analysis/toolLabels";
+import { FETCH_TABLE_TOOL_TYPE } from "@/lib/analysis/toolLabels";
 import { isAnalysisTableCard, type AnalysisGroundingRef, type AnalysisMessageMetadata } from "@/lib/analysis/types";
 import { getConvexClient, mutateInternal } from "@/lib/convex";
 import { requireConvexAuth, AuthenticationError } from "@/lib/requireConvexAuth";
@@ -70,7 +76,7 @@ function summarizeAssistantResponseForTitle(parts: UIMessage["parts"]): string {
       continue;
     }
 
-    if (part.type === TABLE_CARD_TOOL_TYPE) {
+    if (part.type === FETCH_TABLE_TOOL_TYPE) {
       const label = typeof part.title === "string"
         ? sanitizeAnalysisMessageContent(part.title)
         : typeof part.output === "object"
@@ -161,7 +167,7 @@ function emitInjectedTableCards(
     writer.write({
       type: "tool-input-available",
       toolCallId: injected.toolCallId,
-      toolName: "getTableCard",
+      toolName: "fetchTable",
       input: {
         tableId: injected.card.tableId,
         rowFilter: injected.card.requestedRowFilter,
@@ -194,27 +200,55 @@ function toStreamMetadata(
   };
 }
 
+// Convex validators on groundingRef optional fields are `v.optional(v.string())`
+// — string OR undefined, never null. Build the persisted shape by omitting
+// fields whose source value is null/undefined rather than passing null through.
+function buildPersistedGroundingRef(
+  ref: AnalysisGroundingRef,
+  artifactId: Id<"analysisArtifacts"> | undefined,
+  overrides?: { anchorId?: string; renderedInCurrentMessage?: boolean },
+): Record<string, unknown> {
+  const persisted: Record<string, unknown> = {
+    claimId: ref.claimId,
+    claimType: ref.claimType,
+    evidenceKind: ref.evidenceKind,
+    refType: ref.refType,
+    refId: ref.refId,
+    label: ref.label,
+  };
+
+  const resolvedAnchorId = overrides?.anchorId ?? ref.anchorId ?? undefined;
+  if (resolvedAnchorId) persisted.anchorId = resolvedAnchorId;
+
+  if (artifactId) {
+    persisted.artifactId = artifactId;
+  } else if (ref.artifactId) {
+    persisted.artifactId = ref.artifactId as unknown as Id<"analysisArtifacts">;
+  }
+
+  if (ref.sourceTableId) persisted.sourceTableId = ref.sourceTableId;
+  if (ref.sourceQuestionId) persisted.sourceQuestionId = ref.sourceQuestionId;
+
+  const rendered = overrides?.renderedInCurrentMessage ?? ref.renderedInCurrentMessage;
+  if (typeof rendered === "boolean") persisted.renderedInCurrentMessage = rendered;
+
+  return persisted;
+}
+
 function applyArtifactIdsToGroundingRefsForPersistence(
   groundingRefs: AnalysisGroundingRef[],
   artifactIdsByToolCallId: Record<string, Id<"analysisArtifacts">>,
-): Array<AnalysisGroundingRef & { artifactId?: Id<"analysisArtifacts"> }> {
+): Array<Record<string, unknown>> {
   return groundingRefs.map((ref) => {
     const artifactId = ref.anchorId ? artifactIdsByToolCallId[ref.anchorId] : undefined;
     if (!artifactId) {
-      return {
-        ...ref,
-        ...(ref.artifactId && ref.artifactId !== null
-          ? { artifactId: ref.artifactId as unknown as Id<"analysisArtifacts"> }
-          : {}),
-      } as AnalysisGroundingRef & { artifactId?: Id<"analysisArtifacts"> };
+      return buildPersistedGroundingRef(ref, undefined);
     }
 
-    return {
-      ...ref,
-      artifactId,
+    return buildPersistedGroundingRef(ref, artifactId, {
       anchorId: String(artifactId),
       renderedInCurrentMessage: true,
-    } as AnalysisGroundingRef & { artifactId?: Id<"analysisArtifacts"> };
+    });
   });
 }
 
@@ -255,7 +289,7 @@ function buildFinalAssistantParts(params: {
 }): UIMessage["parts"] {
   const nonTextParts = params.originalParts.filter((part) => part.type !== "text");
   const injectedParts = params.injectedTableCards.map<UIMessage["parts"][number]>((entry) => ({
-    type: TABLE_CARD_TOOL_TYPE,
+    type: FETCH_TABLE_TOOL_TYPE,
     toolCallId: entry.toolCallId,
     state: "output-available",
     input: {
@@ -311,7 +345,7 @@ async function persistAssistantMessageParts(params: {
     }
 
     persistedParts.push({
-      type: TABLE_CARD_TOOL_TYPE,
+      type: FETCH_TABLE_TOOL_TYPE,
       state: entry.template.state,
       artifactId,
       label: entry.template.label,
@@ -559,6 +593,85 @@ export async function POST(
             groundingEvents: getGroundingCapture(),
             priorTableArtifacts,
           });
+
+          // Render-marker guardrail: every `[[render tableId=X]]` must point
+          // at a table that (a) exists in the run, and (b) was fetched this
+          // turn via fetchTable. Invalid markers → one repair shot with the
+          // model; still-invalid after repair → strip them deterministically.
+          const fetchedTableIds = finalEvent.responseMessage.parts.flatMap((part) => {
+            if (part.type !== FETCH_TABLE_TOOL_TYPE) return [];
+            if (part.state !== "output-available") return [];
+            if (!isAnalysisTableCard(part.output)) return [];
+            return [part.output.tableId];
+          });
+          const catalogTableIds = Object.keys(groundingContext.tables);
+
+          const initialIssues = validateAnalysisRenderMarkers({
+            text: trustResult.assistantText,
+            fetchedTableIds,
+            catalogTableIds,
+          });
+
+          if (initialIssues.length > 0) {
+            const repairedText = await attemptAnalysisRenderMarkerRepair({
+              systemPrompt: buildAnalysisInstructions({
+                availability: groundingContext.availability,
+                missingArtifacts: groundingContext.missingArtifacts,
+                runContext: {
+                  projectName: groundingContext.projectContext.projectName,
+                  runStatus: groundingContext.projectContext.runStatus,
+                  studyMethodology: groundingContext.projectContext.studyMethodology,
+                  analysisMethod: groundingContext.projectContext.analysisMethod,
+                  tableCount: groundingContext.projectContext.tableCount,
+                  bannerGroupCount: groundingContext.projectContext.bannerGroupCount,
+                  totalCuts: groundingContext.projectContext.totalCuts,
+                  bannerGroupNames: groundingContext.projectContext.bannerGroupNames,
+                  bannerSource: groundingContext.projectContext.bannerSource,
+                  bannerMode: groundingContext.projectContext.bannerMode,
+                  researchObjectives: groundingContext.projectContext.researchObjectives,
+                  bannerHints: groundingContext.projectContext.bannerHints,
+                  intakeFiles: groundingContext.projectContext.intakeFiles,
+                  surveyAvailable: groundingContext.surveyQuestions.length > 0 || Boolean(groundingContext.surveyMarkdown),
+                  bannerPlanAvailable: groundingContext.bannerPlanGroups.length > 0,
+                },
+                questionCatalog: buildAnalysisQuestionCatalog(
+                  groundingContext.questions.map((question) => ({
+                    questionId: question.questionId,
+                    questionText: question.questionText,
+                    normalizedType: question.normalizedType,
+                    analyticalSubtype: question.analyticalSubtype ?? null,
+                  })),
+                ),
+              }),
+              conversationMessages,
+              failedAssistantText: trustResult.assistantText,
+              issues: initialIssues,
+              fetchedTableIds,
+              catalogSampleTableIds: catalogTableIds,
+              abortSignal: request.signal,
+            });
+
+            let finalText = trustResult.assistantText;
+            if (repairedText) {
+              finalText = sanitizeAnalysisAssistantMessageContent(repairedText);
+            }
+
+            const remainingIssues = validateAnalysisRenderMarkers({
+              text: finalText,
+              fetchedTableIds,
+              catalogTableIds,
+            });
+
+            if (remainingIssues.length > 0) {
+              console.warn("[Analysis Chat POST] Stripping invalid render markers after repair:", {
+                markers: remainingIssues.map((issue) => ({ tableId: issue.tableId, reason: issue.reason })),
+                repairAttempted: Boolean(repairedText),
+              });
+              finalText = stripInvalidAnalysisRenderMarkers(finalText, remainingIssues);
+            }
+
+            trustResult.assistantText = finalText;
+          }
 
           const finalResponseParts = buildFinalAssistantParts({
             originalParts: finalEvent.responseMessage.parts,

@@ -27,11 +27,9 @@ vi.mock("@/lib/analysis/grounding", () => ({
   searchRunCatalog: vi.fn(async () => ({ matches: [] })),
   getTableCard: vi.fn(async () => ({ status: "available" })),
   getQuestionContext: vi.fn(async () => ({ status: "available" })),
-  getSurveyQuestion: vi.fn(async () => ({ status: "available" })),
   listBannerCuts: vi.fn(async () => ({ status: "available" })),
-  getBannerPlanContext: vi.fn(async () => ({ status: "available" })),
-  getRunContext: vi.fn(async () => ({ status: "available" })),
   sanitizeGroundingToolOutput: vi.fn((value) => value),
+  attachRetrievedContextXml: vi.fn((_toolName, value) => value),
 }));
 
 vi.mock("@/prompts/analysis", () => ({
@@ -61,14 +59,8 @@ describe("streamAnalysisResponse", () => {
     vi.clearAllMocks();
   });
 
-  it("collects scratchpad entries, retry events, and usage in the trace capture", async () => {
-    mocks.streamText.mockImplementationOnce(({ onFinish, tools }) => {
-      if (tools?.scratchpad?.execute) {
-        void tools.scratchpad.execute(
-          { action: "add", content: "Check grouped cuts first." },
-          { toolCallId: "scratch-1", messages: [], abortSignal: undefined as never },
-        );
-      }
+  it("collects retry events and usage in the trace capture", async () => {
+    mocks.streamText.mockImplementationOnce(({ onFinish }) => {
       onFinish?.({
         totalUsage: {
           inputTokens: 120,
@@ -164,8 +156,6 @@ describe("streamAnalysisResponse", () => {
     const capture = result.getTraceCapture();
     const groundingCapture = result.getGroundingCapture();
 
-    expect(capture.scratchpadEntries).toHaveLength(1);
-    expect(capture.scratchpadEntries[0]?.content).toBe("Check grouped cuts first.");
     expect(capture.retryEvents).toEqual([
       {
         attempt: 1,

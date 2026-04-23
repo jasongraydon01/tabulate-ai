@@ -6,7 +6,6 @@ import {
   type UIMessage,
 } from "ai";
 
-import type { AnalysisScratchpadEntry } from "@/lib/analysis/scratchpad";
 import { isAnalysisTableCard } from "@/lib/analysis/types";
 import { isPathInsideOutputsBase } from "@/lib/paths/outputs";
 import { uploadRunOutputArtifact } from "@/lib/r2/R2FileManager";
@@ -43,7 +42,6 @@ export interface AnalysisTraceUsage {
 
 export interface AnalysisTraceCapture {
   usage: AnalysisTraceUsage;
-  scratchpadEntries: AnalysisScratchpadEntry[];
   retryEvents: AnalysisTraceRetryEvent[];
   retryAttempts: number;
   finalClassification: RetryClassification | null;
@@ -69,11 +67,6 @@ export interface AnalysisTurnTrace {
   createdAt: string;
   assistantText: string;
   reasoningParts: string[];
-  scratchpadEntries: Array<{
-    timestamp: string;
-    action: AnalysisScratchpadEntry["action"];
-    content: string;
-  }>;
   toolTimeline: AnalysisToolTraceEntry[];
   retrySummary: {
     totalAttempts: number;
@@ -93,11 +86,6 @@ export interface AnalysisTurnErrorTrace {
   sessionTitle: string;
   createdAt: string;
   latestUserPrompt: string;
-  scratchpadEntries: Array<{
-    timestamp: string;
-    action: AnalysisScratchpadEntry["action"];
-    content: string;
-  }>;
   retrySummary: {
     totalAttempts: number;
     finalClassification: RetryClassification | null;
@@ -242,7 +230,7 @@ export function serializeAnalysisToolTimeline(parts: UIMessage["parts"]): Analys
       toolCallId: part.toolCallId ?? null,
       state: part.state ?? null,
       inputPreview: sanitizeForTrace("input" in part ? part.input : null),
-      outputPreview: part.type === "tool-getTableCard"
+      outputPreview: part.type === "tool-fetchTable"
         ? getTableCardPreview("output" in part ? part.output : null)
         : sanitizeForTrace("output" in part ? part.output : null),
     }];
@@ -254,14 +242,6 @@ function collectReasoningParts(parts: UIMessage["parts"]): string[] {
     if (!isReasoningUIPart(part) || !part.text) return [];
     return [sanitizeLongText(part.text)];
   });
-}
-
-function serializeScratchpadEntries(entries: AnalysisScratchpadEntry[]) {
-  return entries.map((entry) => ({
-    timestamp: entry.timestamp,
-    action: entry.action,
-    content: sanitizeLongText(entry.content),
-  }));
 }
 
 function buildTracePersistenceContext(args: WriteTraceBaseArgs): TracePersistenceContext | null {
@@ -416,7 +396,6 @@ export async function writeAnalysisTurnTrace(
     createdAt: args.createdAt,
     assistantText: sanitizeLongText(args.assistantText),
     reasoningParts: collectReasoningParts(args.responseParts),
-    scratchpadEntries: serializeScratchpadEntries(args.traceCapture.scratchpadEntries),
     toolTimeline: serializeAnalysisToolTimeline(args.responseParts),
     retrySummary: {
       totalAttempts: args.traceCapture.retryAttempts,
@@ -472,7 +451,6 @@ export async function writeAnalysisTurnErrorTrace(
     sessionTitle: args.sessionTitle,
     createdAt: args.createdAt,
     latestUserPrompt: sanitizeLongText(args.latestUserPrompt),
-    scratchpadEntries: serializeScratchpadEntries(args.traceCapture.scratchpadEntries),
     retrySummary: {
       totalAttempts: args.traceCapture.retryAttempts,
       finalClassification: args.traceCapture.finalClassification,

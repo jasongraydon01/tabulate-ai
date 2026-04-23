@@ -18,8 +18,9 @@ async function main() {
   const model = getOpenAIProvider().responses(MODEL);
 
   const omitEffort = process.env.PROBE_OMIT_EFFORT === 'true';
-  const openaiOptions: Record<string, unknown> = { reasoningSummary: SUMMARY };
-  if (!omitEffort) openaiOptions.reasoningEffort = EFFORT;
+  const openaiOptions = omitEffort
+    ? { reasoningSummary: SUMMARY }
+    : { reasoningEffort: EFFORT, reasoningSummary: SUMMARY };
   console.log('openaiOptions passed:', openaiOptions);
 
   const result = streamText({

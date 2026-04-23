@@ -1,6 +1,6 @@
 # Phase 15 V1 Implementation Plan — Chat With Your Data
 
-**Status:** Slices 0–4 shipped. Slice 5 (artifact polish) and Slice 6 (context compaction) are the remaining v1 work. Slice 3.5 (harness robustness) and Slice 7 (compute-lane checkpoint) are deliberate backlog.
+**Status:** Slices 0–4 shipped. Track B sub-area 3 (tool surface consolidation, 9 → 4 tools, ID-addressable render markers) shipped 2026-04-23. Slice 5 (artifact polish) and Slice 6 (context compaction) are the remaining v1 work. Slice 3.5 (harness robustness) and Slice 7 (compute-lane checkpoint) are deliberate backlog. Track B sub-areas 1 (prompt workflow) and 2 (agent context policy) are now the unblocked next design beats.
 
 **Purpose:** Run-scoped conversational analysis on top of verified pipeline artifacts. Live at `/projects/[projectId]/runs/[runId]/analysis`.
 
@@ -30,15 +30,17 @@ Provenance is intentionally simple for v1: `from_tabs` vs `assistant_synthesis`.
 - Per-message feedback route under `/api/runs/[runId]/analysis/messages/[messageId]/feedback`
 
 **Backend** (`src/lib/analysis/`)
-- `AnalysisAgent.ts` — streaming orchestration with grounded tools + scratchpad tool
-- `grounding.ts` — four tools against run artifacts: `searchRunCatalog`, `getTableCard`, `getQuestionContext`, `listBannerCuts`. Reads `results/tables.json`, `enrichment/12-questionid-final.json`, `planning/20-banner-plan.json`, `planning/21-crosstab-plan.json`. Tool output is sanitized and wrapped in an XML-delimited retrieved-context envelope before re-entering model context.
-- `claimCheck.ts` — detects numeric/significance/table-ref claims in the assistant draft; runs a repair pass when grounding refs are missing; builds grounding refs; injects table cards into the final message.
+- `AnalysisAgent.ts` — streaming orchestration with the four grounded tools (`searchRunCatalog`, `fetchTable`, `getQuestionContext`, `listBannerCuts`). No scratchpad tool — native reasoning is the audit trail now that OpenAI reasoning summaries flow (default `ANALYSIS_REASONING_EFFORT=medium` on Responses API, verified via `scripts/probe-openai-reasoning-summary.ts`).
+- `grounding.ts` — reads `results/tables.json`, `enrichment/12-questionid-final.json`, `planning/20-banner-plan.json`, `planning/21-crosstab-plan.json`, `survey/survey-markdown.md`, `enrichment/08b-survey-parsed-cleanup.json`. `getQuestionContext` now includes survey wording / answer options / scale labels / questionnaire snippet when the question has a survey match — consolidates what the removed `getSurveyQuestion` tool used to return. `getRunContext` / `getBannerPlanContext` were removed; their content is already in the system prompt via `buildAnalysisInstructions`. Tool output is sanitized and wrapped in an XML-delimited retrieved-context envelope before re-entering model context.
+- `claimCheck.ts` — detects numeric/significance/table-ref claims in the assistant draft; builds grounding refs from fetched cards or prior artifacts; runs a repair pass when grounding is missing.
 - `followups.ts` — deterministic follow-up suggestions based on rendered table cards and available banners. Only emitted on grounded responses.
-- `renderAnchors.ts` — handles `[[render-table]]` anchors emitted by the assistant so table cards land at the right point in the streamed prose.
-- `persistence.ts` / `messages.ts` — UIMessage ↔ Convex round-trip; render/persistence allowlist for tool parts; artifact creation for table cards.
+- `renderAnchors.ts` — parses `[[render tableId=<id>]]` markers (ID-addressable), resolves against this-turn's `tool-fetchTable` parts, emits `text` / `table` / `placeholder` / `missing` blocks. Fallback append for fetched tables the model forgot to cite.
+- `markerRepair.ts` — one-shot `generateText` repair when the assistant text contains invalid render markers (either unfetched-this-turn or not-in-run). Bounded to a single attempt; if the repair still has invalid markers, they're stripped deterministically and logged.
+- `persistence.ts` / `messages.ts` — UIMessage ↔ Convex round-trip; render/persistence allowlist for tool parts; artifact creation for table cards. Constant `FETCH_TABLE_TOOL_TYPE = "tool-fetchTable"`.
 - `title.ts` — session title generated from first assistant response; `titleSource` tracks `default | generated | manual`.
-- `trace.ts` / `scratchpad.ts` — per-turn traces written to R2 under `project/run/analysis/`.
-- `model.ts` — analysis model selection (Anthropic) isolated from the pipeline model path. Do not merge back without explicit reason.
+- `trace.ts` — per-turn traces written to R2 under `project/run/analysis/`. No `scratchpadEntries` field any more.
+- `model.ts` — analysis model selection isolated from the pipeline model path. Do not merge back without explicit reason. Defaults `reasoningEffort` to `"medium"` when `ANALYSIS_REASONING_EFFORT` is unset so reasoning summaries actually flow.
+- `toolLabels.ts` — Reasoning-dropdown labels for the four tool types; doubles as the persistence allowlist.
 
 **Convex** (`convex/schema.ts` lines 357–431)
 - `analysisSessions` — adds `title`, `titleSource`, `status`, `lastMessageAt`.
@@ -56,7 +58,7 @@ Provenance is intentionally simple for v1: `from_tabs` vs `assistant_synthesis`.
 
 **Discoverability** — `src/app/(product)/projects/[projectId]/page.tsx` surfaces a "Chat with your data" CTA for runs with analysis-eligible artifacts.
 
-**Tests** — backend suites under `src/lib/analysis/__tests__/` cover AnalysisAgent, claimCheck, followups, grounding, messages, model, persistence, renderAnchors, scratchpad, trace. UI suites under `src/components/analysis/__tests__/` cover message rendering, session list, thread scroll, and grounded table card.
+**Tests** — backend suites under `src/lib/analysis/__tests__/` cover AnalysisAgent, claimCheck, followups, grounding, messages, model, persistence, renderAnchors (including ID-addressable marker validation + strip), trace. UI suites under `src/components/analysis/__tests__/` cover message rendering, reasoning markdown strip, session list, thread scroll, and grounded table card. Full repo suite: 206 files / 2206 tests green as of the tool-consolidation ship.
 
 ### Not yet shipped
 
@@ -137,18 +139,20 @@ The remaining v1 work splits into two tracks that can progress independently. Tr
 Small, tight UX fixes against real usage. Low blast radius, no model behavior changes.
 
 Recently shipped:
-- Grounded table card decoupled from render filter — `getTableCard` now carries every USED cut; `focusedCutIds` is a presentation hint; expand button is no longer truncation-gated; Details disclosure and Expand dialog both surface the full cut set, with focused groups ordered right after Total.
+- Grounded table card decoupled from render filter — `fetchTable` (formerly `getTableCard`) carries every USED cut; `focusedCutIds` is a presentation hint; expand button is no longer truncation-gated; Details disclosure and Expand dialog both surface the full cut set, with focused groups ordered right after Total.
 - Follow-up chips hidden unless the user is idle at the tail assistant message (not just disabled).
 - `GENERATED` title pill removed from session cards and thread header.
 - In-session empty state rewritten to centered-serif treatment matching the no-sessions empty state.
 - Reasoning summaries now stream on the OpenAI/Azure analysis path (routed through the Responses API instead of Chat Completions so `reasoningSummary` is actually honored).
+- Reasoning-effort default added — `ANALYSIS_REASONING_EFFORT` falls back to `"medium"` in code, so reasoning summaries flow even when the env var is unset. Without this, gpt-5.4-class models emitted zero reasoning tokens despite `reasoningSummary: "auto"`.
 - Copy action on user and assistant messages — `navigator.clipboard.writeText`, sonner toast, icon flips to a check for 1.5s after success. Hidden on assistant messages while streaming so partial prose doesn't get copied.
+- Edit user message — click-to-edit on any user message; saving truncates the thread after that point and resends. Convex `truncateAndResend` mutation deletes subsequent `analysisMessages` + their `analysisArtifacts` + feedback atomically; in-flight streams are aborted first.
+- Markdown strip on reasoning summaries — OpenAI Responses returns summaries with literal `**bold**` / `- bullet` markers; the UI renders reasoning as plain text so these showed literally. Deterministic strip applied in `getAnalysisTraceEntries` and `truncateReasoning` — prompt-side left alone.
 
 Outstanding under this track, in rough priority order:
 
-1. **Edit user message** — click-to-edit on any user message; saving truncates the thread after that point and resends the edited text. Convex work: new `truncateAndResend` mutation that deletes subsequent `analysisMessages` + their `analysisArtifacts` + their `analysisMessageFeedback` records atomically. In-flight streaming turn must be stopped before truncation. Feedback and artifacts tied to deleted assistant turns should be cleaned up, not orphaned.
-2. **Slice 5 — Durable artifact polish.** Copy / export hooks on table cards, artifact-focused references, richer artifact metadata when it unlocks concrete UI. Exit: structured outputs feel reusable, not ephemeral. Conceptually a sibling of the message-level copy action that shipped — both make the conversation's outputs keepable.
-3. **Ongoing fit-and-finish** as real usage surfaces friction. Don't pre-design — ship as it surfaces.
+1. **Slice 5 — Durable artifact polish.** Copy / export hooks on table cards, artifact-focused references, richer artifact metadata when it unlocks concrete UI. Exit: structured outputs feel reusable, not ephemeral. Conceptually a sibling of the message-level copy action that shipped — both make the conversation's outputs keepable.
+2. **Ongoing fit-and-finish** as real usage surfaces friction. Don't pre-design — ship as it surfaces.
 
 ### Deferred from Track A: abandoned-session cleanup
 
@@ -177,11 +181,11 @@ Being able to share a chat with a teammate is high-value and has come up as "fee
 
 Worth treating as a named slice with a short design note before code. Not a prerequisite for v1 exit, but a concrete candidate once the current Track A queue is cleared.
 
-### Track B — Prompt intentionality + analytical depth (deferred, design first)
+### Track B — Prompt intentionality + analytical depth
 
-The piece that pushes the surface from "grounded Q&A" toward "analysis partner." Four sub-areas that reinforce each other, plus one cross-cutting observation worth flagging so it doesn't get lost:
+Sub-area 3 (tool surface consolidation) shipped 2026-04-23 — that was the unblock for 1 and 2. The piece that pushes the surface from "grounded Q&A" toward "analysis partner" is now down to two active design beats (1 and 2), one deferred capability expansion (4), and one cross-cutting primitive (inline markers) that's already landed as the render infrastructure.
 
-**1. Prompt workflow and intentionality.** The analysis prompt today is a tool-usage protocol plus a trust contract. It does not ask the agent to think about what the user is actually after before it starts calling tools. Borrow from the V3 pipeline agents: give it an explicit internal workflow — classify the request (exploration / synthesis / methodology / narrow lookup / follow-up on prior evidence), write down a one-line goal, decide what scope is sufficient, then act.
+**1. Prompt workflow and intentionality.** *Next actionable design beat.* The analysis prompt today is a tool-usage protocol plus a trust contract. It does not ask the agent to think about what the user is actually after before it starts calling tools. Borrow from the V3 pipeline agents: give it an explicit internal workflow — classify the request (exploration / synthesis / methodology / narrow lookup / follow-up on prior evidence), write down a one-line goal, decide what scope is sufficient, then act.
 
 Concrete friction this would address, observed in real sessions:
 - Agent refusing to summarize grounded evidence that is already in-thread ("I need a supporting table card") — see sub-area 2 for the root cause; the prompt-side fix is teaching the agent to recognize synthesis-of-prior-evidence as a legitimate request shape.
@@ -192,10 +196,10 @@ Concrete friction this would address, observed in real sessions:
 
 The prompt does not have to stay at its current length. It might grow; it might also shrink once intentionality is expressed as a workflow rather than as a wall of constraints.
 
-**2. Agent context optimality — what the agent sees, and when.** The current turn transport is lossy in both directions and we have not been deliberate about it. Design a policy before we pile more capabilities on top of it.
+**2. Agent context optimality — what the agent sees, and when.** *Next actionable design beat (paired with sub-area 1).* The current turn transport is lossy in both directions and we have not been deliberate about it. Design a policy before we pile more capabilities on top of it.
 
 What the agent sees *today*:
-- On the turn it calls `viewTable` / `getTableCard`: the full `AnalysisTableCard` payload (every USED cut, every row × cut cell, full metadata). See `grounding.ts`.
+- On the turn it calls `fetchTable`: the full `AnalysisTableCard` payload (every USED cut, every row × cut cell, full metadata). See `grounding.ts`.
 - On every subsequent turn: **tool outputs are stripped**. `getSanitizedConversationMessagesForModel` in `src/lib/analysis/messages.ts` keeps only text parts before `convertToModelMessages`. Prior table cards, prior catalog searches, prior question-context lookups — all dropped from model context. The UI thread still has them (rehydrated from `analysisArtifacts`) and the claim-check post-pass still uses them via `priorTableArtifacts`, but the *model itself* is blind to prior tool results.
 
 Why stripping exists: (a) cost — a single card can be 5–30KB and carrying every prior card across turns grows context linearly with session length; (b) determinism — forces re-fetch through grounded tools, preserving lookup discipline; (c) prompt-cache safety — variable-size tool outputs in the transcript would invalidate the Anthropic prompt cache every turn.
@@ -204,19 +208,29 @@ Why it hurts: the agent cannot synthesize across its own prior evidence without 
 
 Design options in scope when this slice opens (not decided):
 - Compact text summary of each prior table card (title, cuts present, rows present, a handful of key values) injected into the conversation — the agent knows what's available without carrying full payloads. Cheap, cache-friendly.
-- A system-level card inventory injected per turn listing `artifactId`s + titles of cards rendered earlier so the agent can re-`viewTable` them deliberately instead of re-searching.
+- A system-level card inventory injected per turn listing `tableId`s + titles of cards rendered earlier so the agent can re-`fetchTable` them deliberately instead of re-searching.
 - Full pass-through within a rolling window (last 3–5 turns) + summarization for older turns. Higher cost, simpler agent behavior.
 - Tool-call history summarization — a short trace of "already tried X with args Y, got Z" so the agent doesn't re-search.
 - Any combination of the above, gated on session length.
 
 This sub-area shares design DNA with Slice 6 (context compaction policy). They should be worked as one policy document, not two.
 
-**3. Tool surface review — what the agent should have, and what's redundant.** The tool set has grown organically. Before we add more tools in sub-area 4, audit what's there. Two candidate redundancies to open the conversation with:
+**3. Tool surface review — SHIPPED 2026-04-23.** Informed by 27 real turn traces against Cambridge Savings Bank. Findings that drove the consolidation:
 
-- **Scratchpad tool vs. reasoning summaries.** The scratchpad tool (`createAnalysisScratchpadTool` in `src/lib/analysis/scratchpad.ts`) exists so the agent can write private notes that get captured in the trace. Now that the analysis model routes through the OpenAI Responses API and surfaces streamed reasoning summaries (and Anthropic already surfaces thinking), the scratchpad may be redundant — reasoning summaries cover the same observability role without the agent having to choose to call a tool. Worth deciding whether to keep it, remove it, or reserve it for a narrower purpose.
-- **`viewTable` vs. `getTableCard`.** Same payload, different side effect (render or not). The two-tool shape is a prompt-level affordance — inspect before render. Worth asking whether one tool with a render flag is clearer, or whether the split is what's keeping the agent from speculative rendering. Neutral on the answer; flagging as review-worthy.
+- `getBannerPlanContext` and `getRunContext`: 0 calls across 27 turns — their content was already in the system prompt.
+- `getSurveyQuestion`: 1 call — the agent couldn't disambiguate it from `getQuestionContext`.
+- `viewTable` → `getTableCard`: always in that order, 0/27 speculative renders. The split was ceremonial.
+- `scratchpad`: heavy on OpenAI (2–3/turn) only because reasoning summaries were silenced by the missing `reasoningEffort` default. With that fixed and reasoning flowing natively, the scratchpad tool was pure overhead.
 
-The broader question: which tools give the model *too much* context (bloated tool definitions inflate every turn's system prompt, hurting prompt-cache stability and attention) and which are load-bearing? A pass against real turn traces — what the agent actually uses, what it ignores, what it misuses — would tell us. This is a near-zero-code review exercise that should inform the prompt-workflow design note before anything ships.
+**What shipped:**
+- 9 tools → 4: `searchRunCatalog`, `fetchTable`, `getQuestionContext` (with survey fields folded in), `listBannerCuts`.
+- ID-addressable render markers — `[[render tableId=<id>]]` in prose, resolved against this-turn's fetched tables by `renderAnchors.ts`. Replaces the positional `[[render-table]]` anchor.
+- Marker-validation guardrail: post-pass validates every marker against fetched + catalog sets. Invalid markers (unfetched or not-in-run) trigger a single-shot `generateText` repair with a structured error description. Still-invalid markers after repair get stripped deterministically and logged.
+- Render/persistence allowlist collapsed to the four surviving tool types; `FETCH_TABLE_TOOL_TYPE` replaces the old `TABLE_CARD_TOOL_TYPE` constant.
+- Alternative prompt rewritten around the `search → fetch → mark` workflow. Production prompt deliberately untouched (stale until alternative graduates).
+- `buildAnalysisInstructions` absorbed the fields `getRunContext` used to return (`studyMethodology`, `analysisMethod`, `bannerMode`, `intakeFiles`).
+
+**What this didn't touch (intentionally):** sub-area 2 (context policy) — the `getSanitizedConversationMessagesForModel` still strips all tool parts across turns. That's the next design beat.
 
 **4. Analytical capability expansion.** More tools, so the agent can actually *help* rather than only read. None of these ship in v1, but they belong in the design space so we don't paint ourselves into a corner with the current grounding layer.
 
@@ -227,18 +241,16 @@ The broader question: which tools give the model *too much* context (bloated too
 
 These cross into the compute-lane design checkpoint (Slice 7) — they can't ship without it — so the design conversation is one conversation, not two.
 
-### Cross-cutting observation: inline reference markers as the rendering primitive
+### Cross-cutting: inline reference markers as the rendering primitive — **partially landed**
 
-We already use this pattern for table cards without having named it. `[[render-table]]` anchors are lightweight placement markers the model emits inline; `renderAnchors.ts` deterministically swaps them for rendered table cards against data fetched earlier in the turn. The model doesn't produce the rich UI, it points at it.
+The pattern is now load-bearing. `[[render tableId=<id>]]` markers are ID-addressable placement tokens; `renderAnchors.ts` deterministically swaps them for rendered table cards against this-turn's fetched data, with a `missing` block for invalid IDs. The model doesn't produce the rich UI, it points at it.
 
-Generalizing: **tools fetch and validate grounded data; inline markers in prose declare what to do with it.** This is structurally the same pattern every hosted chat product uses for citations (ChatGPT's `【n:m†source】`, Anthropic's Citations API, Perplexity's `[n]`) — the model emits cheap tokens inline and a deterministic renderer resolves them against data already in memory. Streaming stays fast because markers are a handful of tokens, not generated UI; validation is a lookup against retrieved structured data.
+The principle — **tools fetch and validate grounded data; inline markers in prose declare what to do with it** — is structurally the same pattern every hosted chat product uses for citations (ChatGPT's `【n:m†source】`, Anthropic's Citations API, Perplexity's `[n]`). The model emits cheap tokens inline and a deterministic renderer resolves them against data already in memory. Streaming stays fast because markers are a handful of tokens, not generated UI; validation is a lookup against retrieved structured data.
 
-Why this matters for Track B:
-- **Sub-area 3 (tool surface).** Collapsing `viewTable` / `getTableCard` falls out naturally if the split becomes "tools fetch, markers render." `getTableCard` exists today because rendering and fetching are fused in one tool; separating them removes the redundancy rather than papering over it.
-- **Sub-area 2 (context policy).** What survives across turns becomes "fetched grounded data, indexed by stable IDs (`tableId`/`rowKey`/`cutKey`)", not rendered UI. Prior markers can be replayed against retained data without re-fetching.
-- **Future per-claim citations.** A natural extension rather than a new subsystem. Cells in a grounded table card already have the ideal citation target (`tableId × rowKey × cutKey`) — higher-resolution than the document-chunk IDs hosted products cite against, because the artifact is structured. Would be a new marker type (e.g. `<cite t=... r=... c=.../>`) rendered through the same primitive, not a separate pipeline. Low added latency: marker emission is inline with streaming, validation is O(1) ID resolution.
-
-Not shipping in v1. Flagging as the direction-of-travel so the Track B design notes (context policy, tool-surface review) can be written against a coherent rendering model rather than treating each inline surface element as its own ad-hoc pipeline.
+How this unlocked / informs the other sub-areas:
+- **Sub-area 3 (tool surface) — SHIPPED.** Collapsing `viewTable` + `getTableCard` into `fetchTable` fell out naturally once rendering was separated from fetching.
+- **Sub-area 2 (context policy) — next.** What survives across turns becomes "fetched grounded data, indexed by stable IDs (`tableId`/`rowKey`/`cutKey`)", not rendered UI. Prior markers can be replayed against retained data without re-fetching.
+- **Future per-claim citations.** A natural extension rather than a new subsystem. Cells in a grounded table card already have the ideal citation target (`tableId × rowKey × cutKey`) — higher-resolution than the document-chunk IDs hosted products cite against, because the artifact is structured. New marker type (e.g. `[[cite tableId=... rowKey=... cutKey=...]]`) rendered through the same primitive, not a separate pipeline. Low added latency: marker emission is inline with streaming, validation is O(1) ID resolution.
 
 ### Cross-cutting observation: reasoning summaries in the pipeline
 
@@ -248,6 +260,9 @@ The V3 pipeline agents (`VerificationAgent`, `CrosstabAgentV2`, `LoopSemanticsPo
 
 | Slice | Track | Status |
 |-------|-------|--------|
+| Tool surface consolidation | B (sub-area 3) | **Shipped 2026-04-23** — 9 tools → 4, ID-addressable render markers, marker-validation repair guardrail |
+| Prompt workflow + intentionality | B (sub-area 1) | Next design beat — unblocked by sub-area 3 |
+| Agent context policy | B (sub-area 2) | Next design beat — merge with Slice 6 compaction policy, one document covers both |
 | 5 — Durable artifact polish | A | Outstanding, opportunistic |
 | 6 — Context compaction policy | B (sub-area 2) | Merge with the agent-context-optimality design note — one policy covers both |
 | 3.5 — Harness robustness (dedup, stuck-loop, cache audit) | B | Backlog; becomes load-bearing as the prompt workflow grows |
@@ -287,13 +302,12 @@ Decision memo after real usage. Questions to answer:
 
 Continue **Track A** opportunistically — finish Slice 5 when a concrete "I want to copy/export this card" moment surfaces, and keep picking off UX friction as real sessions expose it.
 
-Before touching **Track B**, write three design notes and resolve them before any prompt, tool, or transport change lands:
+**Track B** is now down to two active design beats plus the deferred capability expansion. With the tool surface consolidated (sub-area 3 shipped), the prompt workflow and context-policy notes can be written against a stable tool shape and a coherent rendering primitive:
 
-1. **Prompt workflow design note** — intentionality stages, request taxonomy, acknowledgment-before-work pattern, how to surface the scope check without cluttering responses.
-2. **Agent context policy note** — what survives from prior turns (summaries? tool-call trace? full payloads within a window?), what gets reconstructed on demand, how it composes with Slice 6 compaction.
-3. **Tool surface review note** — audit existing tools against real turn traces (scratchpad vs reasoning summaries, `viewTable` vs `getTableCard`, anything else that looks redundant or over-contextual); decide what stays, what merges, what gets cut, before capability expansion adds more.
+1. **Prompt workflow design note (sub-area 1).** Intentionality stages, request taxonomy, acknowledgment-before-work pattern, how to surface the scope check without cluttering responses. The alternative prompt now codifies `search → fetch → mark` as the workflow — the next iteration layers request classification and scope-check on top of that.
+2. **Agent context policy note (sub-area 2, merged with Slice 6).** What survives from prior turns — summaries? tool-call trace? full payloads within a rolling window? compact card inventory? The ID-addressable marker primitive means "retain fetched data indexed by stable IDs and replay markers without re-fetching" is now a concrete option on the table.
 
-Pressure-test all three against real session transcripts — especially cases where the assistant refused to synthesize already-grounded evidence, over-matched `cutFilter`, re-ran a tool it had already tried, or skipped a useful acknowledgment. The production prompt stays frozen — workflow experiments land on alternative first. Transport changes (what survives sanitization) and tool-surface changes are independent of prompt changes and can each be trialed behind a feature flag.
+Pressure-test both against real session transcripts — especially cases where the assistant refused to synthesize already-grounded evidence, over-matched `cutFilter`, re-ran a tool it had already tried, or skipped a useful acknowledgment. The production prompt stays frozen; workflow experiments continue to land on `alternative`. Transport changes (what survives sanitization) and prompt changes are independent and can each be trialed behind a feature flag.
 
 ## Sources Consulted
 

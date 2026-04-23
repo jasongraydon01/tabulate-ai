@@ -12,18 +12,14 @@ import {
 } from "@/lib/analysis/model";
 import {
   attachRetrievedContextXml,
-  getBannerPlanContext,
   getQuestionContext,
-  getRunContext,
   sanitizeGroundingToolOutput,
-  getSurveyQuestion,
   getTableCard,
   listBannerCuts,
   searchRunCatalog,
   type AnalysisGroundingContext,
 } from "@/lib/analysis/grounding";
 import type { AnalysisTurnGroundingEvent } from "@/lib/analysis/claimCheck";
-import { createAnalysisScratchpadTool } from "@/lib/analysis/scratchpad";
 import type { AnalysisTraceRetryEvent } from "@/lib/analysis/trace";
 import type { AnalysisSourceRef, AnalysisTableCard } from "@/lib/analysis/types";
 import { buildAnalysisInstructions, buildAnalysisQuestionCatalog } from "@/prompts/analysis";
@@ -41,7 +37,6 @@ export async function streamAnalysisResponse({
 }) {
   const startTime = Date.now();
   const sanitizedMessages = getSanitizedConversationMessagesForModel(messages);
-  const { tool: scratchpad, getEntries } = createAnalysisScratchpadTool();
   const retryEvents: AnalysisTraceRetryEvent[] = [];
   const groundingEvents: AnalysisTurnGroundingEvent[] = [];
   let usage = {
@@ -85,9 +80,7 @@ export async function streamAnalysisResponse({
     options?: { toolCallId?: string },
   ): Promise<T> {
     const sanitized = sanitizeGroundingToolOutput(await resolve());
-    const result = toolName === "getTableCard"
-      ? sanitized
-      : attachRetrievedContextXml(toolName, sanitized);
+    const result = attachRetrievedContextXml(toolName, sanitized);
     captureGroundingEvent({
       toolName,
       toolCallId: options?.toolCallId,
@@ -115,13 +108,17 @@ export async function streamAnalysisResponse({
           runContext: {
             projectName: groundingContext.projectContext.projectName,
             runStatus: groundingContext.projectContext.runStatus,
+            studyMethodology: groundingContext.projectContext.studyMethodology,
+            analysisMethod: groundingContext.projectContext.analysisMethod,
             tableCount: groundingContext.projectContext.tableCount,
             bannerGroupCount: groundingContext.projectContext.bannerGroupCount,
             totalCuts: groundingContext.projectContext.totalCuts,
             bannerGroupNames: groundingContext.projectContext.bannerGroupNames,
             bannerSource: groundingContext.projectContext.bannerSource,
+            bannerMode: groundingContext.projectContext.bannerMode,
             researchObjectives: groundingContext.projectContext.researchObjectives,
             bannerHints: groundingContext.projectContext.bannerHints,
+            intakeFiles: groundingContext.projectContext.intakeFiles,
             surveyAvailable: groundingContext.surveyQuestions.length > 0 || Boolean(groundingContext.surveyMarkdown),
             bannerPlanAvailable: groundingContext.bannerPlanGroups.length > 0,
           },
@@ -132,38 +129,19 @@ export async function streamAnalysisResponse({
         abortSignal,
         ...(getAnalysisProviderOptions() ? { providerOptions: getAnalysisProviderOptions() } : {}),
         tools: {
-          scratchpad,
           searchRunCatalog: tool({
-            description: "Search the current run's catalog of questions, tables, and banner cuts from grounded artifacts.",
+            description: "Search the current run's catalog of questions, tables, and banner cuts from grounded artifacts. Use this first when the user refers to a topic or concept rather than a specific ID.",
             inputSchema: z.object({
               query: z.string().min(1).max(200),
             }),
-            execute: async ({ query }) => executeGroundedTool(
+            execute: async ({ query }, options) => executeGroundedTool(
               "searchRunCatalog",
               () => searchRunCatalog(groundingContext, query),
-            ),
-          }),
-          viewTable: tool({
-            description: "Inspect a table's data without showing it to the user. Use this to check whether a table is the right one before rendering it. Returns the same data as getTableCard but does not render inline.",
-            inputSchema: z.object({
-              tableId: z.string().min(1).max(200),
-              rowFilter: z.string().min(1).max(200).nullable().optional(),
-              cutFilter: z.string().min(1).max(200).nullable().optional(),
-              valueMode: z.enum(["pct", "count", "n", "mean"]).optional(),
-            }),
-            execute: async ({ tableId, rowFilter, cutFilter, valueMode }, options) => executeGroundedTool(
-              "viewTable",
-              () => getTableCard(groundingContext, {
-                tableId,
-                rowFilter,
-                cutFilter,
-                valueMode,
-              }),
               { toolCallId: options.toolCallId },
             ),
           }),
-          getTableCard: tool({
-            description: "Render a table card inline for the user to see. Only call this when you have confirmed the table is the one the user needs.",
+          fetchTable: tool({
+            description: "Fetch a grounded table's data. This does NOT render a card on its own — to show the table inline in your reply, emit a render marker `[[render tableId=<id>]]` in your prose. Fetched tables that are not referenced by a marker stay invisible (used for context only).",
             inputSchema: z.object({
               tableId: z.string().min(1).max(200),
               rowFilter: z.string().min(1).max(200).nullable().optional(),
@@ -171,7 +149,7 @@ export async function streamAnalysisResponse({
               valueMode: z.enum(["pct", "count", "n", "mean"]).optional(),
             }),
             execute: async ({ tableId, rowFilter, cutFilter, valueMode }, options) => executeGroundedTool(
-              "getTableCard",
+              "fetchTable",
               () => getTableCard(groundingContext, {
                 tableId,
                 rowFilter,
@@ -182,7 +160,7 @@ export async function streamAnalysisResponse({
             ),
           }),
           getQuestionContext: tool({
-            description: "Return grounded metadata for a specific question from questionid-final artifacts.",
+            description: "Return grounded metadata for a specific question: type, items, base summary, related tables, plus survey wording / answer options / scale labels / questionnaire snippet when a matching survey entry exists.",
             inputSchema: z.object({
               questionId: z.string().min(1).max(200),
             }),
@@ -192,45 +170,14 @@ export async function streamAnalysisResponse({
               { toolCallId: options.toolCallId },
             ),
           }),
-          getSurveyQuestion: tool({
-            description: "Return grounded survey wording, answer options, question order, and nearby questionnaire context for a question or topic.",
-            inputSchema: z.object({
-              query: z.string().min(1).max(200),
-            }),
-            execute: async ({ query }, options) => executeGroundedTool(
-              "getSurveyQuestion",
-              () => getSurveyQuestion(groundingContext, query),
-              { toolCallId: options.toolCallId },
-            ),
-          }),
           listBannerCuts: tool({
-            description: "List available banner groups and cuts for this run.",
+            description: "List available banner groups and the concrete cuts (with stat letters) available for each group. Use when the user asks what demographics or subgroups are available.",
             inputSchema: z.object({
               filter: z.string().min(1).max(200).nullable().optional(),
             }),
             execute: async ({ filter }, options) => executeGroundedTool(
               "listBannerCuts",
               () => listBannerCuts(groundingContext, filter),
-              { toolCallId: options.toolCallId },
-            ),
-          }),
-          getBannerPlanContext: tool({
-            description: "Return the grounded stage-20 banner plan, including original group structure and source context.",
-            inputSchema: z.object({
-              filter: z.string().min(1).max(200).nullable().optional(),
-            }),
-            execute: async ({ filter }, options) => executeGroundedTool(
-              "getBannerPlanContext",
-              () => getBannerPlanContext(groundingContext, filter),
-              { toolCallId: options.toolCallId },
-            ),
-          }),
-          getRunContext: tool({
-            description: "Return project-level and run-level analysis context, including project name, research objectives, banner summary, and high-level run stats.",
-            inputSchema: z.object({}),
-            execute: async (_input, options) => executeGroundedTool(
-              "getRunContext",
-              () => getRunContext(groundingContext),
               { toolCallId: options.toolCallId },
             ),
           }),
@@ -288,7 +235,6 @@ export async function streamAnalysisResponse({
           output: usage.outputTokens,
         }).totalCost,
       },
-      scratchpadEntries: getEntries().map((entry) => ({ ...entry })),
       retryEvents: retryEvents.map((event) => ({ ...event })),
       retryAttempts: retryResult.attempts,
       finalClassification: retryResult.finalClassification ?? retryEvents.at(-1)?.lastClassification ?? null,

@@ -66,6 +66,12 @@ vi.mock("@/lib/convex", () => ({
   mutateInternal: mocks.mutateInternal,
 }));
 
+vi.mock("@/lib/analysis/markerRepair", () => ({
+  // Repair calls hit the live OpenAI API via generateText; short-circuit to
+  // null so the strip-invalid-markers fallback path is deterministic in tests.
+  attemptAnalysisRenderMarkerRepair: vi.fn(async () => null),
+}));
+
 vi.mock("@/lib/analysis/AnalysisAgent", () => ({
   streamAnalysisResponse: mocks.streamAnalysisResponse,
 }));
@@ -157,11 +163,11 @@ function makeStreamResult(options: {
             continue;
           }
 
-          if (part.type === "tool-getTableCard") {
+          if (part.type === "tool-fetchTable") {
             writer.write({
               type: "tool-input-available",
               toolCallId: String(part.toolCallId ?? "tool-1"),
-              toolName: "getTableCard",
+              toolName: "fetchTable",
               input: part.input ?? {},
             });
             writer.write({
@@ -320,7 +326,7 @@ describe("analysis chat route", () => {
           parts: [
             { type: "text", text: "Here is the grounded table." },
             {
-              type: "tool-getTableCard",
+              type: "tool-fetchTable",
               toolCallId: "tool-1",
               state: "output-available",
               input: {
@@ -400,7 +406,7 @@ describe("analysis chat route", () => {
       content: "Here is the grounded table.",
       parts: [
         {
-          type: "tool-getTableCard",
+          type: "tool-fetchTable",
           state: "output-available",
           artifactId: "artifact-1",
           label: "Q1 overall",
@@ -438,7 +444,7 @@ describe("analysis chat route", () => {
         responseMessage: {
           parts: [
             {
-              type: "tool-getTableCard",
+              type: "tool-fetchTable",
               toolCallId: "tool-1",
               state: "output-available",
               input: {
@@ -766,7 +772,7 @@ describe("analysis chat route", () => {
         responseMessage: {
           parts: [{
             type: "text",
-            text: "Intro.\n\n[[render-table]]\n\nClose.",
+            text: "Intro.\n\n[[render tableId=q1]]\n\nClose.",
           }],
         },
       }),
@@ -788,10 +794,14 @@ describe("analysis chat route", () => {
 
     expect(response.status).toBe(200);
     await response.text();
+    // The marker referenced q1 but q1 is not in the mock catalog and was not
+    // fetched this turn — validation strips it from the in-memory text before
+    // persistence, and the separate stripAnalysisRenderAnchors pass strips
+    // from the persisted `content`. Both surfaces see the cleaned text.
     expect(mocks.mutateInternal.mock.calls[1][1]).toEqual(expect.objectContaining({
       content: "Intro.\n\nClose.",
       parts: [
-        { type: "text", text: "Intro.\n\n[[render-table]]\n\nClose." },
+        { type: "text", text: "Intro.\n\nClose." },
       ],
     }));
     expect(mocks.generateAnalysisSessionTitle).toHaveBeenCalledWith({

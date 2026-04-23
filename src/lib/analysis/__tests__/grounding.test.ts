@@ -2,10 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   attachRetrievedContextXml,
-  getBannerPlanContext,
   getQuestionContext,
-  getRunContext,
-  getSurveyQuestion,
   getTableCard,
   listBannerCuts,
   sanitizeGroundingToolOutput,
@@ -282,7 +279,7 @@ describe("analysis grounding helpers", () => {
   });
 
   it("attaches an XML-delimited retrieved-context envelope for model-side handling", () => {
-    const payload = attachRetrievedContextXml("getSurveyQuestion", {
+    const payload = attachRetrievedContextXml("getQuestionContext", {
       questionText: "How satisfied are you?",
       rawText: "Actual question wording stays.",
     }) as {
@@ -294,7 +291,7 @@ describe("analysis grounding helpers", () => {
     expect(payload).toEqual(expect.objectContaining({
       questionText: "How satisfied are you?",
       rawText: "Actual question wording stays.",
-      retrievedContextXml: expect.stringContaining("<retrieved_context tool=\"getSurveyQuestion\">"),
+      retrievedContextXml: expect.stringContaining("<retrieved_context tool=\"getQuestionContext\">"),
     }));
     expect(payload.retrievedContextXml).toContain("Actual question wording stays.");
   });
@@ -452,6 +449,19 @@ describe("analysis grounding helpers", () => {
     expect(result.items[0]?.valueLabels).toHaveLength(2);
   });
 
+  it("enriches getQuestionContext with survey wording when the question exists in the survey document", () => {
+    const result = getQuestionContext(context, "Q1");
+
+    expect(result.status).toBe("available");
+    expect(result.sectionHeader).toBe("SECTION A");
+    expect(result.sequenceNumber).toBe(1);
+    expect(result.answerOptions).toHaveLength(2);
+    expect(result.documentSnippet).toContain("Q1. How satisfied are you overall?");
+    // sourceRefs include both the question itself and the survey document.
+    expect(result.sourceRefs.some((ref) => ref.refType === "survey_question")).toBe(true);
+    expect(result.sourceRefs.some((ref) => ref.refType === "survey_document")).toBe(true);
+  });
+
   it("lists banner cuts with expression details", () => {
     const result = listBannerCuts(context, "female");
 
@@ -464,41 +474,5 @@ describe("analysis grounding helpers", () => {
         expression: "gender == 1",
       },
     ]);
-  });
-
-  it("returns run-level context for prompt and agent grounding", () => {
-    const result = getRunContext(context);
-
-    expect(result.projectName).toBe("TabulateAI Brand Tracker");
-    expect(result.tableCount).toBe(4);
-    expect(result.bannerGroupNames).toEqual(["Gender", "Region"]);
-    expect(result.researchObjectives).toContain("satisfaction differences");
-  });
-
-  it("returns stage-20 banner plan context with original cut definitions", () => {
-    const result = getBannerPlanContext(context, "gender");
-
-    expect(result.status).toBe("available");
-    expect(result.routeUsed).toBe("banner_generate");
-    expect(result.groups).toEqual([
-      {
-        groupName: "Gender",
-        columns: [
-          { name: "Female", original: "gender == 1" },
-          { name: "Male", original: "gender == 2" },
-        ],
-      },
-    ]);
-  });
-
-  it("returns grounded survey wording and questionnaire context", () => {
-    const result = getSurveyQuestion(context, "Q1");
-
-    expect(result.status).toBe("available");
-    expect(result.questionText).toBe("How satisfied are you overall?");
-    expect(result.sequenceNumber).toBe(1);
-    expect(result.answerOptions).toHaveLength(2);
-    expect(result.sectionHeader).toBe("SECTION A");
-    expect(result.documentSnippet).toContain("Q1. How satisfied are you overall?");
   });
 });

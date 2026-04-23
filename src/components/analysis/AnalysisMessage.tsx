@@ -122,8 +122,43 @@ function CopyMessageButton({ text, label }: { text: string; label: string }) {
   );
 }
 
+// Strip common markdown markers from reasoning summary text. OpenAI's
+// Responses API emits reasoning-summary chunks containing things like
+// `**Filtering bank data**` and `- step`, but the UI renders reasoning as
+// plain text, so the markers show literally. Stripping is deterministic —
+// keep the prompt out of this.
+function stripReasoningMarkdown(text: string): string {
+  return text
+    // Images first (dropped entirely, including alt text).
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    // Links → keep label, drop url.
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    // Code fences and inline code → keep inner text.
+    .replace(/```[\s\S]*?```/g, (match) => match.replace(/```[a-zA-Z]*\n?|```/g, ""))
+    .replace(/`([^`]+)`/g, "$1")
+    // Bold / italic via asterisk or underscore — strip the markers, keep text.
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/(?<!\*)\*(?!\*)([^*\n]+)\*(?!\*)/g, "$1")
+    .replace(/(?<!_)_(?!_)([^_\n]+)_(?!_)/g, "$1")
+    // Strikethrough.
+    .replace(/~~([^~]+)~~/g, "$1")
+    // ATX headings at the start of a line.
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    // Blockquote markers.
+    .replace(/^\s*>\s?/gm, "")
+    // Unordered list bullets at the start of a line (only spaces/tabs, never
+    // newlines — otherwise a leading blank line gets folded into the bullet).
+    .replace(/^[ \t]*[-*+]\s+/gm, "")
+    // Ordered list numerals at the start of a line.
+    .replace(/^[ \t]*\d+\.\s+/gm, "")
+    // Horizontal rules on their own line.
+    .replace(/^\s*(?:[-*_]\s*){3,}\s*$/gm, "");
+}
+
 function truncateReasoning(text: string, maxLength = 120): string {
-  const firstLine = text.split("\n")[0].trim();
+  const stripped = stripReasoningMarkdown(text);
+  const firstLine = stripped.split("\n")[0].trim();
   if (firstLine.length <= maxLength) return firstLine;
   return `${firstLine.slice(0, maxLength).trim()}...`;
 }
@@ -139,7 +174,7 @@ export function getAnalysisTraceEntries(message: UIMessage): TraceEntry[] {
 
   return message.parts.flatMap((part, index): TraceEntry[] => {
     if (isReasoningUIPart(part)) {
-      const text = part.text.trim();
+      const text = stripReasoningMarkdown(part.text).trim();
       if (!text) return [];
 
       return [{
@@ -148,7 +183,11 @@ export function getAnalysisTraceEntries(message: UIMessage): TraceEntry[] {
         text,
       }];
     }
-    if (isToolUIPart(part) && part.type !== "tool-getTableCard") {
+    if (isToolUIPart(part)) {
+      // `tool-fetchTable` plays two roles: it surfaces as a "Fetching table"
+      // chip in the thinking trace here, AND its output data is resolved
+      // inline wherever the prose emits a `[[render tableId=…]]` marker.
+      // `buildAnalysisRenderableBlocks` handles the render path separately.
       const label = getAnalysisToolActivityLabel(part.type);
       if (!label) return [];
       return [{
@@ -225,7 +264,7 @@ export function AnalysisMessage({
   const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
   const isUser = message.role === "user";
   const hasGroundedTableCard = !isUser && message.parts.some(
-    (part) => isToolUIPart(part) && part.type === "tool-getTableCard",
+    (part) => isToolUIPart(part) && part.type === "tool-fetchTable",
   );
   const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
   const [draftCorrectionText, setDraftCorrectionText] = useState(feedback?.correctionText ?? "");
@@ -472,6 +511,17 @@ export function AnalysisMessage({
                     className="rounded-xl border border-dashed border-border/80 bg-muted/20 px-3 py-2 text-xs text-muted-foreground"
                   >
                     Loading table...
+                  </div>
+                );
+              }
+
+              if (block.kind === "missing") {
+                return (
+                  <div
+                    key={block.key}
+                    className="rounded-xl border border-dashed border-border/80 bg-muted/20 px-3 py-2 text-xs text-muted-foreground"
+                  >
+                    Referenced table not available.
                   </div>
                 );
               }
