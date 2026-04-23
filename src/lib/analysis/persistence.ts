@@ -2,10 +2,16 @@ import { isReasoningUIPart, isTextUIPart, isToolUIPart, type UIMessage } from "a
 
 import { sanitizeAnalysisAssistantMessageContent } from "@/lib/analysis/messages";
 import {
+  CONFIRM_CITATION_TOOL_TYPE,
   FETCH_TABLE_TOOL_TYPE,
   isRenderableAnalysisToolType,
 } from "@/lib/analysis/toolLabels";
-import { isAnalysisTableCard, type AnalysisTableCard } from "@/lib/analysis/types";
+import {
+  isAnalysisCellSummary,
+  isAnalysisTableCard,
+  type AnalysisCellSummary,
+  type AnalysisTableCard,
+} from "@/lib/analysis/types";
 
 export interface PersistedAnalysisPart {
   type: string;
@@ -13,6 +19,7 @@ export interface PersistedAnalysisPart {
   state?: string;
   label?: string;
   toolCallId?: string;
+  cellSummary?: AnalysisCellSummary;
 }
 
 export interface PendingTableCardArtifact {
@@ -97,6 +104,23 @@ export function buildPersistedAnalysisParts(parts: UIMessage["parts"]): PendingA
             tableId: part.output.tableId,
             questionId: part.output.questionId ?? null,
             payload: part.output,
+          },
+        });
+      }
+      continue;
+    }
+
+    if (part.type === CONFIRM_CITATION_TOOL_TYPE) {
+      if (part.state === "output-available" && isAnalysisCellSummary(part.output)) {
+        const cellSummary = part.output as AnalysisCellSummary;
+        pending.push({
+          kind: "ready",
+          part: {
+            type: part.type,
+            state: part.state,
+            toolCallId: part.toolCallId,
+            label: `${cellSummary.rowLabel} / ${cellSummary.cutName}`,
+            cellSummary,
           },
         });
       }

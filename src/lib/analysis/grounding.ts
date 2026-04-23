@@ -14,6 +14,8 @@ import type {
   AnalysisBannerCutsResult,
   AnalysisBannerGroupResult,
   AnalysisCatalogSearchResult,
+  AnalysisCellConfirmationResult,
+  AnalysisCellSummary,
   AnalysisQuestionContextResult,
   AnalysisSourceRef,
   AnalysisTableCardCell,
@@ -22,6 +24,7 @@ import type {
   AnalysisTableCardResult,
   AnalysisValueMode,
 } from "@/lib/analysis/types";
+import { buildAnalysisCellId } from "@/lib/analysis/types";
 
 const TABLES_JSON_PATH = "results/tables.json";
 const QUESTION_ID_FINAL_PATH = "enrichment/12-questionid-final.json";
@@ -1412,4 +1415,126 @@ export function getTableCard(
     comparisonGroups: context.tablesMetadata.comparisonGroups,
     sourceRefs: resolveSourceRefs(args.tableId, table.questionId ?? null, title),
   };
+}
+
+const ALLOWED_HINT_LIMIT = 20;
+
+function resolveCellSourceRefs(params: {
+  tableId: string;
+  title: string;
+  questionId: string | null;
+  groupName: string | null;
+  cutName: string;
+}): AnalysisSourceRef[] {
+  const refs: AnalysisSourceRef[] = [
+    { refType: "table", refId: params.tableId, label: params.title },
+  ];
+
+  if (params.questionId) {
+    refs.push({ refType: "question", refId: params.questionId, label: params.questionId });
+  }
+
+  refs.push({
+    refType: "banner_cut",
+    refId: params.cutName,
+    label: params.groupName ? `${params.groupName} / ${params.cutName}` : params.cutName,
+  });
+
+  return refs;
+}
+
+export function confirmCitation(
+  context: AnalysisGroundingContext,
+  args: {
+    tableId: string;
+    rowKey: string;
+    cutKey: string;
+    valueMode?: AnalysisValueMode;
+  },
+): AnalysisCellConfirmationResult {
+  const table = context.tables[args.tableId];
+  if (!table) {
+    return {
+      status: context.availability === "unavailable" ? "unavailable" : "not_found",
+      tableId: args.tableId,
+      message: context.availability === "unavailable"
+        ? buildMissingMessage(context.missingArtifacts)
+        : `Table ${args.tableId} was not found in this run's results.`,
+    };
+  }
+
+  const valueMode = resolvePreferredValueMode(table.tableType, args.valueMode);
+  const rowKeys = collectRowKeys(table);
+  const title = deriveTitle(table, args.tableId);
+
+  if (!rowKeys.includes(args.rowKey)) {
+    return {
+      status: "invalid_row",
+      tableId: args.tableId,
+      rowKey: args.rowKey,
+      message: `Row "${args.rowKey}" is not a row on table ${args.tableId}. Pick one of the allowed rowKeys and retry.`,
+      allowedRowKeys: rowKeys.slice(0, ALLOWED_HINT_LIMIT),
+    };
+  }
+
+  const { allCuts } = buildSelectedCuts(table, null, context.bannerGroups);
+  const selectedCut = allCuts.find((cut) => cut.cutKey === args.cutKey);
+
+  if (!selectedCut) {
+    return {
+      status: "invalid_cut",
+      tableId: args.tableId,
+      rowKey: args.rowKey,
+      cutKey: args.cutKey,
+      message: `Cut "${args.cutKey}" is not a cut on table ${args.tableId}. Pick one of the allowed cutKeys and retry.`,
+      allowedCutKeys: allCuts.slice(0, ALLOWED_HINT_LIMIT).map((cut) => cut.cutKey),
+    };
+  }
+
+  const rawRowValue = selectedCut.cut[args.rowKey];
+  const rawRow = isRawTableRow(rawRowValue) ? rawRowValue : {};
+  const rawValue = resolveValueForMode(rawRow, valueMode);
+  const displayValue = formatCellValue(rawValue, valueMode);
+
+  const firstRowForLabel = allCuts
+    .map((cut) => cut.cut[args.rowKey])
+    .find(isRawTableRow);
+  const rowLabel = firstRowForLabel?.label ?? args.rowKey;
+
+  const cellId = buildAnalysisCellId({
+    tableId: args.tableId,
+    rowKey: args.rowKey,
+    cutKey: args.cutKey,
+    valueMode,
+  });
+
+  const summary: AnalysisCellSummary = {
+    cellId,
+    tableId: args.tableId,
+    tableTitle: title,
+    questionId: table.questionId ?? null,
+    rowKey: args.rowKey,
+    rowLabel,
+    cutKey: selectedCut.cutKey,
+    cutName: selectedCut.cutName,
+    groupName: selectedCut.groupName,
+    valueMode,
+    displayValue,
+    pct: typeof rawRow.pct === "number" ? rawRow.pct : null,
+    count: typeof rawRow.count === "number" ? rawRow.count : null,
+    n: typeof rawRow.n === "number" ? rawRow.n : null,
+    mean: typeof rawRow.mean === "number" ? rawRow.mean : null,
+    baseN: selectedCut.baseN,
+    sigHigherThan: normalizeSigHigherThan(rawRow.sig_higher_than),
+    sigVsTotal: typeof rawRow.sig_vs_total === "string" ? rawRow.sig_vs_total : null,
+    sourceRefs: resolveCellSourceRefs({
+      tableId: args.tableId,
+      title,
+      questionId: table.questionId ?? null,
+      groupName: selectedCut.groupName,
+      cutName: selectedCut.cutName,
+    }),
+  };
+
+  return { status: "confirmed", ...summary };
 }

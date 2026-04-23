@@ -188,6 +188,68 @@ describe("buildPersistedAnalysisParts", () => {
     expect(buildPersistedAnalysisParts(parts)).toEqual([]);
   });
 
+  it("persists tool-confirmCitation parts inline with the cell summary", () => {
+    const cellSummary = {
+      cellId: "q1%7Crow_1_csb%7C__total__%3A%3Atotal%7Cpct",
+      tableId: "q1",
+      tableTitle: "Q1 overall",
+      questionId: "Q1",
+      rowKey: "row_1_csb",
+      rowLabel: "CSB",
+      cutKey: "__total__::total",
+      cutName: "Total",
+      groupName: null,
+      valueMode: "pct",
+      displayValue: "58%",
+      pct: 58,
+      count: 236,
+      n: null,
+      mean: null,
+      baseN: 405,
+      sigHigherThan: [],
+      sigVsTotal: null,
+      sourceRefs: [],
+    };
+
+    const parts: UIMessage["parts"] = [
+      {
+        type: "tool-confirmCitation",
+        toolCallId: "call-cite",
+        state: "output-available",
+        input: { tableId: "q1", rowKey: "row_1_csb", cutKey: "__total__::total" },
+        output: cellSummary,
+      } as UIMessage["parts"][number],
+    ];
+
+    const pending = buildPersistedAnalysisParts(parts);
+
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).toEqual({
+      kind: "ready",
+      part: {
+        type: "tool-confirmCitation",
+        state: "output-available",
+        toolCallId: "call-cite",
+        label: "CSB / Total",
+        cellSummary,
+      },
+    });
+  });
+
+  it("drops tool-confirmCitation parts whose output is not a valid cell summary", () => {
+    const parts: UIMessage["parts"] = [
+      {
+        type: "tool-confirmCitation",
+        toolCallId: "call-cite",
+        state: "output-available",
+        input: {},
+        output: { status: "invalid_row", tableId: "q1", message: "bad row" },
+      } as UIMessage["parts"][number],
+    ];
+
+    expect(buildPersistedAnalysisParts(parts)).toEqual([]);
+  });
+
   it("preserves order across mixed parts", () => {
     const payload = makeTableCardPayload();
     const parts: UIMessage["parts"] = [

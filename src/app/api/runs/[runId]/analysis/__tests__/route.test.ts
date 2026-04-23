@@ -69,6 +69,7 @@ vi.mock("@/lib/convex", () => ({
 vi.mock("@/lib/analysis/markerRepair", () => ({
   // Repair calls hit the live OpenAI API via generateText; short-circuit to
   // null so the strip-invalid-markers fallback path is deterministic in tests.
+  attemptAnalysisMarkerRepair: vi.fn(async () => null),
   attemptAnalysisRenderMarkerRepair: vi.fn(async () => null),
 }));
 
@@ -428,7 +429,35 @@ describe("analysis chat route", () => {
     });
   });
 
-  it("persists grounding refs for numeric claims backed by a newly rendered table card", async () => {
+  it("persists a cell grounding ref when the assistant cites a confirmed cell inline", async () => {
+    // Mirrors buildAnalysisCellId: encodeURIComponent(tableId)|rowKey|cutKey|valueMode.
+    // `::` in cutKey is URL-encoded to `%3A%3A`; the `|` delimiters stay literal.
+    const cellId = "q1|row_0_1|__total__%3A%3Atotal|pct";
+    const cellSummary = {
+      cellId,
+      tableId: "q1",
+      tableTitle: "Q1 overall",
+      questionId: "Q1",
+      rowKey: "row_0_1",
+      rowLabel: "Very satisfied",
+      cutKey: "__total__::total",
+      cutName: "Total",
+      groupName: null,
+      valueMode: "pct",
+      displayValue: "45%",
+      pct: 45,
+      count: 54,
+      n: null,
+      mean: null,
+      baseN: 120,
+      sigHigherThan: [],
+      sigVsTotal: null,
+      sourceRefs: [
+        { refType: "table", refId: "q1", label: "Q1 overall" },
+        { refType: "question", refId: "Q1", label: "Q1" },
+      ],
+    };
+
     mocks.query
       .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
       .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Audit Session", titleSource: "manual" })
@@ -479,12 +508,22 @@ describe("analysis chat route", () => {
                 sourceRefs: [],
               },
             },
-            { type: "text", text: "Overall satisfaction is 45%." },
+            {
+              type: "text",
+              text: `Overall satisfaction is 45%.[[cite cellIds=${cellId}]]`,
+            },
           ],
         },
       }),
       getTraceCapture: () => makeTraceCapture(),
-      getGroundingCapture: () => [],
+      getGroundingCapture: () => [
+        {
+          toolName: "confirmCitation",
+          toolCallId: "confirm-1",
+          sourceRefs: cellSummary.sourceRefs,
+          cellSummary,
+        },
+      ],
     });
 
     const response = await POST(
@@ -502,63 +541,29 @@ describe("analysis chat route", () => {
     expect(response.status).toBe(200);
     await response.text();
     expect(mocks.mutateInternal.mock.calls[2][1]).toEqual(expect.objectContaining({
-      groundingRefs: [
+      groundingRefs: expect.arrayContaining([
         expect.objectContaining({
-          claimId: "numeric-1",
-          claimType: "numeric",
-          evidenceKind: "table_card",
+          claimId: cellId,
+          claimType: "cell",
+          evidenceKind: "cell",
           refType: "table",
           refId: "q1",
-          label: "Q1 overall",
-          artifactId: "artifact-1",
-          anchorId: "artifact-1",
+          rowKey: "row_0_1",
+          cutKey: "__total__::total",
           sourceTableId: "q1",
           sourceQuestionId: "Q1",
           renderedInCurrentMessage: true,
         }),
-      ],
+      ]),
     }));
   });
 
-  it("uses a prior rendered table card as evidence for a later numeric answer", async () => {
-    const priorArtifactPayload = {
-      status: "available",
-      tableId: "q1",
-      title: "Q1 overall",
-      questionId: "Q1",
-      questionText: "How satisfied are you?",
-      tableType: "frequency",
-      surveySection: null,
-      baseText: "All respondents",
-      tableSubtitle: null,
-      userNote: null,
-      valueMode: "pct",
-      columns: [],
-      rows: [],
-      totalRows: 0,
-      totalColumns: 0,
-      truncatedRows: 0,
-      truncatedColumns: 0,
-      requestedRowFilter: null,
-      requestedCutFilter: null,
-      significanceTest: null,
-      significanceLevel: null,
-      comparisonGroups: [],
-      sourceRefs: [],
-    };
-
+  it("persists no grounding refs when the assistant quotes a number without a cite marker (freelancing)", async () => {
     mocks.query
       .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
       .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Audit Session", titleSource: "manual" })
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{
-        _id: "artifact-1",
-        artifactType: "table_card",
-        title: "Q1 overall",
-        sourceTableIds: ["q1"],
-        sourceQuestionIds: ["Q1"],
-        payload: priorArtifactPayload,
-      }])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
     mocks.mutateInternal
       .mockResolvedValueOnce("user-msg-1")
@@ -570,14 +575,7 @@ describe("analysis chat route", () => {
         },
       }),
       getTraceCapture: () => makeTraceCapture(),
-      getGroundingCapture: () => [
-        {
-          toolName: "viewTable",
-          toolCallId: "view-1",
-          sourceRefs: [{ refType: "table", refId: "q1", label: "Q1 overall" }],
-          tableCard: priorArtifactPayload,
-        },
-      ],
+      getGroundingCapture: () => [],
     });
 
     const response = await POST(
@@ -595,24 +593,12 @@ describe("analysis chat route", () => {
     expect(response.status).toBe(200);
     await response.text();
     expect(mocks.mutateInternal).toHaveBeenCalledTimes(2);
-    expect(mocks.mutateInternal.mock.calls[1][1]).toEqual(expect.objectContaining({
+    const assistantCreateArgs = mocks.mutateInternal.mock.calls[1][1];
+    expect(assistantCreateArgs).toEqual(expect.objectContaining({
       content: "Overall satisfaction is still 45%.",
-      groundingRefs: [
-        expect.objectContaining({
-          claimId: "numeric-1",
-          claimType: "numeric",
-          evidenceKind: "table_card",
-          refType: "table",
-          refId: "q1",
-          label: "Q1 overall",
-          artifactId: "artifact-1",
-          anchorId: "artifact-1",
-          sourceTableId: "q1",
-          sourceQuestionId: "Q1",
-          renderedInCurrentMessage: false,
-        }),
-      ],
     }));
+    // No cite marker + no confirmCitation grounding event → no grounding refs.
+    expect(assistantCreateArgs).not.toHaveProperty("groundingRefs");
   });
 
   it("does not fail the response when writing the success trace throws", async () => {

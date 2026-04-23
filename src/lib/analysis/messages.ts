@@ -1,8 +1,16 @@
 import { isTextUIPart, type UIMessage } from "ai";
 
-import { isRenderableAnalysisToolType, FETCH_TABLE_TOOL_TYPE } from "@/lib/analysis/toolLabels";
+import { stripAnalysisCiteAnchors } from "@/lib/analysis/citeAnchors";
+import { stripAnalysisRenderAnchors } from "@/lib/analysis/renderAnchors";
 import {
+  CONFIRM_CITATION_TOOL_TYPE,
+  FETCH_TABLE_TOOL_TYPE,
+  isRenderableAnalysisToolType,
+} from "@/lib/analysis/toolLabels";
+import {
+  isAnalysisCellSummary,
   isAnalysisTableCard,
+  type AnalysisCellSummary,
   type AnalysisEvidenceItem,
   type AnalysisGroundingRef,
   type AnalysisMessageMetadata,
@@ -23,6 +31,7 @@ interface PersistedAnalysisMessageRecord {
     artifactId?: string;
     label?: string;
     toolCallId?: string;
+    cellSummary?: unknown;
   }>;
   groundingRefs?: AnalysisGroundingRef[];
   followUpSuggestions?: string[];
@@ -127,6 +136,8 @@ export function buildAnalysisEvidenceItems(
       ref.refId,
       ref.sourceTableId ?? "",
       ref.sourceQuestionId ?? "",
+      ref.rowKey ?? "",
+      ref.cutKey ?? "",
     ].join("::");
 
     if (deduped.has(key)) continue;
@@ -142,6 +153,8 @@ export function buildAnalysisEvidenceItems(
       artifactId: ref.artifactId ?? null,
       sourceTableId: ref.sourceTableId ?? null,
       sourceQuestionId: ref.sourceQuestionId ?? null,
+      rowKey: ref.rowKey ?? null,
+      cutKey: ref.cutKey ?? null,
       renderedInCurrentMessage: ref.renderedInCurrentMessage ?? false,
     });
   }
@@ -254,6 +267,22 @@ export function persistedAnalysisMessagesToUIMessages(
           continue;
         }
 
+        if (part.type === CONFIRM_CITATION_TOOL_TYPE && part.toolCallId) {
+          const cellSummary = isAnalysisCellSummary(part.cellSummary)
+            ? (part.cellSummary as AnalysisCellSummary)
+            : null;
+          parts.push({
+            type: part.type,
+            toolCallId: part.toolCallId,
+            state: "output-available",
+            input: {},
+            output: cellSummary
+              ? { status: "confirmed", ...cellSummary }
+              : undefined,
+          } as UIMessage["parts"][number]);
+          continue;
+        }
+
         if (
           part.type.startsWith("tool-")
           && isRenderableAnalysisToolType(part.type)
@@ -287,7 +316,11 @@ export function getSanitizedConversationMessagesForModel(
   return messages.map((message) => {
     const sanitizedParts = message.parts.reduce<UIMessage["parts"]>((acc, part) => {
       if (isTextUIPart(part)) {
-        const text = sanitizeAnalysisMessageContent(part.text);
+        // Strip both marker families from prior-turn text — cite markers are
+        // per-turn contracts, so historical markers are noise in the model's
+        // view of history. Keep the surrounding prose.
+        const markerFree = stripAnalysisCiteAnchors(stripAnalysisRenderAnchors(part.text));
+        const text = sanitizeAnalysisMessageContent(markerFree);
         if (text.length > 0) {
           acc.push({
             type: "text",

@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { buildAnalysisCellId } from "@/lib/analysis/types";
 import type {
   AnalysisTableCard,
   AnalysisTableCardCell,
@@ -25,6 +26,12 @@ import type {
   AnalysisTableCardColumnGroup,
   AnalysisTableCardRow,
 } from "@/lib/analysis/types";
+
+// Kept in sync with getAnalysisCellAnchorId in AnalysisMessage.tsx. Both
+// sanitize cellId to CSS-safe chars (`|`, `%`, `:`, `.` → `-`).
+function cellAnchorId(cellId: string): string {
+  return `analysis-cell-${cellId.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
+}
 
 const TOTAL_GROUP_KEY = "__total__";
 
@@ -454,11 +461,19 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
                   {columns.map((column) => {
                     const cell = getGroundedTableCardCell(row, column);
                     const markers = getGroundedTableCardSignificanceMarkers(row, column, columns);
+                    const resolvedCutKey = column.cutKey ?? column.cutName;
+                    const anchorCellId = buildAnalysisCellId({
+                      tableId: card.tableId,
+                      rowKey: row.rowKey,
+                      cutKey: resolvedCutKey,
+                      valueMode: card.valueMode,
+                    });
 
                     return (
                       <td
-                        key={`${row.rowKey}-${column.cutKey ?? column.cutName}`}
-                        className={cn("align-middle", isCompact ? "px-2.5 py-1.5" : "px-3 py-3")}
+                        key={`${row.rowKey}-${resolvedCutKey}`}
+                        id={cellAnchorId(anchorCellId)}
+                        className={cn("scroll-mt-24 align-middle transition-shadow duration-300", isCompact ? "px-2.5 py-1.5" : "px-3 py-3")}
                       >
                         {cell ? (
                           <div

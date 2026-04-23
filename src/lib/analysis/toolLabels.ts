@@ -14,9 +14,11 @@ export const ANALYSIS_TOOL_ACTIVITY_LABELS: Record<string, string> = {
   "tool-fetchTable": "Fetching table",
   "tool-getQuestionContext": "Checking question metadata",
   "tool-listBannerCuts": "Listing available cuts",
+  "tool-confirmCitation": "Confirming cell",
 };
 
 export const FETCH_TABLE_TOOL_TYPE = "tool-fetchTable";
+export const CONFIRM_CITATION_TOOL_TYPE = "tool-confirmCitation";
 
 export function getAnalysisToolActivityLabel(toolType: string): string | null {
   return ANALYSIS_TOOL_ACTIVITY_LABELS[toolType] ?? null;

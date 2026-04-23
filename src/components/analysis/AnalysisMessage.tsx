@@ -23,10 +23,13 @@ import {
   getAnalysisMessageMetadata,
   getAnalysisUIMessageText,
 } from "@/lib/analysis/messages";
+import { buildAnalysisCiteSegments } from "@/lib/analysis/citeAnchors";
 import { buildAnalysisRenderableBlocks } from "@/lib/analysis/renderAnchors";
 import { getAnalysisToolActivityLabel } from "@/lib/analysis/toolLabels";
 import {
+  buildAnalysisCellId,
   isAnalysisTableCard,
+  parseAnalysisCellId,
   type AnalysisEvidenceItem,
   type AnalysisMessageFeedbackRecord,
   type AnalysisMessageFeedbackVote,
@@ -235,6 +238,66 @@ function scrollToEvidenceAnchor(anchorId: string) {
   window.setTimeout(() => {
     target.classList.remove("ring-2", "ring-tab-teal/40", "ring-offset-2", "ring-offset-background");
   }, 1200);
+}
+
+// Cell anchors live on each rendered cell `<td>` in GroundedTableCard. cellIds
+// contain `|`, `%`, and URL-encoded punctuation; sanitize to CSS-safe chars.
+export function getAnalysisCellAnchorId(cellId: string): string {
+  return `analysis-cell-${cellId.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
+}
+
+function scrollToCellAnchor(cellId: string) {
+  const target = document.getElementById(getAnalysisCellAnchorId(cellId));
+  if (!target) return;
+
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
+  target.classList.add("ring-2", "ring-tab-teal/40", "ring-offset-2", "ring-offset-background");
+  window.setTimeout(() => {
+    target.classList.remove("ring-2", "ring-tab-teal/40", "ring-offset-2", "ring-offset-background");
+  }, 1200);
+}
+
+const SUPERSCRIPT_DIGITS = ["⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹"];
+
+function toSuperscript(index: number): string {
+  return String(index)
+    .split("")
+    .map((digit) => SUPERSCRIPT_DIGITS[Number(digit)] ?? digit)
+    .join("");
+}
+
+function CiteChip({
+  index,
+  cellIds,
+}: {
+  index: number;
+  cellIds: string[];
+}) {
+  if (cellIds.length === 0) return null;
+
+  const primaryCellId = cellIds[0]!;
+  const title = cellIds
+    .map((cellId) => {
+      const parsed = parseAnalysisCellId(cellId);
+      if (!parsed) return cellId;
+      return `${parsed.tableId} — ${parsed.rowKey} / ${parsed.cutKey}`;
+    })
+    .join("\n");
+
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.preventDefault();
+        scrollToCellAnchor(primaryCellId);
+      }}
+      title={title}
+      className="mx-0.5 inline-flex items-center align-super text-[0.65em] font-mono text-tab-teal/90 hover:text-tab-teal underline-offset-2 hover:underline"
+      aria-label={`Citation ${index}`}
+    >
+      {toSuperscript(index)}
+    </button>
+  );
 }
 
 export function AnalysisMessage({
@@ -494,12 +557,46 @@ export function AnalysisMessage({
 
             {renderableBlocks.map((block) => {
               if (block.kind === "text") {
+                const segments = buildAnalysisCiteSegments(block.text);
+                const hasCiteMarkers = segments.some((segment) => segment.kind === "cite");
+
+                if (!hasCiteMarkers) {
+                  return (
+                    <div
+                      key={block.key}
+                      className="prose-analysis min-w-0 max-w-none break-words [overflow-wrap:anywhere]"
+                    >
+                      <StreamingMarkdown text={block.text} isStreaming={isStreaming} />
+                    </div>
+                  );
+                }
+
+                // Render each segment — markdown for text, inline chip for cite.
+                // Streamdown handles one prose block at a time; chips render as
+                // inline siblings via a shared wrapper that preserves flow.
                 return (
                   <div
                     key={block.key}
                     className="prose-analysis min-w-0 max-w-none break-words [overflow-wrap:anywhere]"
                   >
-                    <StreamingMarkdown text={block.text} isStreaming={isStreaming} />
+                    {segments.map((segment, segmentIndex) => {
+                      if (segment.kind === "text") {
+                        return (
+                          <StreamingMarkdown
+                            key={`${block.key}-text-${segmentIndex}`}
+                            text={segment.text}
+                            isStreaming={isStreaming}
+                          />
+                        );
+                      }
+                      return (
+                        <CiteChip
+                          key={`${block.key}-cite-${segmentIndex}`}
+                          index={segment.indexWithinMessage}
+                          cellIds={segment.cellIds}
+                        />
+                      );
+                    })}
                   </div>
                 );
               }
@@ -576,20 +673,50 @@ export function AnalysisMessage({
                   <CollapsibleContent className="pt-2">
                     <div className="rounded-xl border border-border/60 bg-muted/15 px-3 py-2">
                       <div className="space-y-1.5">
-                        {evidenceItems.map((item) => (
-                          <button
-                            key={item.key}
-                            type="button"
-                            onClick={() => item.anchorId ? scrollToEvidenceAnchor(item.anchorId) : undefined}
-                            className={cn(
-                              "flex w-full items-center gap-2 text-left text-[11px] leading-5 text-muted-foreground",
-                              item.anchorId ? "hover:text-foreground/80" : "cursor-default",
-                            )}
-                          >
-                            <Link2 className="h-3 w-3 shrink-0" />
-                            <span className="truncate">{item.label}</span>
-                          </button>
-                        ))}
+                        {evidenceItems.map((item) => {
+                          const cellAnchorCellId = item.evidenceKind === "cell"
+                            && item.sourceTableId
+                            && item.rowKey
+                            && item.cutKey
+                            ? buildAnalysisCellId({
+                                tableId: item.sourceTableId,
+                                rowKey: item.rowKey,
+                                cutKey: item.cutKey,
+                                // evidenceItems don't carry valueMode; the cell's
+                                // anchor id on the rendered card uses the card's
+                                // valueMode. Try pct first (most common), fall
+                                // back to the card anchor on miss.
+                                valueMode: "pct",
+                              })
+                            : null;
+
+                          const handleClick = () => {
+                            if (cellAnchorCellId) {
+                              scrollToCellAnchor(cellAnchorCellId);
+                              return;
+                            }
+                            if (item.anchorId) {
+                              scrollToEvidenceAnchor(item.anchorId);
+                            }
+                          };
+
+                          const clickable = Boolean(cellAnchorCellId || item.anchorId);
+
+                          return (
+                            <button
+                              key={item.key}
+                              type="button"
+                              onClick={clickable ? handleClick : undefined}
+                              className={cn(
+                                "flex w-full items-center gap-2 text-left text-[11px] leading-5 text-muted-foreground",
+                                clickable ? "hover:text-foreground/80" : "cursor-default",
+                              )}
+                            >
+                              <Link2 className="h-3 w-3 shrink-0" />
+                              <span className="truncate">{item.label}</span>
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   </CollapsibleContent>

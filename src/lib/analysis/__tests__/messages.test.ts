@@ -304,4 +304,31 @@ describe("analysis message helpers", () => {
       { type: "text", text: "bSummary/b" },
     ]);
   });
+
+  it("strips render and cite markers from prior-turn assistant text", () => {
+    const sanitized = getSanitizedConversationMessagesForModel([
+      {
+        id: "assistant-hist",
+        role: "assistant",
+        parts: [
+          {
+            type: "text",
+            text: [
+              "Awareness is 58%.[[cite cellIds=q1%7Crow_1_csb%7C__total__%3A%3Atotal%7Cpct]]",
+              "",
+              "[[render tableId=A3]]",
+              "",
+              "End.",
+            ].join("\n"),
+          },
+        ],
+      },
+    ]);
+
+    const text = (sanitized[0].parts[0] as { type: "text"; text: string }).text;
+    expect(text).not.toContain("[[render");
+    expect(text).not.toContain("[[cite");
+    expect(text).toContain("Awareness is 58%.");
+    expect(text).toContain("End.");
+  });
 });

@@ -11,10 +11,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { getApiErrorDetails } from "@/lib/api/errorDetails";
 import { streamAnalysisResponse } from "@/lib/analysis/AnalysisAgent";
 import {
+  detectUncitedSpecificNumbers,
   resolveAssistantMessageTrust,
-  type AnalysisSessionTableArtifact,
   type InjectedAnalysisTableCard,
 } from "@/lib/analysis/claimCheck";
+import {
+  extractAnalysisCiteMarkers,
+  stripAnalysisCiteAnchors,
+  stripInvalidAnalysisCiteMarkers,
+  validateAnalysisCiteMarkers,
+} from "@/lib/analysis/citeAnchors";
 import { buildDeterministicFollowUpSuggestions } from "@/lib/analysis/followups";
 import { loadAnalysisGroundingContext } from "@/lib/analysis/grounding";
 import {
@@ -29,7 +35,7 @@ import {
   stripInvalidAnalysisRenderMarkers,
   validateAnalysisRenderMarkers,
 } from "@/lib/analysis/renderAnchors";
-import { attemptAnalysisRenderMarkerRepair } from "@/lib/analysis/markerRepair";
+import { attemptAnalysisMarkerRepair } from "@/lib/analysis/markerRepair";
 import { buildAnalysisInstructions, buildAnalysisQuestionCatalog } from "@/prompts/analysis";
 import {
   buildPersistedAnalysisParts,
@@ -44,7 +50,11 @@ import {
   isDefaultAnalysisSessionTitle,
 } from "@/lib/analysis/title";
 import { FETCH_TABLE_TOOL_TYPE } from "@/lib/analysis/toolLabels";
-import { isAnalysisTableCard, type AnalysisGroundingRef, type AnalysisMessageMetadata } from "@/lib/analysis/types";
+import {
+  isAnalysisTableCard,
+  type AnalysisGroundingRef,
+  type AnalysisMessageMetadata,
+} from "@/lib/analysis/types";
 import { getConvexClient, mutateInternal } from "@/lib/convex";
 import { requireConvexAuth, AuthenticationError } from "@/lib/requireConvexAuth";
 import { applyRateLimit } from "@/lib/withRateLimit";
@@ -71,7 +81,9 @@ function summarizeAssistantResponseForTitle(parts: UIMessage["parts"]): string {
 
   for (const part of parts) {
     if (part.type === "text" && typeof part.text === "string") {
-      const text = sanitizeAnalysisMessageContent(stripAnalysisRenderAnchors(part.text));
+      const text = sanitizeAnalysisMessageContent(
+        stripAnalysisCiteAnchors(stripAnalysisRenderAnchors(part.text)),
+      );
       if (text) segments.push(text);
       continue;
     }
@@ -94,28 +106,6 @@ function summarizeAssistantResponseForTitle(parts: UIMessage["parts"]): string {
   return segments.join(" ").trim().slice(0, 2000);
 }
 
-function buildPriorTableArtifacts(
-  persistedArtifacts: Array<{
-    _id: Id<"analysisArtifacts">;
-    artifactType: "table_card" | "note";
-    title: string;
-    sourceTableIds: string[];
-    sourceQuestionIds: string[];
-    payload: unknown;
-  }>,
-): AnalysisSessionTableArtifact[] {
-  return persistedArtifacts.flatMap((artifact) => {
-    if (artifact.artifactType !== "table_card") return [];
-
-    return [{
-      artifactId: String(artifact._id),
-      title: artifact.title,
-      sourceTableIds: artifact.sourceTableIds,
-      sourceQuestionIds: artifact.sourceQuestionIds,
-      payload: isAnalysisTableCard(artifact.payload) ? artifact.payload : null,
-    }];
-  });
-}
 
 function filterUIStreamForTrustLayer(
   stream: ReadableStream<UIMessageChunk>,
@@ -228,6 +218,8 @@ function buildPersistedGroundingRef(
 
   if (ref.sourceTableId) persisted.sourceTableId = ref.sourceTableId;
   if (ref.sourceQuestionId) persisted.sourceQuestionId = ref.sourceQuestionId;
+  if (ref.rowKey) persisted.rowKey = ref.rowKey;
+  if (ref.cutKey) persisted.cutKey = ref.cutKey;
 
   const rendered = overrides?.renderedInCurrentMessage ?? ref.renderedInCurrentMessage;
   if (typeof rendered === "boolean") persisted.renderedInCurrentMessage = rendered;
@@ -254,8 +246,8 @@ function applyArtifactIdsToGroundingRefsForPersistence(
 
 function normalizeGroundingRefForUI(ref: {
   claimId: string;
-  claimType: "numeric" | "context";
-  evidenceKind: "table_card" | "context";
+  claimType: "numeric" | "context" | "cell";
+  evidenceKind: "table_card" | "context" | "cell";
   refType: string;
   refId: string;
   label: string;
@@ -263,6 +255,8 @@ function normalizeGroundingRefForUI(ref: {
   artifactId?: Id<"analysisArtifacts">;
   sourceTableId?: string;
   sourceQuestionId?: string;
+  rowKey?: string;
+  cutKey?: string;
   renderedInCurrentMessage?: boolean;
 }): AnalysisGroundingRef {
   return {
@@ -276,6 +270,8 @@ function normalizeGroundingRefForUI(ref: {
     ...(ref.artifactId ? { artifactId: String(ref.artifactId) } : {}),
     ...(ref.sourceTableId ? { sourceTableId: ref.sourceTableId } : {}),
     ...(ref.sourceQuestionId ? { sourceQuestionId: ref.sourceQuestionId } : {}),
+    ...(ref.rowKey ? { rowKey: ref.rowKey } : {}),
+    ...(ref.cutKey ? { cutKey: ref.cutKey } : {}),
     ...(typeof ref.renderedInCurrentMessage === "boolean"
       ? { renderedInCurrentMessage: ref.renderedInCurrentMessage }
       : {}),
@@ -497,17 +493,6 @@ export async function POST(
       abortSignal: request.signal,
     });
 
-    const priorTableArtifacts = buildPriorTableArtifacts(
-      persistedArtifacts.map((artifact) => ({
-        _id: artifact._id,
-        artifactType: artifact.artifactType,
-        title: artifact.title,
-        sourceTableIds: artifact.sourceTableIds,
-        sourceQuestionIds: artifact.sourceQuestionIds,
-        payload: artifact.payload,
-      })),
-    );
-
     let errorTraceWritten = false;
     let settledFinalEvent = false;
     let resolveFinalEvent: ((event: {
@@ -587,17 +572,15 @@ export async function POST(
           const rawAssistantText = sanitizeAnalysisAssistantMessageContent(
             getAnalysisUIMessageText(finalEvent.responseMessage),
           );
-          const trustResult = resolveAssistantMessageTrust({
-            assistantText: rawAssistantText,
-            responseParts: finalEvent.responseMessage.parts,
-            groundingEvents: getGroundingCapture(),
-            priorTableArtifacts,
-          });
+          const groundingCapture = getGroundingCapture();
 
-          // Render-marker guardrail: every `[[render tableId=X]]` must point
-          // at a table that (a) exists in the run, and (b) was fetched this
-          // turn via fetchTable. Invalid markers → one repair shot with the
-          // model; still-invalid after repair → strip them deterministically.
+          // Marker guardrails:
+          //  - render: every `[[render tableId=X]]` must point at a table that
+          //    exists in the run AND was fetched this turn.
+          //  - cite: every cellId in `[[cite cellIds=...]]` must have been
+          //    confirmed this turn via confirmCitation.
+          // Invalid markers → one combined repair shot; still-invalid after
+          // repair → strip them deterministically.
           const fetchedTableIds = finalEvent.responseMessage.parts.flatMap((part) => {
             if (part.type !== FETCH_TABLE_TOOL_TYPE) return [];
             if (part.state !== "output-available") return [];
@@ -606,14 +589,25 @@ export async function POST(
           });
           const catalogTableIds = Object.keys(groundingContext.tables);
 
-          const initialIssues = validateAnalysisRenderMarkers({
-            text: trustResult.assistantText,
+          const confirmedCellIds = groundingCapture
+            .map((event) => event.cellSummary?.cellId)
+            .filter((id): id is string => typeof id === "string");
+
+          const initialAssistantText = rawAssistantText;
+          const initialRenderIssues = validateAnalysisRenderMarkers({
+            text: initialAssistantText,
             fetchedTableIds,
             catalogTableIds,
           });
+          const initialCiteIssues = validateAnalysisCiteMarkers({
+            text: initialAssistantText,
+            confirmedCellIds,
+          });
 
-          if (initialIssues.length > 0) {
-            const repairedText = await attemptAnalysisRenderMarkerRepair({
+          let effectiveAssistantText = initialAssistantText;
+
+          if (initialRenderIssues.length > 0 || initialCiteIssues.length > 0) {
+            const repairedText = await attemptAnalysisMarkerRepair({
               systemPrompt: buildAnalysisInstructions({
                 availability: groundingContext.availability,
                 missingArtifacts: groundingContext.missingArtifacts,
@@ -644,41 +638,77 @@ export async function POST(
                 ),
               }),
               conversationMessages,
-              failedAssistantText: trustResult.assistantText,
-              issues: initialIssues,
+              failedAssistantText: initialAssistantText,
+              renderIssues: initialRenderIssues,
+              citeIssues: initialCiteIssues,
               fetchedTableIds,
+              confirmedCellIds,
               catalogSampleTableIds: catalogTableIds,
               abortSignal: request.signal,
             });
 
-            let finalText = trustResult.assistantText;
+            let finalText = initialAssistantText;
             if (repairedText) {
               finalText = sanitizeAnalysisAssistantMessageContent(repairedText);
             }
 
-            const remainingIssues = validateAnalysisRenderMarkers({
+            const remainingRenderIssues = validateAnalysisRenderMarkers({
               text: finalText,
               fetchedTableIds,
               catalogTableIds,
             });
+            const remainingCiteIssues = validateAnalysisCiteMarkers({
+              text: finalText,
+              confirmedCellIds,
+            });
 
-            if (remainingIssues.length > 0) {
-              console.warn("[Analysis Chat POST] Stripping invalid render markers after repair:", {
-                markers: remainingIssues.map((issue) => ({ tableId: issue.tableId, reason: issue.reason })),
+            if (remainingRenderIssues.length > 0 || remainingCiteIssues.length > 0) {
+              console.warn("[Analysis Chat POST] Stripping invalid markers after repair:", {
+                renderMarkers: remainingRenderIssues.map((issue) => ({ tableId: issue.tableId, reason: issue.reason })),
+                citeMarkers: remainingCiteIssues.map((issue) => ({ reason: issue.reason, unconfirmedCellIds: issue.unconfirmedCellIds })),
                 repairAttempted: Boolean(repairedText),
               });
-              finalText = stripInvalidAnalysisRenderMarkers(finalText, remainingIssues);
+              if (remainingRenderIssues.length > 0) {
+                finalText = stripInvalidAnalysisRenderMarkers(finalText, remainingRenderIssues);
+              }
+              if (remainingCiteIssues.length > 0) {
+                finalText = stripInvalidAnalysisCiteMarkers(finalText, remainingCiteIssues);
+              }
             }
 
-            trustResult.assistantText = finalText;
+            effectiveAssistantText = finalText;
           }
+
+          // Freelancing-log: quiet regression detector — assistant quoted a
+          // specific number but neither confirmed a cell this turn nor emitted
+          // any cite marker. No user-visible effect.
+          const citeMarkerCount = extractAnalysisCiteMarkers(effectiveAssistantText).length;
+          if (
+            detectUncitedSpecificNumbers(stripAnalysisCiteAnchors(stripAnalysisRenderAnchors(effectiveAssistantText)))
+            && confirmedCellIds.length === 0
+            && citeMarkerCount === 0
+          ) {
+            console.warn("[Analysis Chat POST] uncited_specific_numbers", {
+              sessionId: String(session._id),
+            });
+          }
+
+          // Rebuild trust result against the post-repair text — the cite set
+          // may have changed between initial stream and final text.
+          const trustResult = resolveAssistantMessageTrust({
+            assistantText: effectiveAssistantText,
+            responseParts: finalEvent.responseMessage.parts,
+            groundingEvents: groundingCapture,
+          });
 
           const finalResponseParts = buildFinalAssistantParts({
             originalParts: finalEvent.responseMessage.parts,
             assistantText: trustResult.assistantText,
             injectedTableCards: trustResult.injectedTableCards,
           });
-          const persistedAssistantText = stripAnalysisRenderAnchors(trustResult.assistantText);
+          const persistedAssistantText = stripAnalysisCiteAnchors(
+            stripAnalysisRenderAnchors(trustResult.assistantText),
+          );
           const followUpSuggestions = buildDeterministicFollowUpSuggestions({
             groundingContext,
             groundingRefs: trustResult.groundingRefs,

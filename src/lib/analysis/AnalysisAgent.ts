@@ -12,6 +12,7 @@ import {
 } from "@/lib/analysis/model";
 import {
   attachRetrievedContextXml,
+  confirmCitation,
   getQuestionContext,
   sanitizeGroundingToolOutput,
   getTableCard,
@@ -21,7 +22,12 @@ import {
 } from "@/lib/analysis/grounding";
 import type { AnalysisTurnGroundingEvent } from "@/lib/analysis/claimCheck";
 import type { AnalysisTraceRetryEvent } from "@/lib/analysis/trace";
-import type { AnalysisSourceRef, AnalysisTableCard } from "@/lib/analysis/types";
+import {
+  isAnalysisCellSummary,
+  type AnalysisCellSummary,
+  type AnalysisSourceRef,
+  type AnalysisTableCard,
+} from "@/lib/analysis/types";
 import { buildAnalysisInstructions, buildAnalysisQuestionCatalog } from "@/prompts/analysis";
 import { calculateCostSync, recordAgentMetrics } from "@/lib/observability";
 import { retryWithPolicyHandling } from "@/lib/retryWithPolicyHandling";
@@ -64,13 +70,21 @@ export async function streamAnalysisResponse({
       return undefined;
     })();
 
-    if (sourceRefs.length === 0 && !tableCard) return;
+    const cellSummary: AnalysisCellSummary | undefined = (() => {
+      if (!params.result || typeof params.result !== "object") return undefined;
+      const record = params.result as Record<string, unknown>;
+      if (record.status !== "confirmed") return undefined;
+      return isAnalysisCellSummary(params.result) ? (params.result as AnalysisCellSummary) : undefined;
+    })();
+
+    if (sourceRefs.length === 0 && !tableCard && !cellSummary) return;
 
     groundingEvents.push({
       toolName: params.toolName,
       toolCallId: params.toolCallId ?? params.toolName,
       sourceRefs,
       ...(tableCard ? { tableCard } : {}),
+      ...(cellSummary ? { cellSummary } : {}),
     });
   }
 
@@ -178,6 +192,25 @@ export async function streamAnalysisResponse({
             execute: async ({ filter }, options) => executeGroundedTool(
               "listBannerCuts",
               () => listBannerCuts(groundingContext, filter),
+              { toolCallId: options.toolCallId },
+            ),
+          }),
+          confirmCitation: tool({
+            description: "Confirm a specific cell before citing its number in prose. Returns the cell summary (displayValue, pct/count/n/mean, baseN, sig markers) plus a stable cellId. Required before emitting any `[[cite cellIds=...]]` marker for that cell IN THIS TURN. Hierarchy: fetch → (optionally) render → confirm → cite.",
+            inputSchema: z.object({
+              tableId: z.string().min(1).max(200),
+              rowKey: z.string().min(1).max(200),
+              cutKey: z.string().min(1).max(400),
+              valueMode: z.enum(["pct", "count", "n", "mean"]).optional(),
+            }),
+            execute: async ({ tableId, rowKey, cutKey, valueMode }, options) => executeGroundedTool(
+              "confirmCitation",
+              () => confirmCitation(groundingContext, {
+                tableId,
+                rowKey,
+                cutKey,
+                valueMode,
+              }),
               { toolCallId: options.toolCallId },
             ),
           }),

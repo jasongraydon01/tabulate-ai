@@ -25,8 +25,8 @@ interface AnalysisWorkspaceProps {
 
 function normalizeGroundingRefForUI(ref: {
   claimId: string;
-  claimType: "numeric" | "context";
-  evidenceKind: "table_card" | "context";
+  claimType: "numeric" | "context" | "cell";
+  evidenceKind: "table_card" | "context" | "cell";
   refType: string;
   refId: string;
   label: string;
@@ -34,6 +34,8 @@ function normalizeGroundingRefForUI(ref: {
   artifactId?: string;
   sourceTableId?: string;
   sourceQuestionId?: string;
+  rowKey?: string;
+  cutKey?: string;
   renderedInCurrentMessage?: boolean;
 }): AnalysisGroundingRef {
   return {
@@ -47,6 +49,8 @@ function normalizeGroundingRefForUI(ref: {
     ...(ref.artifactId ? { artifactId: String(ref.artifactId) } : {}),
     ...(ref.sourceTableId ? { sourceTableId: ref.sourceTableId } : {}),
     ...(ref.sourceQuestionId ? { sourceQuestionId: ref.sourceQuestionId } : {}),
+    ...(ref.rowKey ? { rowKey: ref.rowKey } : {}),
+    ...(ref.cutKey ? { cutKey: ref.cutKey } : {}),
     ...(typeof ref.renderedInCurrentMessage === "boolean"
       ? { renderedInCurrentMessage: ref.renderedInCurrentMessage }
       : {}),

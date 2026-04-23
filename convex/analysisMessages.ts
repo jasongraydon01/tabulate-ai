@@ -3,8 +3,8 @@ import { query, internalMutation } from "./_generated/server";
 
 const groundingRefValidator = v.object({
   claimId: v.string(),
-  claimType: v.union(v.literal("numeric"), v.literal("context")),
-  evidenceKind: v.union(v.literal("table_card"), v.literal("context")),
+  claimType: v.union(v.literal("numeric"), v.literal("context"), v.literal("cell")),
+  evidenceKind: v.union(v.literal("table_card"), v.literal("context"), v.literal("cell")),
   refType: v.string(),
   refId: v.string(),
   label: v.string(),
@@ -12,6 +12,8 @@ const groundingRefValidator = v.object({
   artifactId: v.optional(v.id("analysisArtifacts")),
   sourceTableId: v.optional(v.string()),
   sourceQuestionId: v.optional(v.string()),
+  rowKey: v.optional(v.string()),
+  cutKey: v.optional(v.string()),
   renderedInCurrentMessage: v.optional(v.boolean()),
 });
 
@@ -29,6 +31,10 @@ const messagePartValidator = v.object({
   artifactId: v.optional(v.id("analysisArtifacts")),
   label: v.optional(v.string()),
   toolCallId: v.optional(v.string()),
+  // Inline cell summary for tool-confirmCitation parts. Kept loose
+  // (`v.any`) to mirror how other polymorphic tool payloads stay additive
+  // here — the TypeScript surface in @/lib/analysis/types enforces shape.
+  cellSummary: v.optional(v.any()),
 });
 
 export const listBySession = query({

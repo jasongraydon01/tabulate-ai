@@ -15,9 +15,9 @@ export interface AnalysisSourceRef {
   label?: string;
 }
 
-export type AnalysisGroundingClaimType = "numeric" | "context";
+export type AnalysisGroundingClaimType = "numeric" | "context" | "cell";
 
-export type AnalysisEvidenceKind = "table_card" | "context";
+export type AnalysisEvidenceKind = "table_card" | "context" | "cell";
 
 export interface AnalysisGroundingRef {
   claimId: string;
@@ -30,6 +30,8 @@ export interface AnalysisGroundingRef {
   artifactId?: string | null;
   sourceTableId?: string | null;
   sourceQuestionId?: string | null;
+  rowKey?: string | null;
+  cutKey?: string | null;
   renderedInCurrentMessage?: boolean;
 }
 
@@ -44,6 +46,8 @@ export interface AnalysisEvidenceItem {
   artifactId?: string | null;
   sourceTableId?: string | null;
   sourceQuestionId?: string | null;
+  rowKey?: string | null;
+  cutKey?: string | null;
   renderedInCurrentMessage?: boolean;
 }
 
@@ -181,6 +185,89 @@ export interface AnalysisTableCardFailure {
 }
 
 export type AnalysisTableCardResult = AnalysisTableCard | AnalysisTableCardFailure;
+
+// cellId is a composite of (tableId, rowKey, cutKey, valueMode). cutKey can
+// contain colons and spaces (e.g. `group:age::under 30`), so each component is
+// URI-encoded before being joined with `|` — that keeps the id safe to drop
+// unquoted into a `[[cite cellIds=...]]` marker without ambiguity.
+export function buildAnalysisCellId(params: {
+  tableId: string;
+  rowKey: string;
+  cutKey: string;
+  valueMode: AnalysisValueMode;
+}): string {
+  const enc = encodeURIComponent;
+  return `${enc(params.tableId)}|${enc(params.rowKey)}|${enc(params.cutKey)}|${params.valueMode}`;
+}
+
+export function parseAnalysisCellId(cellId: string): {
+  tableId: string;
+  rowKey: string;
+  cutKey: string;
+  valueMode: AnalysisValueMode;
+} | null {
+  const parts = cellId.split("|");
+  if (parts.length !== 4) return null;
+  const [rawTableId, rawRowKey, rawCutKey, rawValueMode] = parts;
+  if (!rawTableId || !rawRowKey || !rawCutKey || !rawValueMode) return null;
+  if (rawValueMode !== "pct" && rawValueMode !== "count" && rawValueMode !== "n" && rawValueMode !== "mean") return null;
+  try {
+    return {
+      tableId: decodeURIComponent(rawTableId),
+      rowKey: decodeURIComponent(rawRowKey),
+      cutKey: decodeURIComponent(rawCutKey),
+      valueMode: rawValueMode,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export interface AnalysisCellSummary {
+  cellId: string;
+  tableId: string;
+  tableTitle: string;
+  questionId: string | null;
+  rowKey: string;
+  rowLabel: string;
+  cutKey: string;
+  cutName: string;
+  groupName: string | null;
+  valueMode: AnalysisValueMode;
+  displayValue: string;
+  pct: number | null;
+  count: number | null;
+  n: number | null;
+  mean: number | null;
+  baseN: number | null;
+  sigHigherThan: string[];
+  sigVsTotal: string | null;
+  sourceRefs: AnalysisSourceRef[];
+}
+
+export type AnalysisCellConfirmedResult = AnalysisCellSummary & { status: "confirmed" };
+
+export interface AnalysisCellConfirmationFailure {
+  status: "not_found" | "invalid_row" | "invalid_cut" | "unavailable";
+  tableId: string;
+  rowKey?: string;
+  cutKey?: string;
+  message: string;
+  allowedRowKeys?: string[];
+  allowedCutKeys?: string[];
+}
+
+export type AnalysisCellConfirmationResult = AnalysisCellConfirmedResult | AnalysisCellConfirmationFailure;
+
+export function isAnalysisCellSummary(value: unknown): value is AnalysisCellSummary {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.cellId === "string"
+    && typeof record.tableId === "string"
+    && typeof record.rowKey === "string"
+    && typeof record.cutKey === "string"
+    && typeof record.valueMode === "string";
+}
 
 export interface AnalysisQuestionContextItem {
   column: string;

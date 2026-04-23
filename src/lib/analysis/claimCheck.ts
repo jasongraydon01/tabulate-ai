@@ -1,10 +1,13 @@
 import { isToolUIPart, type UIMessage } from "ai";
 
+import { extractAnalysisCiteMarkers } from "@/lib/analysis/citeAnchors";
 import { FETCH_TABLE_TOOL_TYPE } from "@/lib/analysis/toolLabels";
-import type {
-  AnalysisGroundingRef,
-  AnalysisSourceRef,
-  AnalysisTableCard,
+import {
+  parseAnalysisCellId,
+  type AnalysisCellSummary,
+  type AnalysisGroundingRef,
+  type AnalysisSourceRef,
+  type AnalysisTableCard,
 } from "@/lib/analysis/types";
 
 export interface AnalysisTurnGroundingEvent {
@@ -12,6 +15,7 @@ export interface AnalysisTurnGroundingEvent {
   toolCallId: string;
   sourceRefs: AnalysisSourceRef[];
   tableCard?: AnalysisTableCard;
+  cellSummary?: AnalysisCellSummary;
 }
 
 export interface AnalysisSessionTableArtifact {
@@ -34,15 +38,21 @@ export interface ClaimCheckResult {
   injectedTableCards: InjectedAnalysisTableCard[];
 }
 
-const NUMERIC_CLAIM_PATTERNS = [
-  /\b\d+(?:\.\d+)?%/i,
+// Narrow detector used only by the freelancing-log regression detector in the
+// route post-pass. Unlike the old claim-check, this does not gate repair — it
+// warns when the assistant quoted a specific number while making zero
+// `confirmCitation` calls and emitting zero cite markers, so we can notice
+// model-workflow regressions without blocking good prose.
+const UNCITED_NUMERIC_PATTERNS = [
+  /\b\d+(?:\.\d+)?%/,
   /\bn\s*=\s*\d+\b/i,
-  /\bbase\s*(?:size|n)?\s*(?:of|is|was)?\s*\d+\b/i,
-  /\bmean\b/i,
-  /\bsignificant(?:ly)?\b/i,
-  /\b\d+(?:\.\d+)?\s+points?\b/i,
-  /\b(?:higher|lower|up|down)\s+than\b/i,
 ];
+
+export function detectUncitedSpecificNumbers(text: string): boolean {
+  const normalized = text.trim();
+  if (!normalized) return false;
+  return UNCITED_NUMERIC_PATTERNS.some((pattern) => pattern.test(normalized));
+}
 
 const MAX_CONTEXT_REFS = 2;
 const PLACEHOLDER_CITATION_LINE_RE = /^\s*\{\{(?:table|question|banner|survey|source):[^}]+\}\}\s*$/i;
@@ -60,43 +70,58 @@ function stripPlaceholderCitations(text: string): string {
   return compacted;
 }
 
-function hasGroundedClaimSignals(text: string): boolean {
-  const normalized = text.trim();
-  if (!normalized) return false;
-  return NUMERIC_CLAIM_PATTERNS.some((pattern) => pattern.test(normalized));
+function collectRenderedTableCardsByTableId(
+  parts: UIMessage["parts"],
+): Map<string, { toolCallId: string; card: AnalysisTableCard }> {
+  const byTableId = new Map<string, { toolCallId: string; card: AnalysisTableCard }>();
+  for (const part of parts) {
+    if (!isToolUIPart(part) || part.type !== FETCH_TABLE_TOOL_TYPE) continue;
+    if (part.state !== "output-available") continue;
+    if (!part.output || typeof part.output !== "object") continue;
+
+    const card = part.output as AnalysisTableCard;
+    if (card.status !== "available" || typeof card.tableId !== "string") continue;
+
+    // Later-in-sequence wins for the same tableId — usually an intentional
+    // refetch. Matches `renderAnchors.buildTableIdMap`.
+    byTableId.set(card.tableId, { toolCallId: part.toolCallId, card });
+  }
+  return byTableId;
 }
 
-function repairUnsupportedGroundedClaims(): string {
-  return "I don't want to quantify that without a supporting table card in the thread. I can pull the relevant table first and then put numbers on it.";
-}
-
-function buildNumericTableRef(params: {
-  label: string;
-  refId: string;
-  sourceTableId: string;
-  sourceQuestionId?: string | null;
-  anchorId?: string | null;
-  artifactId?: string | null;
-  renderedInCurrentMessage?: boolean;
+function buildCellRef(params: {
+  cellId: string;
+  tableId: string;
+  rowKey: string;
+  cutKey: string;
+  cellSummary?: AnalysisCellSummary;
+  renderedTable?: { toolCallId: string; card: AnalysisTableCard };
 }): AnalysisGroundingRef {
+  const { cellId, tableId, rowKey, cutKey, cellSummary, renderedTable } = params;
+  const label = cellSummary
+    ? `${cellSummary.tableTitle} — ${cellSummary.rowLabel} / ${cellSummary.cutName}`
+    : `${tableId} — ${rowKey} / ${cutKey}`;
+
   return {
-    claimId: "numeric-1",
-    claimType: "numeric",
-    evidenceKind: "table_card",
+    claimId: cellId,
+    claimType: "cell",
+    evidenceKind: "cell",
     refType: "table",
-    refId: params.refId,
-    label: params.label,
-    anchorId: params.anchorId ?? null,
-    artifactId: params.artifactId ?? null,
-    sourceTableId: params.sourceTableId,
-    sourceQuestionId: params.sourceQuestionId ?? null,
-    renderedInCurrentMessage: params.renderedInCurrentMessage ?? false,
+    refId: tableId,
+    label,
+    anchorId: renderedTable?.toolCallId ?? null,
+    artifactId: null,
+    sourceTableId: tableId,
+    sourceQuestionId: cellSummary?.questionId ?? null,
+    rowKey,
+    cutKey,
+    renderedInCurrentMessage: Boolean(renderedTable),
   };
 }
 
 function buildContextRef(ref: AnalysisSourceRef): AnalysisGroundingRef {
   return {
-    claimId: "context-1",
+    claimId: `context-${ref.refType}-${ref.refId}`,
     claimType: "context",
     evidenceKind: "context",
     refType: ref.refType,
@@ -110,7 +135,7 @@ function buildContextRef(ref: AnalysisSourceRef): AnalysisGroundingRef {
   };
 }
 
-function dedupeGroundingRefs(refs: AnalysisGroundingRef[]): AnalysisGroundingRef[] {
+export function dedupeGroundingRefs(refs: AnalysisGroundingRef[]): AnalysisGroundingRef[] {
   const seen = new Set<string>();
   const deduped: AnalysisGroundingRef[] = [];
 
@@ -125,6 +150,8 @@ function dedupeGroundingRefs(refs: AnalysisGroundingRef[]): AnalysisGroundingRef
       ref.artifactId ?? "",
       ref.sourceTableId ?? "",
       ref.sourceQuestionId ?? "",
+      ref.rowKey ?? "",
+      ref.cutKey ?? "",
     ].join("::");
 
     if (seen.has(key)) continue;
@@ -135,95 +162,49 @@ function dedupeGroundingRefs(refs: AnalysisGroundingRef[]): AnalysisGroundingRef
   return deduped;
 }
 
-function collectRenderedTableCards(parts: UIMessage["parts"]): InjectedAnalysisTableCard[] {
-  return parts.flatMap((part) => {
-    if (!isToolUIPart(part) || part.type !== FETCH_TABLE_TOOL_TYPE) return [];
-    if (part.state !== "output-available") return [];
-    if (!part.output || typeof part.output !== "object") return [];
-
-    const card = part.output as AnalysisTableCard;
-    if (card.status !== "available" || typeof card.tableId !== "string") return [];
-
-    return [{
-      toolCallId: part.toolCallId,
-      card,
-    }];
-  });
-}
-
 function isContextRefType(ref: AnalysisSourceRef): boolean {
   return ref.refType !== "table" && ref.refType !== "question";
 }
 
+/**
+ * Walks the assistant text for `[[cite cellIds=...]]` markers and turns every
+ * confirmed cellId into a per-claim `AnalysisGroundingRef` with `claimType: "cell"`.
+ * Context refs from grounding events pass through unchanged. Unlike the prior
+ * regex-based claim-check, this does NOT try to prove a prose number matches a
+ * cell value — that's the deliberate v1 scope. Mechanical-value-match is out.
+ */
 export function resolveAssistantMessageTrust(params: {
   assistantText: string;
   responseParts: UIMessage["parts"];
   groundingEvents: AnalysisTurnGroundingEvent[];
-  priorTableArtifacts: AnalysisSessionTableArtifact[];
 }): ClaimCheckResult {
   const cleanedAssistantText = stripPlaceholderCitations(params.assistantText);
-  const hasGroundedClaims = hasGroundedClaimSignals(cleanedAssistantText);
-  if (!hasGroundedClaims) {
-    return {
-      assistantText: cleanedAssistantText,
-      hasGroundedClaims: false,
-      groundingRefs: [],
-      injectedTableCards: [],
-    };
-  }
 
-  const currentRenderedCards = collectRenderedTableCards(params.responseParts);
-
-  // Every fetchTable call this turn produces a part in the message (rendered
-  // inline via marker, or silently appended as fallback by the renderer).
-  // Treat them all as candidate support for numeric claims.
-  const numericRefs: AnalysisGroundingRef[] = currentRenderedCards.map(({ toolCallId, card }) =>
-    buildNumericTableRef({
-      label: card.title,
-      refId: card.tableId,
-      sourceTableId: card.tableId,
-      sourceQuestionId: card.questionId,
-      anchorId: toolCallId,
-      renderedInCurrentMessage: true,
-    }));
-
-  const injectedTableCards: InjectedAnalysisTableCard[] = [];
-
-  if (numericRefs.length === 0) {
-    // Claim but no fetchTable this turn — look for a prior-turn artifact that
-    // the agent's grounding events referenced. Surface it as a grounding ref
-    // so the evidence panel links back to the original rendered card without
-    // re-injecting a duplicate card in this message.
-    const usedTableIds = new Set(
-      params.groundingEvents
-        .flatMap((event) => event.sourceRefs)
-        .filter((ref) => ref.refType === "table")
-        .map((ref) => ref.refId),
-    );
-
-    for (const artifact of params.priorTableArtifacts) {
-      const matchingTableId = artifact.sourceTableIds.find((tableId) => usedTableIds.has(tableId));
-      if (!matchingTableId) continue;
-
-      numericRefs.push(buildNumericTableRef({
-        label: artifact.title,
-        refId: matchingTableId,
-        sourceTableId: matchingTableId,
-        sourceQuestionId: artifact.sourceQuestionIds[0] ?? null,
-        anchorId: artifact.artifactId,
-        artifactId: artifact.artifactId,
-        renderedInCurrentMessage: false,
-      }));
+  const cellSummariesById = new Map<string, AnalysisCellSummary>();
+  for (const event of params.groundingEvents) {
+    if (event.cellSummary) {
+      cellSummariesById.set(event.cellSummary.cellId, event.cellSummary);
     }
   }
 
-  if (numericRefs.length === 0) {
-    return {
-      assistantText: repairUnsupportedGroundedClaims(),
-      hasGroundedClaims: false,
-      groundingRefs: [],
-      injectedTableCards: [],
-    };
+  const renderedTablesByTableId = collectRenderedTableCardsByTableId(params.responseParts);
+
+  const markers = extractAnalysisCiteMarkers(cleanedAssistantText);
+  const cellRefs: AnalysisGroundingRef[] = [];
+  for (const marker of markers) {
+    for (const cellId of marker.cellIds) {
+      const parsed = parseAnalysisCellId(cellId);
+      if (!parsed) continue;
+
+      cellRefs.push(buildCellRef({
+        cellId,
+        tableId: parsed.tableId,
+        rowKey: parsed.rowKey,
+        cutKey: parsed.cutKey,
+        cellSummary: cellSummariesById.get(cellId),
+        renderedTable: renderedTablesByTableId.get(parsed.tableId),
+      }));
+    }
   }
 
   const contextRefs = params.groundingEvents
@@ -234,8 +215,9 @@ export function resolveAssistantMessageTrust(params: {
 
   return {
     assistantText: cleanedAssistantText,
-    hasGroundedClaims: true,
-    groundingRefs: dedupeGroundingRefs([...numericRefs, ...contextRefs]),
-    injectedTableCards,
+    hasGroundedClaims: cellRefs.length > 0,
+    groundingRefs: dedupeGroundingRefs([...cellRefs, ...contextRefs]),
+    // Kept for backwards-compatible route shape; no injection in v1.
+    injectedTableCards: [],
   };
 }

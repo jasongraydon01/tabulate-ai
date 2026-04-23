@@ -1,7 +1,25 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveAssistantMessageTrust } from "@/lib/analysis/claimCheck";
-import type { AnalysisTableCard } from "@/lib/analysis/types";
+import { buildAnalysisCiteMarker } from "@/lib/analysis/citeAnchors";
+import {
+  detectUncitedSpecificNumbers,
+  resolveAssistantMessageTrust,
+} from "@/lib/analysis/claimCheck";
+import { buildAnalysisCellId, type AnalysisCellSummary, type AnalysisTableCard } from "@/lib/analysis/types";
+
+const TOTAL_CELL_ID = buildAnalysisCellId({
+  tableId: "q1",
+  rowKey: "row_1_csb",
+  cutKey: "__total__::total",
+  valueMode: "pct",
+});
+
+const FEMALE_CELL_ID = buildAnalysisCellId({
+  tableId: "q1",
+  rowKey: "row_1_csb",
+  cutKey: "group:gender::female",
+  valueMode: "pct",
+});
 
 function makeTableCard(overrides: Partial<AnalysisTableCard> = {}): AnalysisTableCard {
   return {
@@ -36,130 +54,158 @@ function makeTableCard(overrides: Partial<AnalysisTableCard> = {}): AnalysisTabl
   };
 }
 
-describe("resolveAssistantMessageTrust", () => {
-  it("ignores non-numeric conversational responses", () => {
+function makeCellSummary(overrides: Partial<AnalysisCellSummary> = {}): AnalysisCellSummary {
+  return {
+    cellId: TOTAL_CELL_ID,
+    tableId: "q1",
+    tableTitle: "Q1 overall",
+    questionId: "Q1",
+    rowKey: "row_1_csb",
+    rowLabel: "CSB",
+    cutKey: "__total__::total",
+    cutName: "Total",
+    groupName: null,
+    valueMode: "pct",
+    displayValue: "58%",
+    pct: 58,
+    count: 236,
+    n: null,
+    mean: null,
+    baseN: 405,
+    sigHigherThan: [],
+    sigVsTotal: null,
+    sourceRefs: [
+      { refType: "table", refId: "q1", label: "Q1 overall" },
+      { refType: "question", refId: "Q1", label: "Q1" },
+    ],
+    ...overrides,
+  };
+}
+
+describe("resolveAssistantMessageTrust (cite-driven)", () => {
+  it("returns no refs for plain interpretation prose with no markers", () => {
     const result = resolveAssistantMessageTrust({
       assistantText: "I would start with overall satisfaction, then check subgroup spread.",
       responseParts: [{ type: "text", text: "I would start with overall satisfaction, then check subgroup spread." }],
       groundingEvents: [],
-      priorTableArtifacts: [],
-    });
-
-    expect(result).toEqual({
-      assistantText: "I would start with overall satisfaction, then check subgroup spread.",
-      hasGroundedClaims: false,
-      groundingRefs: [],
-      injectedTableCards: [],
-    });
-  });
-
-  it("uses a current rendered table card as numeric evidence", () => {
-    const card = makeTableCard();
-
-    const result = resolveAssistantMessageTrust({
-      assistantText: "Overall satisfaction is 45%.",
-      responseParts: [
-        {
-          type: "tool-fetchTable",
-          toolCallId: "tool-1",
-          state: "output-available",
-          input: { tableId: "q1" },
-          output: card,
-        },
-        { type: "text", text: "Overall satisfaction is 45%." },
-      ],
-      groundingEvents: [],
-      priorTableArtifacts: [],
-    });
-
-    expect(result.hasGroundedClaims).toBe(true);
-    expect(result.injectedTableCards).toEqual([]);
-    expect(result.groundingRefs).toEqual([
-      expect.objectContaining({
-        claimId: "numeric-1",
-        claimType: "numeric",
-        evidenceKind: "table_card",
-        refType: "table",
-        refId: "q1",
-        anchorId: "tool-1",
-      }),
-    ]);
-  });
-
-  it("reuses a prior table artifact when this turn only references the table without fetching", () => {
-    const card = makeTableCard();
-
-    const result = resolveAssistantMessageTrust({
-      assistantText: "Overall satisfaction is 45%.",
-      responseParts: [{ type: "text", text: "Overall satisfaction is 45%." }],
-      groundingEvents: [
-        {
-          toolName: "searchRunCatalog",
-          toolCallId: "search-1",
-          sourceRefs: [{ refType: "table", refId: "q1", label: "Q1 overall" }],
-          tableCard: card,
-        },
-      ],
-      priorTableArtifacts: [{
-        artifactId: "artifact-1",
-        title: "Q1 overall",
-        sourceTableIds: ["q1"],
-        sourceQuestionIds: ["Q1"],
-        payload: card,
-      }],
-    });
-
-    expect(result.injectedTableCards).toEqual([]);
-    expect(result.groundingRefs).toEqual([
-      expect.objectContaining({
-        artifactId: "artifact-1",
-        anchorId: "artifact-1",
-        renderedInCurrentMessage: false,
-      }),
-    ]);
-  });
-
-  it("repairs unsupported numeric claims when there is no table evidence path", () => {
-    const result = resolveAssistantMessageTrust({
-      assistantText: "Overall satisfaction is 45%.",
-      responseParts: [{ type: "text", text: "Overall satisfaction is 45%." }],
-      groundingEvents: [],
-      priorTableArtifacts: [],
     });
 
     expect(result.hasGroundedClaims).toBe(false);
-    expect(result.injectedTableCards).toEqual([]);
     expect(result.groundingRefs).toEqual([]);
-    expect(result.assistantText).toContain("supporting table card");
+    expect(result.injectedTableCards).toEqual([]);
   });
 
-  it("strips leaked placeholder citation tokens from assistant text", () => {
-    const card = makeTableCard();
+  it("builds one cell ref per cellId inside a single cite marker", () => {
+    const marker = buildAnalysisCiteMarker([TOTAL_CELL_ID]);
+    const assistantText = `Awareness is 58% overall.${marker}`;
 
     const result = resolveAssistantMessageTrust({
-      assistantText: [
-        "These three tables help flesh it out:",
-        "",
-        "{{table:f10__standard_overview}}",
-        "",
-        "{{table:f11__standard_overview}}",
-        "",
-        "---",
-        "",
-        "The age story gets sharper now.",
-      ].join("\n"),
+      assistantText,
+      responseParts: [{ type: "text", text: assistantText }],
+      groundingEvents: [
+        {
+          toolName: "confirmCitation",
+          toolCallId: "confirm-1",
+          sourceRefs: makeCellSummary().sourceRefs,
+          cellSummary: makeCellSummary(),
+        },
+      ],
+    });
+
+    expect(result.hasGroundedClaims).toBe(true);
+    expect(result.groundingRefs).toHaveLength(1);
+    const ref = result.groundingRefs[0]!;
+    expect(ref.claimType).toBe("cell");
+    expect(ref.evidenceKind).toBe("cell");
+    expect(ref.refType).toBe("table");
+    expect(ref.refId).toBe("q1");
+    expect(ref.rowKey).toBe("row_1_csb");
+    expect(ref.cutKey).toBe("__total__::total");
+    expect(ref.sourceTableId).toBe("q1");
+    expect(ref.sourceQuestionId).toBe("Q1");
+    expect(ref.label).toContain("CSB");
+  });
+
+  it("emits one ref per cellId when a multi-cell marker is used", () => {
+    const marker = buildAnalysisCiteMarker([TOTAL_CELL_ID, FEMALE_CELL_ID]);
+    const assistantText = `Awareness is 58% overall, higher among women.${marker}`;
+
+    const result = resolveAssistantMessageTrust({
+      assistantText,
+      responseParts: [{ type: "text", text: assistantText }],
+      groundingEvents: [
+        {
+          toolName: "confirmCitation",
+          toolCallId: "confirm-1",
+          sourceRefs: [],
+          cellSummary: makeCellSummary(),
+        },
+        {
+          toolName: "confirmCitation",
+          toolCallId: "confirm-2",
+          sourceRefs: [],
+          cellSummary: makeCellSummary({
+            cellId: FEMALE_CELL_ID,
+            cutKey: "group:gender::female",
+            cutName: "Female",
+            groupName: "Gender",
+          }),
+        },
+      ],
+    });
+
+    expect(result.groundingRefs.filter((ref) => ref.claimType === "cell")).toHaveLength(2);
+  });
+
+  it("marks refs renderedInCurrentMessage=true when the cited table was rendered this turn", () => {
+    const marker = buildAnalysisCiteMarker([TOTAL_CELL_ID]);
+    const assistantText = `Awareness is 58%.${marker}`;
+
+    const result = resolveAssistantMessageTrust({
+      assistantText,
       responseParts: [
         {
           type: "tool-fetchTable",
           toolCallId: "tool-1",
           state: "output-available",
           input: { tableId: "q1" },
-          output: card,
+          output: makeTableCard(),
         },
-        { type: "text", text: "placeholder" },
+        { type: "text", text: assistantText },
       ],
+      groundingEvents: [
+        {
+          toolName: "confirmCitation",
+          toolCallId: "confirm-1",
+          sourceRefs: [],
+          cellSummary: makeCellSummary(),
+        },
+      ],
+    });
+
+    const cellRef = result.groundingRefs.find((ref) => ref.claimType === "cell");
+    expect(cellRef).toBeDefined();
+    expect(cellRef!.renderedInCurrentMessage).toBe(true);
+    expect(cellRef!.anchorId).toBe("tool-1");
+  });
+
+  it("strips leaked placeholder citation tokens from assistant text", () => {
+    const assistantText = [
+      "These three tables help flesh it out:",
+      "",
+      "{{table:f10__standard_overview}}",
+      "",
+      "{{table:f11__standard_overview}}",
+      "",
+      "---",
+      "",
+      "The age story gets sharper now.",
+    ].join("\n");
+
+    const result = resolveAssistantMessageTrust({
+      assistantText,
+      responseParts: [{ type: "text", text: assistantText }],
       groundingEvents: [],
-      priorTableArtifacts: [],
     });
 
     expect(result.assistantText).toBe([
@@ -167,5 +213,35 @@ describe("resolveAssistantMessageTrust", () => {
       "",
       "The age story gets sharper now.",
     ].join("\n"));
+  });
+
+  it("silently ignores unparseable cellIds inside cite markers", () => {
+    const assistantText = `Value.[[cite cellIds=not_a_real_cell_id]] End.`;
+    const result = resolveAssistantMessageTrust({
+      assistantText,
+      responseParts: [{ type: "text", text: assistantText }],
+      groundingEvents: [],
+    });
+    expect(result.hasGroundedClaims).toBe(false);
+    expect(result.groundingRefs).toEqual([]);
+  });
+});
+
+describe("detectUncitedSpecificNumbers", () => {
+  it("fires on a percent", () => {
+    expect(detectUncitedSpecificNumbers("Awareness is 58% overall.")).toBe(true);
+  });
+
+  it("fires on a base-n pattern", () => {
+    expect(detectUncitedSpecificNumbers("The base was n=405.")).toBe(true);
+  });
+
+  it("does not fire on interpretation prose", () => {
+    expect(detectUncitedSpecificNumbers("Awareness is notably higher in the older segment.")).toBe(false);
+  });
+
+  it("does not fire on empty input", () => {
+    expect(detectUncitedSpecificNumbers("")).toBe(false);
+    expect(detectUncitedSpecificNumbers("   ")).toBe(false);
   });
 });
