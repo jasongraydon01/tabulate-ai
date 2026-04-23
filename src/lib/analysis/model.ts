@@ -91,6 +91,7 @@ function getAnalysisOpenAIResponsesProviderOptions():
   const reasoningEffort = parseAnalysisReasoningEffort(
     process.env.ANALYSIS_REASONING_EFFORT,
     "ANALYSIS_REASONING_EFFORT",
+    "medium",
   );
   const textVerbosity = parseAnalysisTextVerbosity(process.env.ANALYSIS_TEXT_VERBOSITY);
   const reasoningSummary = parseAnalysisReasoningSummary(process.env.ANALYSIS_REASONING_SUMMARY);

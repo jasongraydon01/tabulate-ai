@@ -94,6 +94,18 @@ describe("analysis model config", () => {
     expect(getAnalysisModelId()).toBe("gpt-5.4-nano");
   });
 
+  it("defaults OpenAI analysis reasoning effort to medium when ANALYSIS_REASONING_EFFORT is unset", () => {
+    vi.stubEnv("AI_PROVIDER", "openai");
+    vi.stubEnv("OPENAI_API_KEY", "sk-test-key-12345");
+    vi.stubEnv("ANALYSIS_MODEL", "gpt-5.4-mini");
+
+    expect(getAnalysisProviderOptions()).toEqual({
+      openai: {
+        reasoningEffort: "medium",
+      },
+    });
+  });
+
   it("builds OpenAI analysis provider options when reasoning and verbosity are configured", () => {
     vi.stubEnv("AI_PROVIDER", "openai");
     vi.stubEnv("OPENAI_API_KEY", "sk-test-key-12345");
