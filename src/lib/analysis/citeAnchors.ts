@@ -5,8 +5,8 @@
 //   [[cite cellId=<id>]]               (singular alias; same parsing)
 //
 // Each cellId is `encodeURIComponent(tableId)|encodeURIComponent(rowKey)|
-// encodeURIComponent(cutKey)|<valueMode>` as produced by
-// `buildAnalysisCellId` in `@/lib/analysis/types`.
+// encodeURIComponent(cutKey)` as produced by `buildAnalysisCellId` in
+// `@/lib/analysis/types`.
 //
 // This module is a sibling to renderAnchors.ts and deliberately kept disjoint
 // — one parser change must not regress the other.

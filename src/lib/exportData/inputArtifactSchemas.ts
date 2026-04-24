@@ -47,7 +47,25 @@ export const ResultsTableRowFormatSchema = z.object({
   decimals: z.number().int(),
 });
 
-export const ResultsTableRowSchema = z.object({
+export const ResultsTableCellMetricsSchema = z.object({
+  pct: z.number().nullable(),
+  count: z.number().nullable(),
+  n: z.number().nullable(),
+  mean: z.number().nullable(),
+  median: z.number().nullable(),
+  stddev: z.number().nullable(),
+  stderr: z.number().nullable(),
+});
+
+export const ResultsTableCellSchema = z.object({
+  cutKey: z.string(),
+  value: z.number().nullable(),
+  metrics: ResultsTableCellMetricsSchema,
+  sigHigherThan: z.array(z.string()),
+  sigVsTotal: z.union([z.literal('higher'), z.literal('lower'), z.null()]),
+});
+
+const LegacyResultsTableRowSchema = z.object({
   rowKey: z.string(),
   label: z.string(),
   rowKind: z.string(),
@@ -64,6 +82,11 @@ export const ResultsTableRowSchema = z.object({
     z.literal('stderr'),
   ]),
   format: ResultsTableRowFormatSchema,
+  cells: z.array(ResultsTableCellSchema).optional(),
+});
+
+export const ResultsTableRowSchema = LegacyResultsTableRowSchema.extend({
+  cells: z.array(ResultsTableCellSchema),
 });
 
 const ResultsTableValueSchema = z.object({
@@ -96,7 +119,7 @@ export const ResultsTableEntrySchema = z.object({
   tableType: z.string().optional(),
   data: z.record(ResultsTableCutSchema).optional(),
   columns: z.array(ResultsTableColumnSchema).optional(),
-  rows: z.array(ResultsTableRowSchema).optional(),
+  rows: z.array(LegacyResultsTableRowSchema).optional(),
 }).passthrough();
 
 export const ResultsTablesArtifactSchema = z.object({
@@ -115,6 +138,31 @@ export const FinalResultsTableEntrySchema = ResultsTableEntrySchema.extend({
   data: z.record(ResultsTableCutSchema),
   columns: z.array(ResultsTableColumnSchema),
   rows: z.array(ResultsTableRowSchema),
+}).superRefine((table, ctx) => {
+  const expectedCutKeys = table.columns.map((column) => column.cutKey);
+
+  for (const [rowIndex, row] of table.rows.entries()) {
+    const actualCutKeys = row.cells.map((cell) => cell.cutKey);
+
+    if (actualCutKeys.length !== expectedCutKeys.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["rows", rowIndex, "cells"],
+        message: `Row ${row.rowKey} cells length (${actualCutKeys.length}) did not match columns length (${expectedCutKeys.length}).`,
+      });
+      continue;
+    }
+
+    for (const [cellIndex, cutKey] of actualCutKeys.entries()) {
+      if (cutKey === expectedCutKeys[cellIndex]) continue;
+
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["rows", rowIndex, "cells", cellIndex, "cutKey"],
+        message: `Row ${row.rowKey} cell cut order must match table.columns.`,
+      });
+    }
+  }
 });
 
 export const ResultsTablesFinalContractSchema = ResultsTablesArtifactSchema.extend({

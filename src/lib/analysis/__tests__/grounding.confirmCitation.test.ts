@@ -34,12 +34,32 @@ function buildContractRows(
       kind: "percent" | "number";
       decimals: number;
     };
+    cells: Array<{
+      cutKey: string;
+      value: number | null;
+      metrics: {
+        pct: number | null;
+        count: number | null;
+        n: number | null;
+        mean: number | null;
+        median: number | null;
+        stddev: number | null;
+        stderr: number | null;
+      };
+      sigHigherThan?: string[];
+      sigVsTotal?: "higher" | "lower" | null;
+    }>;
   }>,
 ) {
-  return rows.map((row) => ({
+  return rows.map(({ cells, ...row }) => ({
     indent: 0,
     isNet: false,
     ...row,
+    cells: cells.map((cell) => ({
+      ...cell,
+      sigHigherThan: cell.sigHigherThan ?? [],
+      sigVsTotal: cell.sigVsTotal ?? null,
+    })),
   }));
 }
 
@@ -61,8 +81,32 @@ function makeContext(overrides: Partial<AnalysisGroundingContext> = {}): Analysi
           { cutKey: "group:gender::male", cutName: "Male", groupKey: "group:gender", groupName: "Gender", statLetter: "B", baseN: 50, isTotal: false },
         ]),
         rows: buildContractRows([
-          { rowKey: "row_0_1", label: "Very satisfied", rowKind: "value", statType: null, valueType: "pct", format: { kind: "percent", decimals: 0 } },
-          { rowKey: "row_1_2", label: "Somewhat satisfied", rowKind: "value", statType: null, valueType: "pct", format: { kind: "percent", decimals: 0 } },
+          {
+            rowKey: "row_0_1",
+            label: "Very satisfied",
+            rowKind: "value",
+            statType: null,
+            valueType: "pct",
+            format: { kind: "percent", decimals: 0 },
+            cells: [
+              { cutKey: "__total__::total", value: 45, metrics: { pct: 45, count: 54, n: 120, mean: null, median: null, stddev: null, stderr: null } },
+              { cutKey: "group:gender::female", value: 54.3, metrics: { pct: 54.3, count: 38, n: 70, mean: null, median: null, stddev: null, stderr: null }, sigHigherThan: ["B"] },
+              { cutKey: "group:gender::male", value: 32, metrics: { pct: 32, count: 16, n: 50, mean: null, median: null, stddev: null, stderr: null }, sigVsTotal: "lower" },
+            ],
+          },
+          {
+            rowKey: "row_1_2",
+            label: "Somewhat satisfied",
+            rowKind: "value",
+            statType: null,
+            valueType: "pct",
+            format: { kind: "percent", decimals: 0 },
+            cells: [
+              { cutKey: "__total__::total", value: 35, metrics: { pct: 35, count: 42, n: 120, mean: null, median: null, stddev: null, stderr: null } },
+              { cutKey: "group:gender::female", value: 25.7, metrics: { pct: 25.7, count: 18, n: 70, mean: null, median: null, stddev: null, stderr: null } },
+              { cutKey: "group:gender::male", value: 48, metrics: { pct: 48, count: 24, n: 50, mean: null, median: null, stddev: null, stderr: null } },
+            ],
+          },
         ]),
         data: {
           Total: {
@@ -94,8 +138,32 @@ function makeContext(overrides: Partial<AnalysisGroundingContext> = {}): Analysi
           { cutKey: "group:region::agree", cutName: "Agree!", groupKey: "group:region", groupName: "Region", statLetter: "B", baseN: 45, isTotal: false },
         ]),
         rows: buildContractRows([
-          { rowKey: "row_0_1", label: "Familiarity", rowKind: "value", statType: null, valueType: "pct", format: { kind: "percent", decimals: 0 } },
-          { rowKey: "row_1_2", label: "Familiarity", rowKind: "value", statType: null, valueType: "pct", format: { kind: "percent", decimals: 0 } },
+          {
+            rowKey: "row_0_1",
+            label: "Familiarity",
+            rowKind: "value",
+            statType: null,
+            valueType: "pct",
+            format: { kind: "percent", decimals: 0 },
+            cells: [
+              { cutKey: "__total__::total", value: 40, metrics: { pct: 40, count: 40, n: 100, mean: null, median: null, stddev: null, stderr: null } },
+              { cutKey: "group:gender::agree", value: 47.3, metrics: { pct: 47.3, count: 26, n: 55, mean: null, median: null, stddev: null, stderr: null } },
+              { cutKey: "group:region::agree", value: 31.1, metrics: { pct: 31.1, count: 14, n: 45, mean: null, median: null, stddev: null, stderr: null } },
+            ],
+          },
+          {
+            rowKey: "row_1_2",
+            label: "Familiarity",
+            rowKind: "value",
+            statType: null,
+            valueType: "pct",
+            format: { kind: "percent", decimals: 0 },
+            cells: [
+              { cutKey: "__total__::total", value: 25, metrics: { pct: 25, count: 25, n: 100, mean: null, median: null, stddev: null, stderr: null } },
+              { cutKey: "group:gender::agree", value: 23.6, metrics: { pct: 23.6, count: 13, n: 55, mean: null, median: null, stddev: null, stderr: null } },
+              { cutKey: "group:region::agree", value: 26.7, metrics: { pct: 26.7, count: 12, n: 45, mean: null, median: null, stddev: null, stderr: null } },
+            ],
+          },
         ]),
         data: {
           Total: {
@@ -205,7 +273,6 @@ describe("confirmCitation", () => {
       tableId: "q1_overall",
       rowKey: "row_0_1",
       cutKey: TOTAL_CUT_KEY,
-      valueMode: "pct",
     }));
     expect(result.sourceRefs.some((ref) => ref.refType === "table")).toBe(true);
     expect(result.sourceRefs.some((ref) => ref.refType === "question")).toBe(true);
@@ -291,20 +358,6 @@ describe("confirmCitation", () => {
     expect(result.allowedCutKeys).toBeDefined();
     expect(result.allowedCutKeys!).toContain(TOTAL_CUT_KEY);
     expect(result.allowedCutKeys!).toContain(FEMALE_CUT_KEY);
-  });
-
-  it("respects the requested valueMode when supplied", () => {
-    const result = confirmCitation(makeContext(), {
-      tableId: "q1_overall",
-      rowKey: "row_0_1",
-      cutKey: TOTAL_CUT_KEY,
-      valueMode: "count",
-    });
-
-    expect(result.status).toBe("confirmed");
-    if (result.status !== "confirmed") return;
-    expect(result.valueMode).toBe("pct");
-    expect(result.displayValue).toBe("45%");
   });
 
   it("confirms a cell from semantic row and column labels", () => {
@@ -416,20 +469,6 @@ describe("confirmCitation", () => {
     ]);
   });
 
-  it("respects valueMode on the semantic path when supplied", () => {
-    const result = confirmCitation(makeContext(), {
-      tableId: "q1_overall",
-      rowLabel: "Very satisfied",
-      columnLabel: "Total",
-      valueMode: "count",
-    });
-
-    expect(result.status).toBe("confirmed");
-    if (result.status !== "confirmed") return;
-    expect(result.valueMode).toBe("pct");
-    expect(result.displayValue).toBe("45%");
-  });
-
   it("returns numeric display values for stat rows even when the source metric lives on pct", () => {
     const statContext = makeContext({
       tables: {
@@ -442,7 +481,17 @@ describe("confirmCitation", () => {
             { cutKey: "__total__::total", cutName: "Total", groupKey: "__total__", groupName: "Total", statLetter: "T", baseN: 245, isTotal: true },
           ]),
           rows: buildContractRows([
-            { rowKey: "B1r2_row_10", label: "Std Dev", rowKind: "stat", statType: "stddev", valueType: "stddev", format: { kind: "number", decimals: 2 } },
+            {
+              rowKey: "B1r2_row_10",
+              label: "Std Dev",
+              rowKind: "stat",
+              statType: "stddev",
+              valueType: "stddev",
+              format: { kind: "number", decimals: 2 },
+              cells: [
+                { cutKey: "__total__::total", value: 1.07, metrics: { pct: 1.07, count: null, n: 245, mean: null, median: null, stddev: null, stderr: null } },
+              ],
+            },
           ]),
           data: {
             Total: {
@@ -468,7 +517,6 @@ describe("confirmCitation", () => {
       tableId: "q4_frequency_stats",
       rowKey: "B1r2_row_10",
       cutKey: "__total__::total",
-      valueMode: "mean",
     }));
   });
 });

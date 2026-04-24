@@ -99,6 +99,24 @@ interface FinalTableRowFormat {
   decimals: number;
 }
 
+interface FinalTableCellMetrics {
+  pct: number | null;
+  count: number | null;
+  n: number | null;
+  mean: number | null;
+  median: number | null;
+  stddev: number | null;
+  stderr: number | null;
+}
+
+interface FinalTableCell {
+  cutKey: string;
+  value: number | null;
+  metrics: FinalTableCellMetrics;
+  sigHigherThan: string[];
+  sigVsTotal: "higher" | "lower" | null;
+}
+
 interface FinalTableRow {
   rowKey: string;
   label: string;
@@ -108,6 +126,7 @@ interface FinalTableRow {
   isNet: boolean;
   valueType: "pct" | "count" | "n" | "mean" | "median" | "stddev" | "stderr";
   format: FinalTableRowFormat;
+  cells: FinalTableCell[];
 }
 
 export interface FinalTableContractEntry extends ResultsTableEntry {
@@ -136,9 +155,16 @@ function isResultsRowValue(value: unknown): value is ResultsRowValue {
 
 function isTotalCut(cutName: string, cut: ResultsCutData): boolean {
   if (normalizeText(cutName) === "total") return true;
-  const firstRow = Object.values(cut).find(isResultsRowValue);
-  if (!firstRow) return false;
-  return normalizeText(firstRow.groupName) === "total";
+  const groupNames = Object.values(cut)
+    .filter(isResultsRowValue)
+    .map((row) => normalizeText(row.groupName))
+    .filter((groupName) => groupName.length > 0);
+
+  if (groupNames.some((groupName) => groupName !== "total")) {
+    return false;
+  }
+
+  return groupNames.length > 0 && groupNames.every((groupName) => groupName === "total");
 }
 
 function deriveCutGroupKey(groupName: string | null, cutName: string, isTotal: boolean): string {
@@ -254,7 +280,7 @@ function deriveRowFormat(valueType: FinalTableRow["valueType"]): FinalTableRowFo
   }
 }
 
-function buildFinalRow(
+function buildFinalRowMetadata(
   rowKey: string,
   row: ComputeRow | undefined,
   resultRow: ResultsRowValue | undefined,
@@ -279,7 +305,78 @@ function buildFinalRow(
     isNet: Boolean(row?.isNet ?? resultRow?.isNet),
     valueType,
     format: deriveRowFormat(valueType),
+    cells: [],
   };
+}
+
+function normalizeSigHigherThan(value: ResultsRowValue["sig_higher_than"]): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.split("").filter((entry) => entry.trim().length > 0);
+  }
+
+  return [];
+}
+
+function buildFinalCellMetrics(resultRow: ResultsRowValue | undefined): FinalTableCellMetrics {
+  return {
+    pct: typeof resultRow?.pct === "number" && Number.isFinite(resultRow.pct) ? resultRow.pct : null,
+    count: typeof resultRow?.count === "number" && Number.isFinite(resultRow.count) ? resultRow.count : null,
+    n: typeof resultRow?.n === "number" && Number.isFinite(resultRow.n) ? resultRow.n : null,
+    mean: typeof resultRow?.mean === "number" && Number.isFinite(resultRow.mean) ? resultRow.mean : null,
+    median: typeof resultRow?.median === "number" && Number.isFinite(resultRow.median) ? resultRow.median : null,
+    stddev: typeof resultRow?.sd === "number" && Number.isFinite(resultRow.sd) ? resultRow.sd : null,
+    stderr: typeof resultRow?.std_err === "number" && Number.isFinite(resultRow.std_err) ? resultRow.std_err : null,
+  };
+}
+
+function resolveFinalCellValue(
+  metrics: FinalTableCellMetrics,
+  valueType: FinalTableRow["valueType"],
+): number | null {
+  switch (valueType) {
+    case "count":
+      return metrics.count ?? metrics.n ?? metrics.pct ?? metrics.mean ?? metrics.median ?? metrics.stddev ?? metrics.stderr;
+    case "n":
+      return metrics.n ?? metrics.count ?? metrics.pct ?? metrics.mean ?? metrics.median ?? metrics.stddev ?? metrics.stderr;
+    case "mean":
+      return metrics.mean ?? metrics.pct ?? metrics.count ?? metrics.n ?? metrics.median ?? metrics.stddev ?? metrics.stderr;
+    case "median":
+      return metrics.median ?? metrics.mean ?? metrics.pct ?? metrics.count ?? metrics.n ?? metrics.stddev ?? metrics.stderr;
+    case "stddev":
+      return metrics.stddev ?? metrics.pct ?? metrics.mean ?? metrics.count ?? metrics.n ?? metrics.stderr ?? metrics.median;
+    case "stderr":
+      return metrics.stderr ?? metrics.pct ?? metrics.mean ?? metrics.count ?? metrics.n ?? metrics.stddev ?? metrics.median;
+    case "pct":
+    default:
+      return metrics.pct ?? metrics.count ?? metrics.n ?? metrics.mean ?? metrics.median ?? metrics.stddev ?? metrics.stderr;
+  }
+}
+
+function buildFinalRowCells(
+  columns: FinalTableColumn[],
+  table: ResultsTableEntry,
+  row: FinalTableRow,
+): FinalTableCell[] {
+  return columns.map((column) => {
+    const cut = table.data?.[column.cutName];
+    const rawRow = cut?.[row.rowKey];
+    const resultRow = isResultsRowValue(rawRow) ? rawRow : undefined;
+    const metrics = buildFinalCellMetrics(resultRow);
+
+    return {
+      cutKey: column.cutKey,
+      value: resolveFinalCellValue(metrics, row.valueType),
+      metrics,
+      sigHigherThan: normalizeSigHigherThan(resultRow?.sig_higher_than),
+      sigVsTotal: resultRow?.sig_vs_total === "higher" || resultRow?.sig_vs_total === "lower"
+        ? resultRow.sig_vs_total
+        : null,
+    };
+  });
 }
 
 function buildBannerColumnLookup(metadata: ResultsMetadata | undefined): Map<string, { groupName: string; statLetter: string | null; order: number }> {
@@ -389,7 +486,7 @@ function buildDemoBannerRows(
     const row = index === 0
       ? { label: "Total", rowKind: "value", statType: null, indent: 0, isNet: false }
       : { label: cuts[index - 1]?.name, rowKind: "value", statType: null, indent: 0, isNet: false };
-    return buildFinalRow(rowKey, row, resultRow, tableType);
+    return buildFinalRowMetadata(rowKey, row, resultRow, tableType);
   });
 }
 
@@ -416,7 +513,7 @@ function buildFinalTableRows(
     return computeRows.map((row, index) => {
       const rowKey = rowKeys[index]!;
       const resultRow = totalCut && isResultsRowValue(totalCut[rowKey]) ? totalCut[rowKey] : undefined;
-      return buildFinalRow(rowKey, row, resultRow, tableType);
+      return buildFinalRowMetadata(rowKey, row, resultRow, tableType);
     });
   }
 
@@ -444,11 +541,17 @@ export function buildFinalTableContractEntry(
       .map((entry) => [entry.tableId, entry]),
   );
   const computeTable = computeTables.get(tableId);
+  const columns = buildFinalTableColumns(table, metadata, computePackage);
+  const rows = buildFinalTableRows(tableId, table, computeTable, computePackage)
+    .map((row) => ({
+      ...row,
+      cells: buildFinalRowCells(columns, table, row),
+    }));
 
   return {
     ...table,
-    columns: buildFinalTableColumns(table, metadata, computePackage),
-    rows: buildFinalTableRows(tableId, table, computeTable, computePackage),
+    columns,
+    rows,
   };
 }
 

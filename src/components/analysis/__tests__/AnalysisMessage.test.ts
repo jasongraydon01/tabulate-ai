@@ -216,7 +216,7 @@ describe("AnalysisMessage trace presentation", () => {
   });
 
   it("hides the Evidence block when inline citations already surface rendered cell refs", () => {
-    const cellId = "q1|row_0_1|__total__%3A%3Atotal|pct";
+    const cellId = "q1|row_0_1|__total__%3A%3Atotal";
     const message: UIMessage = {
       id: "assistant-inline-only",
       role: "assistant",
@@ -405,7 +405,7 @@ describe("AnalysisMessage trace presentation", () => {
   });
 
   it("renders cite chips inline with the sentence and labels them with the question id", () => {
-    const cellId = "q1|row_0_1|__total__%3A%3Atotal|pct";
+    const cellId = "q1|row_0_1|__total__%3A%3Atotal";
     const assistantMessage: UIMessage = {
       id: "assistant-cite-1",
       role: "assistant",
@@ -458,7 +458,7 @@ describe("AnalysisMessage trace presentation", () => {
   });
 
   it("falls back to the table id when citation metadata is unavailable", () => {
-    const cellId = "q1|row_0_1|__total__%3A%3Atotal|pct";
+    const cellId = "q1|row_0_1|__total__%3A%3Atotal";
     const assistantMessage: UIMessage = {
       id: "assistant-cite-fallback",
       role: "assistant",
@@ -479,7 +479,7 @@ describe("AnalysisMessage trace presentation", () => {
   });
 
   it("uses evidence metadata to label citations with the question id when confirmCitation metadata is unavailable", () => {
-    const cellId = "a3__standard_overview|A3r2_row_2|group%3Aage%20group%20hids3%3A%3A18%2024|pct";
+    const cellId = "a3__standard_overview|A3r2_row_2|group%3Aage%20group%20hids3%3A%3A18%2024";
     const assistantMessage: UIMessage = {
       id: "assistant-cite-evidence-meta",
       role: "assistant",
@@ -519,7 +519,7 @@ describe("AnalysisMessage trace presentation", () => {
   });
 
   it("filters inline-covered cell refs out of the Evidence block while preserving uncited support", () => {
-    const citedCellId = "q1|row_0_1|__total__%3A%3Atotal|pct";
+    const citedCellId = "q1|row_0_1|__total__%3A%3Atotal";
     const message: UIMessage = {
       id: "assistant-partial-evidence",
       role: "assistant",
@@ -644,14 +644,14 @@ describe("AnalysisMessage reveal helpers", () => {
   });
 
   it("holds incomplete cite markers out of the stable text window while streaming", () => {
-    expect(splitAnalysisStableTextWindow("Overall is 45%.[[cite cellIds=q1|r|c|pct", true)).toEqual({
+    expect(splitAnalysisStableTextWindow("Overall is 45%.[[cite cellIds=q1|r|c", true)).toEqual({
       stableText: "Overall is 45%.",
-      unstableTail: "[[cite cellIds=q1|r|c|pct",
+      unstableTail: "[[cite cellIds=q1|r|c",
     });
   });
 
   it("keeps citation markers attached to the sentence they support", () => {
-    const cite = buildAnalysisCiteMarker(["q1|row_1|__total__%3A%3Atotal|pct"]);
+    const cite = buildAnalysisCiteMarker(["q1|row_1|__total__%3A%3Atotal"]);
 
     expect(splitAnalysisTextForReveal(`Overall is 45%.${cite} Next sentence.`)).toEqual([
       `Overall is 45%.${cite} `,

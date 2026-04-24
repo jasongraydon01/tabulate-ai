@@ -108,6 +108,24 @@ interface RawTableRowFormat {
   decimals: number;
 }
 
+interface RawTableCellMetrics {
+  pct: number | null;
+  count: number | null;
+  n: number | null;
+  mean: number | null;
+  median: number | null;
+  stddev: number | null;
+  stderr: number | null;
+}
+
+interface RawTableContractCell {
+  cutKey: string;
+  value: number | null;
+  metrics: RawTableCellMetrics;
+  sigHigherThan: string[];
+  sigVsTotal: "higher" | "lower" | null;
+}
+
 interface RawTableContractRow {
   rowKey: string;
   label: string;
@@ -117,6 +135,7 @@ interface RawTableContractRow {
   isNet: boolean;
   valueType: "pct" | "count" | "n" | "mean" | "median" | "stddev" | "stderr";
   format: RawTableRowFormat;
+  cells?: RawTableContractCell[];
 }
 
 interface RawBannerColumn {
@@ -386,16 +405,6 @@ function formatDisplayValue(value: number | null, format: RawTableRowFormat | nu
   return formatNumber(value, format?.decimals ?? 0);
 }
 
-function normalizeSigHigherThan(value: string[] | string | null | undefined): string[] {
-  if (Array.isArray(value)) return value.filter((entry) => typeof entry === "string");
-  if (typeof value === "string" && value.trim().length > 0) return value.split("");
-  return [];
-}
-
-function isRawTableRow(value: unknown): value is RawTableRow {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
 function parsePositiveInteger(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt((value ?? "").trim(), 10);
   if (Number.isFinite(parsed) && parsed > 0) {
@@ -434,36 +443,11 @@ function getRowMetadataByKey(table: RawTableEntry): Map<string, RawTableContract
   return new Map(getOrderedTableRows(table).map((row) => [row.rowKey, row]));
 }
 
-function getNumericMetric(row: RawTableRow, keys: string[]): number | null {
-  const record = row as Record<string, unknown>;
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === "number" && Number.isFinite(value)) {
-      return value;
-    }
-  }
-
-  return null;
-}
-
-function resolveContractRowValue(row: RawTableRow, contractRow: RawTableContractRow | undefined): number | null {
-  switch (contractRow?.valueType) {
-    case "count":
-      return getNumericMetric(row, ["count", "n", "pct", "mean", "median", "sd", "std_err"]);
-    case "n":
-      return getNumericMetric(row, ["n", "count", "pct", "mean", "median", "sd", "std_err"]);
-    case "mean":
-      return getNumericMetric(row, ["mean", "pct", "count", "n", "median", "sd", "std_err"]);
-    case "median":
-      return getNumericMetric(row, ["median", "mean", "pct", "count", "n", "sd", "std_err"]);
-    case "stddev":
-      return getNumericMetric(row, ["sd", "pct", "mean", "count", "n", "std_err", "median"]);
-    case "stderr":
-      return getNumericMetric(row, ["std_err", "pct", "mean", "count", "n", "sd", "median"]);
-    case "pct":
-    default:
-      return getNumericMetric(row, ["pct", "count", "n", "mean", "median", "sd", "std_err"]);
-  }
+function getRowCellByCutKey(
+  row: RawTableContractRow,
+  cutKey: string,
+): RawTableContractCell | null {
+  return row.cells?.find((cell) => cell.cutKey === cutKey) ?? null;
 }
 
 function resolveCellValueMode(contractRow: RawTableContractRow | undefined): AnalysisValueMode {
@@ -696,7 +680,9 @@ export function hydrateResultsTablesArtifactForAnalysis(
 
   const tables = Object.fromEntries(
     Object.entries(parsed.tables).map(([tableId, table]) => {
-      if (table.columns && table.rows) {
+      const hasCompleteContractRows = Array.isArray(table.rows)
+        && table.rows.every((row) => Array.isArray(row.cells));
+      if (table.columns && hasCompleteContractRows) {
         return [tableId, table];
       }
 
@@ -1491,31 +1477,26 @@ export function getTableCard(
   } = buildSelectedCuts(table);
   const columns: AnalysisTableCardColumn[] = columnGroups.flatMap((group) => group.columns);
   const rows = orderedRows.map((contractRow) => {
-    const rowKey = contractRow.rowKey;
-    const firstRow = allCuts.map((cut) => cut.cut[rowKey]).find(isRawTableRow);
-
     const values: AnalysisTableCardCell[] = allCuts.map((cut) => {
-      const row = cut.cut[rowKey];
-      const rawRow = isRawTableRow(row) ? row : {};
-      const rawValue = resolveContractRowValue(rawRow, contractRow);
+      const cell = getRowCellByCutKey(contractRow, cut.cutKey);
 
       return {
         cutKey: cut.cutKey,
         cutName: cut.cutName,
-        rawValue,
-        displayValue: formatDisplayValue(rawValue, contractRow.format),
-        count: typeof rawRow.count === "number" ? rawRow.count : null,
-        pct: typeof rawRow.pct === "number" ? rawRow.pct : null,
-        n: typeof rawRow.n === "number" ? rawRow.n : null,
-        mean: typeof rawRow.mean === "number" ? rawRow.mean : null,
-        sigHigherThan: normalizeSigHigherThan(rawRow.sig_higher_than),
-        sigVsTotal: typeof rawRow.sig_vs_total === "string" ? rawRow.sig_vs_total : null,
+        rawValue: cell?.value ?? null,
+        displayValue: formatDisplayValue(cell?.value ?? null, contractRow.format),
+        count: cell?.metrics.count ?? null,
+        pct: cell?.metrics.pct ?? null,
+        n: cell?.metrics.n ?? null,
+        mean: cell?.metrics.mean ?? null,
+        sigHigherThan: cell?.sigHigherThan ?? [],
+        sigVsTotal: cell?.sigVsTotal ?? null,
       };
     });
 
     return {
-      rowKey,
-      label: contractRow.label ?? firstRow?.label ?? rowKey,
+      rowKey: contractRow.rowKey,
+      label: contractRow.label ?? contractRow.rowKey,
       rowKind: contractRow.rowKind,
       statType: contractRow.statType,
       indent: contractRow.indent,
@@ -1722,7 +1703,6 @@ type LegacyConfirmCitationArgs = {
   tableId: string;
   rowKey: string;
   cutKey: string;
-  valueMode?: AnalysisValueMode;
 };
 
 type SemanticConfirmCitationArgs = {
@@ -1731,7 +1711,6 @@ type SemanticConfirmCitationArgs = {
   columnLabel: string;
   rowRef?: string;
   columnRef?: string;
-  valueMode?: AnalysisValueMode;
 };
 
 function isLegacyConfirmCitationArgs(
@@ -1744,22 +1723,18 @@ function buildResolvedCellSummary(params: {
   table: RawTableEntry;
   tableId: string;
   title: string;
-  rowKey: string;
-  rowLabel: string;
-  rowMetadata: RawTableContractRow | undefined;
+  rowMetadata: RawTableContractRow;
   selectedCut: SelectedCut;
 }): AnalysisCellSummary {
-  const rawRowValue = params.selectedCut.cut[params.rowKey];
-  const rawRow = isRawTableRow(rawRowValue) ? rawRowValue : {};
-  const rawValue = resolveContractRowValue(rawRow, params.rowMetadata);
-  const displayValue = formatDisplayValue(rawValue, params.rowMetadata?.format);
+  const cell = getRowCellByCutKey(params.rowMetadata, params.selectedCut.cutKey);
+  const rawValue = cell?.value ?? null;
+  const displayValue = formatDisplayValue(rawValue, params.rowMetadata.format);
   const valueMode = resolveCellValueMode(params.rowMetadata);
 
   const cellId = buildAnalysisCellId({
     tableId: params.tableId,
-    rowKey: params.rowKey,
+    rowKey: params.rowMetadata.rowKey,
     cutKey: params.selectedCut.cutKey,
-    valueMode,
   });
 
   return {
@@ -1767,20 +1742,20 @@ function buildResolvedCellSummary(params: {
     tableId: params.tableId,
     tableTitle: params.title,
     questionId: params.table.questionId ?? null,
-    rowKey: params.rowKey,
-    rowLabel: params.rowLabel,
+    rowKey: params.rowMetadata.rowKey,
+    rowLabel: params.rowMetadata.label ?? params.rowMetadata.rowKey,
     cutKey: params.selectedCut.cutKey,
     cutName: params.selectedCut.cutName,
     groupName: params.selectedCut.groupName,
     valueMode,
     displayValue,
-    pct: typeof rawRow.pct === "number" ? rawRow.pct : null,
-    count: typeof rawRow.count === "number" ? rawRow.count : null,
-    n: typeof rawRow.n === "number" ? rawRow.n : null,
-    mean: typeof rawRow.mean === "number" ? rawRow.mean : null,
+    pct: cell?.metrics.pct ?? null,
+    count: cell?.metrics.count ?? null,
+    n: cell?.metrics.n ?? null,
+    mean: cell?.metrics.mean ?? null,
     baseN: params.selectedCut.baseN,
-    sigHigherThan: normalizeSigHigherThan(rawRow.sig_higher_than),
-    sigVsTotal: typeof rawRow.sig_vs_total === "string" ? rawRow.sig_vs_total : null,
+    sigHigherThan: cell?.sigHigherThan ?? [],
+    sigVsTotal: cell?.sigVsTotal ?? null,
     sourceRefs: resolveCellSourceRefs({
       tableId: params.tableId,
       title: params.title,
@@ -1894,7 +1869,15 @@ export function confirmCitation(
     }
 
     const rowMetadata = rowMetadataByKey.get(args.rowKey);
-    const rowLabel = rowMetadata?.label ?? args.rowKey;
+    if (!rowMetadata) {
+      return {
+        status: "invalid_row",
+        tableId: args.tableId,
+        rowKey: args.rowKey,
+        message: `Row "${args.rowKey}" is not a row on table ${args.tableId}. Pick one of the allowed rowKeys and retry.`,
+        allowedRowKeys: orderedRows.slice(0, ALLOWED_HINT_LIMIT).map((row) => row.rowKey),
+      };
+    }
 
     return {
       status: "confirmed",
@@ -1902,8 +1885,6 @@ export function confirmCitation(
         table,
         tableId: args.tableId,
         title,
-        rowKey: args.rowKey,
-        rowLabel,
         rowMetadata,
         selectedCut,
       }),
@@ -1950,7 +1931,14 @@ export function confirmCitation(
 
   const resolvedRowKey = matchingRowKeys[0]!;
   const rowMetadata = rowMetadataByKey.get(resolvedRowKey);
-  const resolvedRowLabel = rowMetadata?.label ?? resolvedRowKey;
+  if (!rowMetadata) {
+    return {
+      status: "invalid_row",
+      tableId: args.tableId,
+      message: `Row "${resolvedRowKey}" is not a row on table ${args.tableId}. Pick one of the allowed rowKeys and retry.`,
+      candidateRows: buildRowCandidates(orderedRows, normalizedRowLabel),
+    };
+  }
 
   let matchingCuts = allCuts.filter((cut) => normalizeText(cut.cutName) === normalizedColumnLabel);
   if (matchingCuts.length === 0) {
@@ -1994,8 +1982,6 @@ export function confirmCitation(
       table,
       tableId: args.tableId,
       title,
-      rowKey: resolvedRowKey,
-      rowLabel: resolvedRowLabel,
       rowMetadata,
       selectedCut,
     }),

@@ -14,14 +14,12 @@ const CELL_A = buildAnalysisCellId({
   tableId: "A3",
   rowKey: "row_1_csb",
   cutKey: "__total__::total",
-  valueMode: "pct",
 });
 
 const CELL_B = buildAnalysisCellId({
   tableId: "A3",
   rowKey: "row_1_csb",
   cutKey: "group:age::25-34",
-  valueMode: "pct",
 });
 
 describe("analysis cite markers", () => {

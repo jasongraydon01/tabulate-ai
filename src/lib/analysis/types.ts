@@ -208,37 +208,33 @@ export interface AnalysisTableCardFailure {
 
 export type AnalysisTableCardResult = AnalysisTableCard | AnalysisTableCardFailure;
 
-// cellId is a composite of (tableId, rowKey, cutKey, valueMode). cutKey can
-// contain colons and spaces (e.g. `group:age::under 30`), so each component is
+// cellId is a composite of (tableId, rowKey, cutKey). cutKey can contain
+// colons and spaces (e.g. `group:age::under 30`), so each component is
 // URI-encoded before being joined with `|` — that keeps the id safe to drop
 // unquoted into a `[[cite cellIds=...]]` marker without ambiguity.
 export function buildAnalysisCellId(params: {
   tableId: string;
   rowKey: string;
   cutKey: string;
-  valueMode: AnalysisValueMode;
 }): string {
   const enc = encodeURIComponent;
-  return `${enc(params.tableId)}|${enc(params.rowKey)}|${enc(params.cutKey)}|${params.valueMode}`;
+  return `${enc(params.tableId)}|${enc(params.rowKey)}|${enc(params.cutKey)}`;
 }
 
 export function parseAnalysisCellId(cellId: string): {
   tableId: string;
   rowKey: string;
   cutKey: string;
-  valueMode: AnalysisValueMode;
 } | null {
   const parts = cellId.split("|");
-  if (parts.length !== 4) return null;
-  const [rawTableId, rawRowKey, rawCutKey, rawValueMode] = parts;
-  if (!rawTableId || !rawRowKey || !rawCutKey || !rawValueMode) return null;
-  if (rawValueMode !== "pct" && rawValueMode !== "count" && rawValueMode !== "n" && rawValueMode !== "mean") return null;
+  if (parts.length !== 3) return null;
+  const [rawTableId, rawRowKey, rawCutKey] = parts;
+  if (!rawTableId || !rawRowKey || !rawCutKey) return null;
   try {
     return {
       tableId: decodeURIComponent(rawTableId),
       rowKey: decodeURIComponent(rawRowKey),
       cutKey: decodeURIComponent(rawCutKey),
-      valueMode: rawValueMode,
     };
   } catch {
     return null;

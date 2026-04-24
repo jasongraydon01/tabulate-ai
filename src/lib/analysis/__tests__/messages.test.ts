@@ -383,7 +383,7 @@ describe("analysis message helpers", () => {
             input: { tableId: "q1", rowKey: "row_1", cutKey: "__total__::total" },
             output: {
               status: "confirmed",
-              cellId: "q1|row_1|__total__%3A%3Atotal|pct",
+              cellId: "q1|row_1|__total__%3A%3Atotal",
               tableId: "q1",
               tableTitle: "Q1 overall",
               questionId: "Q1",

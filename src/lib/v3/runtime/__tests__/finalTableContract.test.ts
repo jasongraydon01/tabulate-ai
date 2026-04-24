@@ -142,6 +142,68 @@ describe("buildFinalTablesContract", () => {
         format: { kind: "number", decimals: 2 },
       },
     ]);
+    expect(table.rows[0]?.cells).toEqual([
+      {
+        cutKey: "__total__::total",
+        value: 20,
+        metrics: {
+          pct: 20,
+          count: null,
+          n: 245,
+          mean: null,
+          median: null,
+          stddev: null,
+          stderr: null,
+        },
+        sigHigherThan: [],
+        sigVsTotal: null,
+      },
+      {
+        cutKey: "group:gender::female",
+        value: 22,
+        metrics: {
+          pct: 22,
+          count: null,
+          n: 120,
+          mean: null,
+          median: null,
+          stddev: null,
+          stderr: null,
+        },
+        sigHigherThan: [],
+        sigVsTotal: null,
+      },
+      {
+        cutKey: "group:gender::male",
+        value: 18,
+        metrics: {
+          pct: 18,
+          count: null,
+          n: 125,
+          mean: null,
+          median: null,
+          stddev: null,
+          stderr: null,
+        },
+        sigHigherThan: [],
+        sigVsTotal: null,
+      },
+    ]);
+    expect(table.rows[4]?.cells[0]).toEqual({
+      cutKey: "__total__::total",
+      value: 1.07,
+      metrics: {
+        pct: 1.07,
+        count: null,
+        n: 245,
+        mean: null,
+        median: null,
+        stddev: null,
+        stderr: null,
+      },
+      sigHigherThan: [],
+      sigVsTotal: null,
+    });
   });
 
   it("uses compute cut ordering and preserves numeric mean_rows display semantics", () => {
@@ -214,7 +276,16 @@ describe("buildFinalTablesContract", () => {
       "Segment A",
       "Segment B",
     ]);
-    expect(table.rows).toEqual([
+    expect(table.rows.map((row) => ({
+      rowKey: row.rowKey,
+      label: row.label,
+      rowKind: row.rowKind,
+      statType: row.statType,
+      indent: row.indent,
+      isNet: row.isNet,
+      valueType: row.valueType,
+      format: row.format,
+    }))).toEqual([
       {
         rowKey: "Q5_1",
         label: "Item A",
@@ -234,6 +305,53 @@ describe("buildFinalTablesContract", () => {
         isNet: false,
         valueType: "mean",
         format: { kind: "number", decimals: 1 },
+      },
+    ]);
+    expect(table.rows[0]?.cells).toEqual([
+      {
+        cutKey: "__total__::total",
+        value: 3.7,
+        metrics: {
+          pct: null,
+          count: null,
+          n: 100,
+          mean: 3.7,
+          median: 4,
+          stddev: 1,
+          stderr: 0.1,
+        },
+        sigHigherThan: [],
+        sigVsTotal: null,
+      },
+      {
+        cutKey: "group:segments::segment a",
+        value: 4,
+        metrics: {
+          pct: null,
+          count: null,
+          n: 60,
+          mean: 4,
+          median: 4,
+          stddev: 0.8,
+          stderr: 0.1,
+        },
+        sigHigherThan: [],
+        sigVsTotal: null,
+      },
+      {
+        cutKey: "group:segments::segment b",
+        value: 3.1,
+        metrics: {
+          pct: null,
+          count: null,
+          n: 40,
+          mean: 3.1,
+          median: 3,
+          stddev: 1.2,
+          stderr: 0.19,
+        },
+        sigHigherThan: [],
+        sigVsTotal: null,
       },
     ]);
   });
@@ -299,7 +417,17 @@ describe("buildFinalTablesContract", () => {
       },
     );
 
-    expect(result.tables._demo_banner_x_banner.rows).toEqual([
+    const rows = result.tables._demo_banner_x_banner.rows;
+    expect(rows.map((row) => ({
+      rowKey: row.rowKey,
+      label: row.label,
+      rowKind: row.rowKind,
+      statType: row.statType,
+      indent: row.indent,
+      isNet: row.isNet,
+      valueType: row.valueType,
+      format: row.format,
+    }))).toEqual([
       {
         rowKey: "row_0_Total",
         label: "Total",
@@ -340,6 +468,14 @@ describe("buildFinalTablesContract", () => {
         valueType: "pct",
         format: { kind: "percent", decimals: 0 },
       },
+    ]);
+    expect(rows[2]?.cells.map((cell) => ({
+      cutKey: cell.cutKey,
+      value: cell.value,
+    }))).toEqual([
+      { cutKey: "__total__::total", value: 55 },
+      { cutKey: "group:gender::female", value: 100 },
+      { cutKey: "group:gender::male", value: 0 },
     ]);
   });
 });

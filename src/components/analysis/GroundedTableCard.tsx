@@ -538,7 +538,6 @@ export function GroundedTableCard({
                       tableId: card.tableId,
                       rowKey: row.rowKey,
                       cutKey: resolvedCutKey,
-                      valueMode: card.valueMode,
                     });
 
                     return (

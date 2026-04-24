@@ -57,13 +57,63 @@ function buildContractRows(
       kind: "percent" | "number";
       decimals: number;
     };
+    cells: Array<{
+      cutKey: string;
+      value: number | null;
+      metrics: {
+        pct: number | null;
+        count: number | null;
+        n: number | null;
+        mean: number | null;
+        median: number | null;
+        stddev: number | null;
+        stderr: number | null;
+      };
+      sigHigherThan?: string[];
+      sigVsTotal?: "higher" | "lower" | null;
+    }>;
   }>,
 ) {
-  return rows.map((row) => ({
+  return rows.map(({ cells, ...row }) => ({
     indent: 0,
     isNet: false,
     ...row,
+    cells: cells.map((cell) => ({
+      ...cell,
+      sigHigherThan: cell.sigHigherThan ?? [],
+      sigVsTotal: cell.sigVsTotal ?? null,
+    })),
   }));
+}
+
+function buildLongContractRows() {
+  return buildContractRows(
+    Array.from({ length: 10 }, (_, index) => ({
+      rowKey: `row_${index}_${index + 1}`,
+      label: `Option ${index + 1}`,
+      rowKind: "value",
+      statType: null,
+      valueType: "pct" as const,
+      format: { kind: "percent" as const, decimals: 0 },
+      cells: [
+        {
+          cutKey: "__total__::total",
+          value: 12 - index,
+          metrics: { pct: 12 - index, count: 12 - index, n: 120, mean: null, median: null, stddev: null, stderr: null },
+        },
+        {
+          cutKey: "group:gender::female",
+          value: 10 - index,
+          metrics: { pct: 10 - index, count: 10 - index, n: 70, mean: null, median: null, stddev: null, stderr: null },
+        },
+        {
+          cutKey: "group:gender::male",
+          value: 8 - index,
+          metrics: { pct: 8 - index, count: 8 - index, n: 50, mean: null, median: null, stddev: null, stderr: null },
+        },
+      ],
+    })),
+  );
 }
 
 const context: AnalysisGroundingContext = {
@@ -90,8 +140,36 @@ const context: AnalysisGroundingContext = {
         { cutKey: "group:region::west", cutName: "West", groupKey: "group:region", groupName: "Region", statLetter: "D", baseN: 60, isTotal: false },
       ]),
       rows: buildContractRows([
-        { rowKey: "row_0_1", label: "Very satisfied", rowKind: "value", statType: null, valueType: "pct", format: { kind: "percent", decimals: 0 } },
-        { rowKey: "row_1_2", label: "Somewhat satisfied", rowKind: "value", statType: null, valueType: "pct", format: { kind: "percent", decimals: 0 } },
+        {
+          rowKey: "row_0_1",
+          label: "Very satisfied",
+          rowKind: "value",
+          statType: null,
+          valueType: "pct",
+          format: { kind: "percent", decimals: 0 },
+          cells: [
+            { cutKey: "__total__::total", value: 45, metrics: { pct: 45, count: 54, n: 120, mean: null, median: null, stddev: null, stderr: null } },
+            { cutKey: "group:gender::female", value: 54.3, metrics: { pct: 54.3, count: 38, n: 70, mean: null, median: null, stddev: null, stderr: null }, sigHigherThan: ["B"] },
+            { cutKey: "group:gender::male", value: 32, metrics: { pct: 32, count: 16, n: 50, mean: null, median: null, stddev: null, stderr: null }, sigVsTotal: "lower" },
+            { cutKey: "group:region::east", value: 51.2, metrics: { pct: 51.2, count: 31, n: 60, mean: null, median: null, stddev: null, stderr: null } },
+            { cutKey: "group:region::west", value: 39.1, metrics: { pct: 39.1, count: 23, n: 60, mean: null, median: null, stddev: null, stderr: null } },
+          ],
+        },
+        {
+          rowKey: "row_1_2",
+          label: "Somewhat satisfied",
+          rowKind: "value",
+          statType: null,
+          valueType: "pct",
+          format: { kind: "percent", decimals: 0 },
+          cells: [
+            { cutKey: "__total__::total", value: 35, metrics: { pct: 35, count: 42, n: 120, mean: null, median: null, stddev: null, stderr: null } },
+            { cutKey: "group:gender::female", value: 25.7, metrics: { pct: 25.7, count: 18, n: 70, mean: null, median: null, stddev: null, stderr: null } },
+            { cutKey: "group:gender::male", value: 48, metrics: { pct: 48, count: 24, n: 50, mean: null, median: null, stddev: null, stderr: null } },
+            { cutKey: "group:region::east", value: 34.8, metrics: { pct: 34.8, count: 21, n: 60, mean: null, median: null, stddev: null, stderr: null } },
+            { cutKey: "group:region::west", value: 33.9, metrics: { pct: 33.9, count: 20, n: 60, mean: null, median: null, stddev: null, stderr: null } },
+          ],
+        },
       ]),
       data: {
         Total: {
@@ -131,7 +209,17 @@ const context: AnalysisGroundingContext = {
         { cutKey: "__total__::total", cutName: "Total", groupKey: "__total__", groupName: "Total", statLetter: "T", baseN: 120, isTotal: true },
       ]),
       rows: buildContractRows([
-        { rowKey: "row_0_1", label: "Mean", rowKind: "stat", statType: "mean", valueType: "mean", format: { kind: "number", decimals: 1 } },
+        {
+          rowKey: "row_0_1",
+          label: "Mean",
+          rowKind: "stat",
+          statType: "mean",
+          valueType: "mean",
+          format: { kind: "number", decimals: 1 },
+          cells: [
+            { cutKey: "__total__::total", value: 3.46, metrics: { pct: null, count: null, n: 120, mean: 3.46, median: null, stddev: null, stderr: null } },
+          ],
+        },
       ]),
       data: {
         Total: {
@@ -151,16 +239,7 @@ const context: AnalysisGroundingContext = {
         { cutKey: "group:gender::female", cutName: "Female", groupKey: "group:gender", groupName: "Gender", statLetter: "A", baseN: 70, isTotal: false },
         { cutKey: "group:gender::male", cutName: "Male", groupKey: "group:gender", groupName: "Gender", statLetter: "B", baseN: 50, isTotal: false },
       ]),
-      rows: buildContractRows(
-        Array.from({ length: 10 }, (_, index) => ({
-          rowKey: `row_${index}_${index + 1}`,
-          label: `Option ${index + 1}`,
-          rowKind: "value",
-          statType: null,
-          valueType: "pct" as const,
-          format: { kind: "percent" as const, decimals: 0 },
-        })),
-      ),
+      rows: buildLongContractRows(),
       data: {
         Total: {
           stat_letter: "T",
@@ -213,12 +292,74 @@ const context: AnalysisGroundingContext = {
         { cutKey: "__total__::total", cutName: "Total", groupKey: "__total__", groupName: "Total", statLetter: "T", baseN: 245, isTotal: true },
       ]),
       rows: buildContractRows([
-        { rowKey: "B1r2_row_1", label: "Top 2 Box", rowKind: "net", statType: null, isNet: true, valueType: "pct", format: { kind: "percent", decimals: 0 } },
-        { rowKey: "B1r2_row_2", label: "Probably would not consider this bank", rowKind: "value", statType: null, indent: 1, valueType: "pct", format: { kind: "percent", decimals: 0 } },
-        { rowKey: "B1r2_row_3", label: "Mean", rowKind: "stat", statType: "mean", valueType: "mean", format: { kind: "number", decimals: 1 } },
-        { rowKey: "B1r2_row_4", label: "Median", rowKind: "stat", statType: "median", valueType: "median", format: { kind: "number", decimals: 1 } },
-        { rowKey: "B1r2_row_10", label: "Std Dev", rowKind: "stat", statType: "stddev", valueType: "stddev", format: { kind: "number", decimals: 2 } },
-        { rowKey: "B1r2_row_11", label: "Std Err", rowKind: "stat", statType: "stderr", valueType: "stderr", format: { kind: "number", decimals: 2 } },
+        {
+          rowKey: "B1r2_row_1",
+          label: "Top 2 Box",
+          rowKind: "net",
+          statType: null,
+          isNet: true,
+          valueType: "pct",
+          format: { kind: "percent", decimals: 0 },
+          cells: [
+            { cutKey: "__total__::total", value: 20, metrics: { pct: 20, count: 49, n: 245, mean: null, median: null, stddev: null, stderr: null } },
+          ],
+        },
+        {
+          rowKey: "B1r2_row_2",
+          label: "Probably would not consider this bank",
+          rowKind: "value",
+          statType: null,
+          indent: 1,
+          valueType: "pct",
+          format: { kind: "percent", decimals: 0 },
+          cells: [
+            { cutKey: "__total__::total", value: 16, metrics: { pct: 16, count: 39, n: 245, mean: null, median: null, stddev: null, stderr: null } },
+          ],
+        },
+        {
+          rowKey: "B1r2_row_3",
+          label: "Mean",
+          rowKind: "stat",
+          statType: "mean",
+          valueType: "mean",
+          format: { kind: "number", decimals: 1 },
+          cells: [
+            { cutKey: "__total__::total", value: 2.7, metrics: { pct: null, count: null, n: 245, mean: 2.7, median: null, stddev: null, stderr: null } },
+          ],
+        },
+        {
+          rowKey: "B1r2_row_4",
+          label: "Median",
+          rowKind: "stat",
+          statType: "median",
+          valueType: "median",
+          format: { kind: "number", decimals: 1 },
+          cells: [
+            { cutKey: "__total__::total", value: 3, metrics: { pct: null, count: null, n: 245, mean: null, median: 3, stddev: null, stderr: null } },
+          ],
+        },
+        {
+          rowKey: "B1r2_row_10",
+          label: "Std Dev",
+          rowKind: "stat",
+          statType: "stddev",
+          valueType: "stddev",
+          format: { kind: "number", decimals: 2 },
+          cells: [
+            { cutKey: "__total__::total", value: 1.07, metrics: { pct: 1.07, count: null, n: 245, mean: null, median: null, stddev: null, stderr: null } },
+          ],
+        },
+        {
+          rowKey: "B1r2_row_11",
+          label: "Std Err",
+          rowKind: "stat",
+          statType: "stderr",
+          valueType: "stderr",
+          format: { kind: "number", decimals: 2 },
+          cells: [
+            { cutKey: "__total__::total", value: 0.07, metrics: { pct: 0.07, count: null, n: 245, mean: null, median: null, stddev: null, stderr: null } },
+          ],
+        },
       ]),
       data: {
         Total: {

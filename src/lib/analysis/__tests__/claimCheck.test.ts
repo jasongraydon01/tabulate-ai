@@ -11,14 +11,12 @@ const TOTAL_CELL_ID = buildAnalysisCellId({
   tableId: "q1",
   rowKey: "row_1_csb",
   cutKey: "__total__::total",
-  valueMode: "pct",
 });
 
 const FEMALE_CELL_ID = buildAnalysisCellId({
   tableId: "q1",
   rowKey: "row_1_csb",
   cutKey: "group:gender::female",
-  valueMode: "pct",
 });
 
 function makeTableCard(overrides: Partial<AnalysisTableCard> = {}): AnalysisTableCard {

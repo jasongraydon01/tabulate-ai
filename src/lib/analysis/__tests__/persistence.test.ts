@@ -229,7 +229,7 @@ describe("buildPersistedAnalysisParts", () => {
 
   it("persists tool-confirmCitation parts inline with the cell summary", () => {
     const cellSummary = {
-      cellId: "q1%7Crow_1_csb%7C__total__%3A%3Atotal%7Cpct",
+      cellId: "q1%7Crow_1_csb%7C__total__%3A%3Atotal",
       tableId: "q1",
       tableTitle: "Q1 overall",
       questionId: "Q1",

@@ -2,7 +2,7 @@
 
 **Purpose:** define the end-state contract for final computed tables so the analysis surface, citations, markdown projection, and other downstream consumers all read the same ordered, display-semantic-aware artifact.
 
-**Status:** active hard-cut implementation outline. Slice B is complete for the current post-R shaping scope; Slice C is partially implemented; Slice D is partially implemented; Slice A and Slice E remain open.
+**Status:** active hard-cut implementation outline. Slice A and Slice B are complete for the current hard-cut scope; Slice C is partially implemented; Slice D is partially implemented; Slice E remains open.
 
 ## Current implementation snapshot (April 24, 2026)
 
@@ -10,9 +10,9 @@ This outline started as a design/alignment document. It now also needs to reflec
 
 ### Current slice status
 
-- **Slice group A — final contract definition:** partially resolved, not complete
-  - We have a working direction for ordered `rows` / `columns` and row-aware display semantics.
-  - We do **not** yet have the final hard-cut decisions on cell structure and stable cell identity.
+- **Slice group A — final contract definition:** complete for current hard-cut scope
+  - `results/tables.json` now treats ordered `columns`, ordered `rows`, and ordered `rows[].cells` as the authoritative final-table contract.
+  - Stable cell identity is now `tableId + rowKey + cutKey`, with row-level display semantics carried by `row.valueType` + `row.format`.
 - **Slice group B — finalization builder:** complete for current scope
   - `src/lib/v3/runtime/finalTableContract.ts` exists as the contract builder.
   - `src/lib/v3/runtime/postV3Processing.ts` now hard-validates the finalized contract after R execution and applies the same shaping path to `tables.json`, `tables-weighted.json`, and `tables-unweighted.json`.
@@ -44,8 +44,6 @@ The following should be treated as real progress, not just exploration:
 
 The following items remain outside the completed scope of this wave:
 
-- final hard-cut decision on cell identity
-- final hard-cut decision on cell storage shape
 - complete removal of transitional analysis compatibility logic
 - full rendered-table / citation / markdown alignment audit
 - downstream consumer cleanup and removal of obsolete abstractions

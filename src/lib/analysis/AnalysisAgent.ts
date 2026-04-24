@@ -44,7 +44,6 @@ const confirmCitationInputSchema = z.object({
   columnLabel: z.string().min(1).max(400).optional(),
   rowRef: z.string().min(1).max(200).optional(),
   columnRef: z.string().min(1).max(400).optional(),
-  valueMode: z.enum(["pct", "count", "n", "mean"]).optional(),
 }).superRefine((value, ctx) => {
   const hasLegacyShape = typeof value.rowKey === "string" && typeof value.cutKey === "string";
   const hasSemanticShape = typeof value.rowLabel === "string" && typeof value.columnLabel === "string";
@@ -65,7 +64,6 @@ function normalizeConfirmCitationInput(input: z.infer<typeof confirmCitationInpu
       tableId: input.tableId,
       rowKey: input.rowKey,
       cutKey: input.cutKey,
-      valueMode: input.valueMode,
     };
   }
 
@@ -76,7 +74,6 @@ function normalizeConfirmCitationInput(input: z.infer<typeof confirmCitationInpu
       columnLabel: input.columnLabel,
       rowRef: input.rowRef,
       columnRef: input.columnRef,
-      valueMode: input.valueMode,
     };
   }
 

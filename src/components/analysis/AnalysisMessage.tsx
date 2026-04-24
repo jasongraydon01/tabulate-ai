@@ -409,7 +409,6 @@ function getEvidenceItemCellId(item: AnalysisEvidenceItem): string | null {
     tableId: item.sourceTableId,
     rowKey: item.rowKey,
     cutKey: item.cutKey,
-    valueMode: "pct",
   });
 }
 
