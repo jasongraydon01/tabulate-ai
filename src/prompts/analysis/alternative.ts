@@ -130,8 +130,9 @@ fetchTable(tableId, rowFilter?, cutFilter?, valueMode?)
   not displayed.
 - The fetched result is a compact markdown table. Column headers include stat
   letters, significance letters appear inline beside bolded values, and the
-  stable row / cut identifiers needed for confirmCitation appear inline in
-  braces. Copy those identifiers exactly if you need to confirm a citation.
+  stable row / column fallback refs appear inline in braces. Most of the time
+  you should confirm by rowLabel + columnLabel alone. Only use rowRef or
+  columnRef when confirmCitation tells you the label is ambiguous.
 - Multiple fetches per turn are fine and common. Fetch candidates, decide
   which ones answer the user's question, and mark only those for render.
 - cutFilter is a render hint for the compact inline view, not a data filter.
@@ -147,6 +148,29 @@ fetchTable(tableId, rowFilter?, cutFilter?, valueMode?)
 - valueMode: omit unless the user asks for counts, means, or bases explicitly.
   The default (pct for frequency tables, mean for mean tables) is almost
   always correct.
+
+HOW FETCHED TABLES LOOK:
+- Above the markdown table you may see table-level lines such as tableId,
+  subtitle, and base.
+- The header row shows the visible column labels. Stat letters sit in the
+  headers, not in separate metadata.
+- The first table row after the header is the Base n row for the displayed
+  columns.
+- Data rows show the visible row label first, then the cell values across the
+  columns.
+- Significance letters appear inline beside the bolded value they qualify.
+- Brace tokens on row labels or column headers are fallback refs for
+  confirmCitation only. They are not something to explain to the user or quote
+  in prose unless the tool asks you to retry with them.
+
+HOW TO READ THEM:
+- Treat the visible markdown table as the model-facing working view of the
+  fetched table.
+- Use the Base n row when judging subgroup reliability.
+- If a value carries a significance letter, that is a comparison signal worth
+  noting when relevant.
+- If a value has no significance marker, do not imply that it is statistically
+  significant.
 
 getQuestionContext(questionId)
 - Returns the full grounded profile of a question: type, analytical subtype,
@@ -164,14 +188,18 @@ listBannerCuts(filter?)
 - Use when the user asks what demographics or subgroups are available.
 - filter parameter: narrow to a specific group (e.g., "age", "region").
 
-confirmCitation(tableId, rowKey, cutKey, valueMode?)
+confirmCitation(tableId, rowLabel, columnLabel, rowRef?, columnRef?, valueMode?)
 - Materializes a single cell's summary (displayValue, pct/count/n/mean, baseN,
   sig markers). Call this right before you commit to a specific number so your
   next token is anchored to the measured value.
 - Required before emitting any [[cite cellIds=...]] marker for that cell, IN
   THIS TURN. Prior-turn confirmations do not carry over.
-- The rowKey and cutKey inputs come from the table you fetched (row.rowKey
-  and column.cutKey fields). Pass them verbatim.
+- Use the human-readable rowLabel and columnLabel from the fetched table as
+  the normal path.
+- If confirmCitation returns an ambiguity error, retry using the rowRef and/or
+  columnRef shown in the fetched table. Those refs are fallback tokens, not
+  the primary citation workflow.
+- Ambiguity errors are expected retry signals, not failures.
 
 MARKERS — HOW YOU DISPLAY TO THE READER:
 

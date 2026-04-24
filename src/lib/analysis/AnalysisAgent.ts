@@ -179,20 +179,25 @@ export async function streamAnalysisResponse({
           confirmCitation: tool({
             description: "Confirm a specific cell before citing its number in prose. Returns the cell summary (displayValue, pct/count/n/mean, baseN, sig markers) plus a stable cellId. Required before emitting any `[[cite cellIds=...]]` marker for that cell IN THIS TURN. Hierarchy: fetch → (optionally) render → confirm → cite.",
             providerOptions: ANALYSIS_ANTHROPIC_EPHEMERAL_CACHE_CONTROL_PROVIDER_OPTIONS,
-            inputSchema: z.object({
-              tableId: z.string().min(1).max(200),
-              rowKey: z.string().min(1).max(200),
-              cutKey: z.string().min(1).max(400),
-              valueMode: z.enum(["pct", "count", "n", "mean"]).optional(),
-            }),
-            execute: async ({ tableId, rowKey, cutKey, valueMode }, options) => executeGroundedTool(
-              "confirmCitation",
-              () => confirmCitation(groundingContext, {
-                tableId,
-                rowKey,
-                cutKey,
-                valueMode,
+            inputSchema: z.union([
+              z.object({
+                tableId: z.string().min(1).max(200),
+                rowKey: z.string().min(1).max(200),
+                cutKey: z.string().min(1).max(400),
+                valueMode: z.enum(["pct", "count", "n", "mean"]).optional(),
               }),
+              z.object({
+                tableId: z.string().min(1).max(200),
+                rowLabel: z.string().min(1).max(400),
+                columnLabel: z.string().min(1).max(400),
+                rowRef: z.string().min(1).max(200).optional(),
+                columnRef: z.string().min(1).max(400).optional(),
+                valueMode: z.enum(["pct", "count", "n", "mean"]).optional(),
+              }),
+            ]),
+            execute: async (input, options) => executeGroundedTool(
+              "confirmCitation",
+              () => confirmCitation(groundingContext, input),
               { toolCallId: options.toolCallId },
             ),
           }),

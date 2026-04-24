@@ -13,6 +13,8 @@ import type {
   AnalysisAvailabilityStatus,
   AnalysisBannerCutsResult,
   AnalysisBannerGroupResult,
+  AnalysisCellConfirmationColumnCandidate,
+  AnalysisCellConfirmationRowCandidate,
   AnalysisCatalogSearchResult,
   AnalysisCellConfirmationResult,
   AnalysisCellSummary,
@@ -1560,6 +1562,107 @@ export function buildFetchTableModelMarkdown(result: AnalysisTableCardResult): s
 
 const ALLOWED_HINT_LIMIT = 20;
 
+type LegacyConfirmCitationArgs = {
+  tableId: string;
+  rowKey: string;
+  cutKey: string;
+  valueMode?: AnalysisValueMode;
+};
+
+type SemanticConfirmCitationArgs = {
+  tableId: string;
+  rowLabel: string;
+  columnLabel: string;
+  rowRef?: string;
+  columnRef?: string;
+  valueMode?: AnalysisValueMode;
+};
+
+function isLegacyConfirmCitationArgs(
+  args: LegacyConfirmCitationArgs | SemanticConfirmCitationArgs,
+): args is LegacyConfirmCitationArgs {
+  return "rowKey" in args && "cutKey" in args;
+}
+
+function buildResolvedCellSummary(params: {
+  table: RawTableEntry;
+  tableId: string;
+  title: string;
+  rowKey: string;
+  rowLabel: string;
+  selectedCut: SelectedCut;
+  valueMode: AnalysisValueMode;
+}): AnalysisCellSummary {
+  const rawRowValue = params.selectedCut.cut[params.rowKey];
+  const rawRow = isRawTableRow(rawRowValue) ? rawRowValue : {};
+  const rawValue = resolveValueForMode(rawRow, params.valueMode);
+  const displayValue = formatCellValue(rawValue, params.valueMode);
+
+  const cellId = buildAnalysisCellId({
+    tableId: params.tableId,
+    rowKey: params.rowKey,
+    cutKey: params.selectedCut.cutKey,
+    valueMode: params.valueMode,
+  });
+
+  return {
+    cellId,
+    tableId: params.tableId,
+    tableTitle: params.title,
+    questionId: params.table.questionId ?? null,
+    rowKey: params.rowKey,
+    rowLabel: params.rowLabel,
+    cutKey: params.selectedCut.cutKey,
+    cutName: params.selectedCut.cutName,
+    groupName: params.selectedCut.groupName,
+    valueMode: params.valueMode,
+    displayValue,
+    pct: typeof rawRow.pct === "number" ? rawRow.pct : null,
+    count: typeof rawRow.count === "number" ? rawRow.count : null,
+    n: typeof rawRow.n === "number" ? rawRow.n : null,
+    mean: typeof rawRow.mean === "number" ? rawRow.mean : null,
+    baseN: params.selectedCut.baseN,
+    sigHigherThan: normalizeSigHigherThan(rawRow.sig_higher_than),
+    sigVsTotal: typeof rawRow.sig_vs_total === "string" ? rawRow.sig_vs_total : null,
+    sourceRefs: resolveCellSourceRefs({
+      tableId: params.tableId,
+      title: params.title,
+      questionId: params.table.questionId ?? null,
+      groupName: params.selectedCut.groupName,
+      cutName: params.selectedCut.cutName,
+    }),
+  };
+}
+
+function buildRowCandidates(
+  allCuts: SelectedCut[],
+  rowKeys: string[],
+  normalizedRowLabel: string,
+): AnalysisCellConfirmationRowCandidate[] {
+  return rowKeys
+    .map((rowKey) => {
+      const firstRowForLabel = allCuts
+        .map((cut) => cut.cut[rowKey])
+        .find(isRawTableRow);
+      const rowLabel = firstRowForLabel?.label ?? rowKey;
+      return { rowLabel, rowRef: rowKey };
+    })
+    .filter((candidate) => normalizeText(candidate.rowLabel) === normalizedRowLabel)
+    .slice(0, ALLOWED_HINT_LIMIT);
+}
+
+function buildColumnCandidates(
+  matchingCuts: SelectedCut[],
+): AnalysisCellConfirmationColumnCandidate[] {
+  return matchingCuts
+    .slice(0, ALLOWED_HINT_LIMIT)
+    .map((cut) => ({
+      columnLabel: cut.cutName,
+      columnRef: cut.cutKey,
+      statLetter: cut.statLetter,
+    }));
+}
+
 function resolveCellSourceRefs(params: {
   tableId: string;
   title: string;
@@ -1586,12 +1689,7 @@ function resolveCellSourceRefs(params: {
 
 export function confirmCitation(
   context: AnalysisGroundingContext,
-  args: {
-    tableId: string;
-    rowKey: string;
-    cutKey: string;
-    valueMode?: AnalysisValueMode;
-  },
+  args: LegacyConfirmCitationArgs | SemanticConfirmCitationArgs,
 ): AnalysisCellConfirmationResult {
   const table = context.tables[args.tableId];
   if (!table) {
@@ -1607,75 +1705,142 @@ export function confirmCitation(
   const valueMode = resolvePreferredValueMode(table.tableType, args.valueMode);
   const rowKeys = collectRowKeys(table);
   const title = deriveTitle(table, args.tableId);
+  const { allCuts } = buildSelectedCuts(table, null, context.bannerGroups);
 
-  if (!rowKeys.includes(args.rowKey)) {
+  if (isLegacyConfirmCitationArgs(args)) {
+    if (!rowKeys.includes(args.rowKey)) {
+      return {
+        status: "invalid_row",
+        tableId: args.tableId,
+        rowKey: args.rowKey,
+        message: `Row "${args.rowKey}" is not a row on table ${args.tableId}. Pick one of the allowed rowKeys and retry.`,
+        allowedRowKeys: rowKeys.slice(0, ALLOWED_HINT_LIMIT),
+      };
+    }
+
+    const selectedCut = allCuts.find((cut) => cut.cutKey === args.cutKey);
+
+    if (!selectedCut) {
+      return {
+        status: "invalid_cut",
+        tableId: args.tableId,
+        rowKey: args.rowKey,
+        cutKey: args.cutKey,
+        message: `Cut "${args.cutKey}" is not a cut on table ${args.tableId}. Pick one of the allowed cutKeys and retry.`,
+        allowedCutKeys: allCuts.slice(0, ALLOWED_HINT_LIMIT).map((cut) => cut.cutKey),
+      };
+    }
+
+    const firstRowForLabel = allCuts
+      .map((cut) => cut.cut[args.rowKey])
+      .find(isRawTableRow);
+    const rowLabel = firstRowForLabel?.label ?? args.rowKey;
+
+    return {
+      status: "confirmed",
+      ...buildResolvedCellSummary({
+        table,
+        tableId: args.tableId,
+        title,
+        rowKey: args.rowKey,
+        rowLabel,
+        selectedCut,
+        valueMode,
+      }),
+    };
+  }
+
+  const normalizedRowLabel = normalizeText(args.rowLabel);
+  const normalizedColumnLabel = normalizeText(args.columnLabel);
+
+  let matchingRowKeys = rowKeys.filter((rowKey) => {
+    const firstRowForLabel = allCuts
+      .map((cut) => cut.cut[rowKey])
+      .find(isRawTableRow);
+    const rowLabel = firstRowForLabel?.label ?? rowKey;
+    return normalizeText(rowLabel) === normalizedRowLabel;
+  });
+
+  if (matchingRowKeys.length === 0) {
     return {
       status: "invalid_row",
       tableId: args.tableId,
-      rowKey: args.rowKey,
-      message: `Row "${args.rowKey}" is not a row on table ${args.tableId}. Pick one of the allowed rowKeys and retry.`,
-      allowedRowKeys: rowKeys.slice(0, ALLOWED_HINT_LIMIT),
+      message: `No row labeled "${args.rowLabel}" was found on table ${args.tableId}. Retry with a rowLabel from the fetched table.`,
+      candidateRows: [],
     };
   }
 
-  const { allCuts } = buildSelectedCuts(table, null, context.bannerGroups);
-  const selectedCut = allCuts.find((cut) => cut.cutKey === args.cutKey);
-
-  if (!selectedCut) {
+  if (typeof args.rowRef === "string") {
+    matchingRowKeys = matchingRowKeys.filter((rowKey) => rowKey === args.rowRef);
+    if (matchingRowKeys.length !== 1) {
+      return {
+        status: "invalid_row",
+        tableId: args.tableId,
+        message: `rowRef "${args.rowRef}" did not resolve a unique row for label "${args.rowLabel}" on table ${args.tableId}.`,
+        candidateRows: buildRowCandidates(allCuts, rowKeys, normalizedRowLabel),
+      };
+    }
+  } else if (matchingRowKeys.length > 1) {
     return {
-      status: "invalid_cut",
+      status: "ambiguous_row",
       tableId: args.tableId,
-      rowKey: args.rowKey,
-      cutKey: args.cutKey,
-      message: `Cut "${args.cutKey}" is not a cut on table ${args.tableId}. Pick one of the allowed cutKeys and retry.`,
-      allowedCutKeys: allCuts.slice(0, ALLOWED_HINT_LIMIT).map((cut) => cut.cutKey),
+      message: `More than one row matches "${args.rowLabel}" on table ${args.tableId}. Retry with rowRef from the fetched table.`,
+      candidateRows: buildRowCandidates(allCuts, matchingRowKeys, normalizedRowLabel),
     };
   }
 
-  const rawRowValue = selectedCut.cut[args.rowKey];
-  const rawRow = isRawTableRow(rawRowValue) ? rawRowValue : {};
-  const rawValue = resolveValueForMode(rawRow, valueMode);
-  const displayValue = formatCellValue(rawValue, valueMode);
-
+  const resolvedRowKey = matchingRowKeys[0]!;
   const firstRowForLabel = allCuts
-    .map((cut) => cut.cut[args.rowKey])
+    .map((cut) => cut.cut[resolvedRowKey])
     .find(isRawTableRow);
-  const rowLabel = firstRowForLabel?.label ?? args.rowKey;
+  const resolvedRowLabel = firstRowForLabel?.label ?? resolvedRowKey;
 
-  const cellId = buildAnalysisCellId({
-    tableId: args.tableId,
-    rowKey: args.rowKey,
-    cutKey: args.cutKey,
-    valueMode,
-  });
+  let matchingCuts = allCuts.filter((cut) => normalizeText(cut.cutName) === normalizedColumnLabel);
+  if (matchingCuts.length === 0) {
+    return {
+      status: "invalid_column",
+      tableId: args.tableId,
+      rowKey: resolvedRowKey,
+      message: `No column labeled "${args.columnLabel}" was found on table ${args.tableId}. Retry with a columnLabel from the fetched table.`,
+      candidateColumns: [],
+    };
+  }
 
-  const summary: AnalysisCellSummary = {
-    cellId,
-    tableId: args.tableId,
-    tableTitle: title,
-    questionId: table.questionId ?? null,
-    rowKey: args.rowKey,
-    rowLabel,
-    cutKey: selectedCut.cutKey,
-    cutName: selectedCut.cutName,
-    groupName: selectedCut.groupName,
-    valueMode,
-    displayValue,
-    pct: typeof rawRow.pct === "number" ? rawRow.pct : null,
-    count: typeof rawRow.count === "number" ? rawRow.count : null,
-    n: typeof rawRow.n === "number" ? rawRow.n : null,
-    mean: typeof rawRow.mean === "number" ? rawRow.mean : null,
-    baseN: selectedCut.baseN,
-    sigHigherThan: normalizeSigHigherThan(rawRow.sig_higher_than),
-    sigVsTotal: typeof rawRow.sig_vs_total === "string" ? rawRow.sig_vs_total : null,
-    sourceRefs: resolveCellSourceRefs({
+  if (typeof args.columnRef === "string") {
+    matchingCuts = matchingCuts.filter((cut) => cut.cutKey === args.columnRef);
+    if (matchingCuts.length !== 1) {
+      return {
+        status: "invalid_column",
+        tableId: args.tableId,
+        rowKey: resolvedRowKey,
+        message: `columnRef "${args.columnRef}" did not resolve a unique column for label "${args.columnLabel}" on table ${args.tableId}.`,
+        candidateColumns: buildColumnCandidates(
+          allCuts.filter((cut) => normalizeText(cut.cutName) === normalizedColumnLabel),
+        ),
+      };
+    }
+  } else if (matchingCuts.length > 1) {
+    return {
+      status: "ambiguous_column",
+      tableId: args.tableId,
+      rowKey: resolvedRowKey,
+      message: `More than one column matches "${args.columnLabel}" on table ${args.tableId}. Retry with columnRef from the fetched table.`,
+      candidateColumns: buildColumnCandidates(matchingCuts),
+    };
+  }
+
+  const selectedCut = matchingCuts[0]!;
+
+  return {
+    status: "confirmed",
+    ...buildResolvedCellSummary({
+      table,
       tableId: args.tableId,
       title,
-      questionId: table.questionId ?? null,
-      groupName: selectedCut.groupName,
-      cutName: selectedCut.cutName,
+      rowKey: resolvedRowKey,
+      rowLabel: resolvedRowLabel,
+      selectedCut,
+      valueMode,
     }),
   };
-
-  return { status: "confirmed", ...summary };
 }

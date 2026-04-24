@@ -247,14 +247,34 @@ export interface AnalysisCellSummary {
 
 export type AnalysisCellConfirmedResult = AnalysisCellSummary & { status: "confirmed" };
 
+export interface AnalysisCellConfirmationRowCandidate {
+  rowLabel: string;
+  rowRef: string;
+}
+
+export interface AnalysisCellConfirmationColumnCandidate {
+  columnLabel: string;
+  columnRef: string;
+  statLetter?: string | null;
+}
+
 export interface AnalysisCellConfirmationFailure {
-  status: "not_found" | "invalid_row" | "invalid_cut" | "unavailable";
+  status:
+    | "not_found"
+    | "invalid_row"
+    | "invalid_cut"
+    | "invalid_column"
+    | "ambiguous_row"
+    | "ambiguous_column"
+    | "unavailable";
   tableId: string;
   rowKey?: string;
   cutKey?: string;
   message: string;
   allowedRowKeys?: string[];
   allowedCutKeys?: string[];
+  candidateRows?: AnalysisCellConfirmationRowCandidate[];
+  candidateColumns?: AnalysisCellConfirmationColumnCandidate[];
 }
 
 export type AnalysisCellConfirmationResult = AnalysisCellConfirmedResult | AnalysisCellConfirmationFailure;

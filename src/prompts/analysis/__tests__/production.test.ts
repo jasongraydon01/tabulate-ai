@@ -48,7 +48,13 @@ describe("analysis agent production prompt", () => {
   it("documents the confirmCitation tool and cite marker only in the alternative prompt", () => {
     expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("confirmCitation");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("compact markdown table");
-    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("stable row / cut identifiers");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("stable row / column fallback refs");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("rowLabel + columnLabel");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("Only use rowRef or");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("HOW FETCHED TABLES LOOK:");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("Base n row");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("HOW TO READ THEM:");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("do not imply that it is statistically");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("THE CITE MARKER:");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).not.toContain("confirmCitation");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).not.toContain("[[cite cellIds=");

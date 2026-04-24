@@ -29,6 +29,7 @@ vi.mock("@/lib/analysis/grounding", () => ({
   getTableCard: vi.fn(async () => ({ status: "available" })),
   getQuestionContext: vi.fn(async () => ({ status: "available" })),
   listBannerCuts: vi.fn(async () => ({ status: "available" })),
+  confirmCitation: vi.fn(async () => ({ status: "confirmed", cellId: "cell-1" })),
   buildFetchTableModelMarkdown: vi.fn(() => "markdown table"),
   sanitizeGroundingToolOutput: vi.fn((value) => value),
   attachRetrievedContextXml: vi.fn((_toolName, value) => value),
@@ -230,6 +231,18 @@ describe("streamAnalysisResponse", () => {
         type: "text",
         value: "markdown table",
       });
+      expect(tools?.confirmCitation.inputSchema.safeParse({
+        tableId: "q1",
+        rowKey: "row_1",
+        cutKey: "cut_1",
+      }).success).toBe(true);
+      expect(tools?.confirmCitation.inputSchema.safeParse({
+        tableId: "q1",
+        rowLabel: "Very satisfied",
+        columnLabel: "Female",
+        rowRef: "row_1",
+        columnRef: "group:gender::female",
+      }).success).toBe(true);
 
       onFinish?.({
         totalUsage: {
