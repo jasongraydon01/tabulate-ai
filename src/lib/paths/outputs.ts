@@ -10,6 +10,22 @@ function looksLikeRepoRoot(candidate: string): boolean {
   }
 }
 
+function findRepoRoot(start: string): string | null {
+  let current = path.resolve(start);
+
+  while (true) {
+    if (looksLikeRepoRoot(current)) {
+      return current;
+    }
+
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return null;
+    }
+    current = parent;
+  }
+}
+
 export function getWorkspaceRoot(): string {
   const candidates = [
     process.env.TABULATE_AI_ROOT,
@@ -19,8 +35,8 @@ export function getWorkspaceRoot(): string {
   ].filter((value): value is string => Boolean(value));
 
   for (const candidate of candidates) {
-    const resolved = path.resolve(candidate);
-    if (looksLikeRepoRoot(resolved)) {
+    const resolved = findRepoRoot(candidate);
+    if (resolved) {
       return resolved;
     }
   }

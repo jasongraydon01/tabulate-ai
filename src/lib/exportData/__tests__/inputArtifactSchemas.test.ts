@@ -106,7 +106,7 @@ describe('required input artifact schemas', () => {
     });
   });
 
-  it('parses results/tables fixture and snapshots key shape', async () => {
+  it('parses legacy results/tables fixture and snapshots key shape', async () => {
     const fixture = await readFixture('results-tables.fixture.json');
     const parsed = ResultsTablesArtifactSchema.parse(fixture);
     const firstTableId = Object.keys(parsed.tables)[0];
@@ -151,6 +151,127 @@ describe('required input artifact schemas', () => {
         ],
       }
     `);
+  });
+
+  it('parses the final-table contract shape for results/tables and snapshots key shape', () => {
+    const parsed = ResultsTablesArtifactSchema.parse({
+      metadata: {
+        generatedAt: '2026-04-24T00:00:00.000Z',
+        tableCount: 1,
+        cutCount: 2,
+        bannerGroups: [
+          {
+            groupName: 'Gender',
+            columns: [
+              { name: 'Female', statLetter: 'A' },
+            ],
+          },
+        ],
+      },
+      tables: {
+        q1_overall: {
+          tableId: 'q1_overall',
+          questionId: 'Q1',
+          questionText: 'Overall satisfaction',
+          tableType: 'frequency',
+          baseText: 'All respondents',
+          tableSubtitle: 'Overall',
+          data: {
+            Total: {
+              stat_letter: 'T',
+              row_0_1: { label: 'Very satisfied', n: 120, count: 54, pct: 45, isNet: false, indent: 0 },
+            },
+            Female: {
+              stat_letter: 'A',
+              row_0_1: { label: 'Very satisfied', groupName: 'Gender', n: 70, count: 38, pct: 54.3, isNet: false, indent: 0 },
+            },
+          },
+          columns: [
+            {
+              cutKey: '__total__::total',
+              cutName: 'Total',
+              groupKey: '__total__',
+              groupName: 'Total',
+              statLetter: 'T',
+              baseN: 120,
+              isTotal: true,
+              order: 0,
+            },
+            {
+              cutKey: 'group:gender::female',
+              cutName: 'Female',
+              groupKey: 'group:gender',
+              groupName: 'Gender',
+              statLetter: 'A',
+              baseN: 70,
+              isTotal: false,
+              order: 1,
+            },
+          ],
+          rows: [
+            {
+              rowKey: 'row_0_1',
+              label: 'Very satisfied',
+              rowKind: 'value',
+              statType: null,
+              indent: 0,
+              isNet: false,
+              valueType: 'pct',
+              format: {
+                kind: 'percent',
+                decimals: 0,
+              },
+            },
+          ],
+        },
+      },
+    });
+    const firstTableId = Object.keys(parsed.tables)[0];
+    expect({
+      topLevelKeys: Object.keys(parsed).sort(),
+      metadataKeys: Object.keys(parsed.metadata).sort(),
+      tableCount: Object.keys(parsed.tables).length,
+      firstTableKeys: Object.keys(parsed.tables[firstTableId] ?? {}).sort(),
+    }).toMatchInlineSnapshot(`
+      {
+        "firstTableKeys": [
+          "baseText",
+          "columns",
+          "data",
+          "questionId",
+          "questionText",
+          "rows",
+          "tableId",
+          "tableSubtitle",
+          "tableType",
+        ],
+        "metadataKeys": [
+          "bannerGroups",
+          "cutCount",
+          "generatedAt",
+          "tableCount",
+        ],
+        "tableCount": 1,
+        "topLevelKeys": [
+          "metadata",
+          "tables",
+        ],
+      }
+    `);
+  });
+
+  it('accepts legacy results/tables entries that omit ordered columns and rows', () => {
+    expect(() =>
+      ResultsTablesArtifactSchema.parse({
+        metadata: {},
+        tables: {
+          q1_overall: {
+            tableId: 'q1_overall',
+            data: {},
+          },
+        },
+      }),
+    ).not.toThrow();
   });
 
   it('parses crosstab-output-raw fixture and snapshots key shape', async () => {

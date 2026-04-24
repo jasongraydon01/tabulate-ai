@@ -15,6 +15,13 @@ describe('outputs path helpers', () => {
     expect(getOutputsBaseDir()).toBe('/Users/jasongraydon01/tabulate-ai/outputs');
   });
 
+  it('walks up from nested directories to find the repo root', () => {
+    vi.stubEnv('INIT_CWD', '/Users/jasongraydon01/tabulate-ai/src/lib/worker');
+
+    expect(getWorkspaceRoot()).toBe('/Users/jasongraydon01/tabulate-ai');
+    expect(getOutputsBaseDir()).toBe('/Users/jasongraydon01/tabulate-ai/outputs');
+  });
+
   it('accepts repo-scoped output directories and rejects outside paths', () => {
     vi.stubEnv('INIT_CWD', '/Users/jasongraydon01/tabulate-ai');
 

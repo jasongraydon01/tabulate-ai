@@ -2,7 +2,60 @@
 
 **Purpose:** define the end-state contract for final computed tables so the analysis surface, citations, markdown projection, and other downstream consumers all read the same ordered, display-semantic-aware artifact.
 
-**Status:** design outline for alignment before slice-by-slice implementation planning.
+**Status:** active hard-cut implementation outline. Slice B is substantially implemented; Slice C is partially implemented; Slice D is partially implemented; Slice A and Slice E remain open.
+
+## Current implementation snapshot (April 24, 2026)
+
+This outline started as a design/alignment document. It now also needs to reflect where the codebase actually stands after the first implementation wave.
+
+### Current slice status
+
+- **Slice group A — final contract definition:** partially resolved, not complete
+  - We have a working direction for ordered `rows` / `columns` and row-aware display semantics.
+  - We do **not** yet have the final hard-cut decisions on cell structure and stable cell identity.
+- **Slice group B — finalization builder:** substantially implemented
+  - `src/lib/v3/runtime/finalTableContract.ts` exists as the contract builder.
+  - `src/lib/v3/runtime/postV3Processing.ts` enriches `results/tables.json` after R execution.
+  - The special derived demo banner table (`_demo_banner_x_banner`) now has a deterministic contract path instead of relying on analysis-time inference.
+- **Slice group C — analysis grounding and model projection:** partially implemented
+  - `src/lib/analysis/grounding.ts` now reads ordered row/column metadata from the final contract.
+  - `fetchTable` / `getTableCard`, `confirmCitation`, and markdown projection have been moved closer to contract-driven behavior.
+  - Some transitional resilience logic still exists because the analysis surface cannot hard-fail on a single malformed table.
+- **Slice group D — rendered analysis tables and citations:** partially implemented
+  - Rendered table cards and citations are closer to the final contract but are not fully reconciled end-to-end.
+  - The current user experience still shows that some tables/tools can degrade or become unavailable even when the session itself remains usable.
+- **Slice group E — downstream consumer audit and cleanup:** not complete
+  - Downstream consumers have been touched opportunistically.
+  - A deliberate audit / cleanup pass has not happened yet.
+
+### What counts as “done so far”
+
+The following should be treated as real progress, not just exploration:
+
+- final-table contract builder introduced
+- post-R enrichment path introduced
+- typed `rows` / `columns` contract added to `results/tables.json`
+- analysis grounding moved toward contract-driven row order and row semantics
+- mixed numeric / percent row handling now has deterministic regression coverage
+
+### What is explicitly **not** done yet
+
+The following items remain outside the completed scope of this wave:
+
+- final hard-cut decision on cell identity
+- final hard-cut decision on cell storage shape
+- complete removal of transitional analysis compatibility logic
+- full rendered-table / citation / markdown alignment audit
+- downstream consumer cleanup and removal of obsolete abstractions
+
+### Working rule for the next implementation sessions
+
+We are not waiting for every surrounding surface to be perfect before moving a slice forward. The practical rule is:
+
+- complete the slice target as cleanly as possible
+- run the tests that become possible once the slice works
+- fix adjacent issues when they become relevant blockers
+- avoid turning every adjacent bug into an unbounded side quest
 
 ## Why this document exists
 

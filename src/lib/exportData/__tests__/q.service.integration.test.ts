@@ -174,7 +174,14 @@ function createArtifacts() {
     },
     results: {
       metadata: { generatedAt: '2026-02-27T00:00:00.000Z', tableCount: 1, cutCount: 1 },
-      tables: { t1: { tableId: 't1' } },
+      tables: {
+        t1: {
+          tableId: 't1',
+          data: {},
+          columns: [],
+          rows: [],
+        },
+      },
     },
     crosstab: {
       bannerCuts: [

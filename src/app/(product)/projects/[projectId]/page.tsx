@@ -24,6 +24,11 @@ import { LoadingTimeoutFallback } from '@/components/ErrorFallback';
 import { useAuthContext } from '@/providers/auth-provider';
 import { useLoadingTimeout } from '@/hooks/useLoadingTimeout';
 import { canPerform } from '@/lib/permissions';
+import {
+  getCheckpointRetryAvailability,
+  getCheckpointRetryLabel,
+  isCheckpointRetryEnabled,
+} from '@/lib/runs/checkpointRetry';
 import { parseRunResult } from '@/schemas/runResultSchema';
 import {
   deriveMethodologyFromLegacy,
@@ -356,6 +361,7 @@ export default function ProjectDetailPage({
   const canDelete = canPerform(role, 'delete_project');
   const _canEditProject = canPerform(role, 'edit_project');
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isRetryingCheckpoint, setIsRetryingCheckpoint] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showFeedbackForm, setShowFeedbackForm] = useState(false);
   const [feedbackNotes, setFeedbackNotes] = useState('');
@@ -389,6 +395,16 @@ export default function ProjectDetailPage({
   const runArtifactDebugPath = convexOrgId && latestRun
     ? buildRunArtifactDebugPath(String(convexOrgId), projectId, String(latestRun._id))
     : null;
+  const checkpointRetryEnabled = isCheckpointRetryEnabled();
+  const checkpointRetryAvailability = getCheckpointRetryAvailability(latestRun ? {
+    status: latestRun.status,
+    expiredAt: latestRun.expiredAt,
+    executionState: latestRun.executionState,
+    executionPayload: latestRun.executionPayload,
+    recoveryManifest: latestRun.recoveryManifest,
+  } : null);
+  const canRetryCheckpoint = checkpointRetryEnabled && checkpointRetryAvailability.eligible && canCancel;
+  const checkpointRetryLabel = getCheckpointRetryLabel(latestRun?.recoveryManifest);
 
   const addTableIdsFromInput = () => {
     const raw = tableIdInput.trim();
@@ -481,6 +497,38 @@ export default function ProjectDetailPage({
         description: err instanceof Error ? err.message : 'Unknown error',
       });
       setIsCancelling(false);
+    }
+  };
+
+  const handleCheckpointRetry = async () => {
+    if (!latestRun) return;
+    setIsRetryingCheckpoint(true);
+    try {
+      const res = await fetch(`/api/runs/${encodeURIComponent(String(latestRun._id))}/retry`, {
+        method: 'POST',
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Failed to queue checkpoint retry');
+      }
+
+      toast.success('Checkpoint retry queued', {
+        description: checkpointRetryLabel,
+      });
+
+      posthog.capture('pipeline_checkpoint_retry_queued', {
+        project_id: projectId,
+        run_id: String(latestRun._id),
+        recovery_boundary: latestRun.recoveryManifest?.boundary,
+        resume_stage: latestRun.recoveryManifest?.resumeStage,
+      });
+    } catch (err) {
+      toast.error('Failed to queue checkpoint retry', {
+        description: err instanceof Error ? err.message : 'Unknown error',
+      });
+    } finally {
+      setIsRetryingCheckpoint(false);
     }
   };
 
@@ -703,26 +751,48 @@ export default function ProjectDetailPage({
         {status === 'error' && (
           <Card className="mb-8 border-tab-rose/30 bg-tab-rose-dim relative overflow-hidden">
             <CardContent className="p-6">
-              <div className="flex items-center gap-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
                 {/* Fractured grid with red accent */}
-                <div className="relative w-10 h-10 flex-shrink-0">
-                  <div className="absolute inset-0 opacity-20" style={{
-                    backgroundImage: `
-                      linear-gradient(to right, var(--tab-rose) 1px, transparent 1px),
-                      linear-gradient(to bottom, var(--tab-rose) 1px, transparent 1px)
-                    `,
-                    backgroundSize: '10px 10px',
-                    maskImage: 'linear-gradient(135deg, black 30%, transparent 70%)',
-                    WebkitMaskImage: 'linear-gradient(135deg, black 30%, transparent 70%)',
-                  }} />
-                  <XCircle className="h-5 w-5 text-tab-rose absolute bottom-0 right-0" />
+                  <div className="relative w-10 h-10 flex-shrink-0">
+                    <div className="absolute inset-0 opacity-20" style={{
+                      backgroundImage: `
+                        linear-gradient(to right, var(--tab-rose) 1px, transparent 1px),
+                        linear-gradient(to bottom, var(--tab-rose) 1px, transparent 1px)
+                      `,
+                      backgroundSize: '10px 10px',
+                      maskImage: 'linear-gradient(135deg, black 30%, transparent 70%)',
+                      WebkitMaskImage: 'linear-gradient(135deg, black 30%, transparent 70%)',
+                    }} />
+                    <XCircle className="h-5 w-5 text-tab-rose absolute bottom-0 right-0" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-tab-rose">Pipeline Error</p>
+                    <p className="text-sm text-muted-foreground">
+                      {latestRun?.error || 'An error occurred during processing.'}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-medium text-tab-rose">Pipeline Error</p>
-                  <p className="text-sm text-muted-foreground">
-                    {latestRun?.error || 'An error occurred during processing.'}
-                  </p>
-                </div>
+                {canRetryCheckpoint && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCheckpointRetry}
+                    disabled={isRetryingCheckpoint}
+                  >
+                    {isRetryingCheckpoint ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Queueing...
+                      </>
+                    ) : (
+                      <>
+                        <Play className="h-4 w-4 mr-2" />
+                        {checkpointRetryLabel}
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>

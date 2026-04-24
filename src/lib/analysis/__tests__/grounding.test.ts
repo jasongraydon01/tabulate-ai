@@ -27,6 +27,45 @@ function buildLongTableRows() {
   );
 }
 
+function buildContractColumns(
+  columns: Array<{
+    cutKey: string;
+    cutName: string;
+    groupKey: string;
+    groupName: string | null;
+    statLetter: string | null;
+    baseN: number | null;
+    isTotal: boolean;
+  }>,
+) {
+  return columns.map((column, order) => ({
+    ...column,
+    order,
+  }));
+}
+
+function buildContractRows(
+  rows: Array<{
+    rowKey: string;
+    label: string;
+    rowKind: string;
+    statType: string | null;
+    indent?: number;
+    isNet?: boolean;
+    valueType: "pct" | "count" | "n" | "mean" | "median" | "stddev" | "stderr";
+    format: {
+      kind: "percent" | "number";
+      decimals: number;
+    };
+  }>,
+) {
+  return rows.map((row) => ({
+    indent: 0,
+    isNet: false,
+    ...row,
+  }));
+}
+
 const context: AnalysisGroundingContext = {
   availability: "available",
   missingArtifacts: [],
@@ -43,6 +82,17 @@ const context: AnalysisGroundingContext = {
       tableType: "frequency",
       baseText: "All respondents",
       tableSubtitle: "Overall",
+      columns: buildContractColumns([
+        { cutKey: "__total__::total", cutName: "Total", groupKey: "__total__", groupName: "Total", statLetter: "T", baseN: 120, isTotal: true },
+        { cutKey: "group:gender::female", cutName: "Female", groupKey: "group:gender", groupName: "Gender", statLetter: "A", baseN: 70, isTotal: false },
+        { cutKey: "group:gender::male", cutName: "Male", groupKey: "group:gender", groupName: "Gender", statLetter: "B", baseN: 50, isTotal: false },
+        { cutKey: "group:region::east", cutName: "East", groupKey: "group:region", groupName: "Region", statLetter: "C", baseN: 60, isTotal: false },
+        { cutKey: "group:region::west", cutName: "West", groupKey: "group:region", groupName: "Region", statLetter: "D", baseN: 60, isTotal: false },
+      ]),
+      rows: buildContractRows([
+        { rowKey: "row_0_1", label: "Very satisfied", rowKind: "value", statType: null, valueType: "pct", format: { kind: "percent", decimals: 0 } },
+        { rowKey: "row_1_2", label: "Somewhat satisfied", rowKind: "value", statType: null, valueType: "pct", format: { kind: "percent", decimals: 0 } },
+      ]),
       data: {
         Total: {
           stat_letter: "T",
@@ -77,6 +127,12 @@ const context: AnalysisGroundingContext = {
       questionText: "Mean agreement score",
       tableType: "mean rows",
       baseText: "All respondents",
+      columns: buildContractColumns([
+        { cutKey: "__total__::total", cutName: "Total", groupKey: "__total__", groupName: "Total", statLetter: "T", baseN: 120, isTotal: true },
+      ]),
+      rows: buildContractRows([
+        { rowKey: "row_0_1", label: "Mean", rowKind: "stat", statType: "mean", valueType: "mean", format: { kind: "number", decimals: 1 } },
+      ]),
       data: {
         Total: {
           stat_letter: "T",
@@ -90,6 +146,21 @@ const context: AnalysisGroundingContext = {
       questionText: "Long option list",
       tableType: "frequency",
       baseText: "All respondents",
+      columns: buildContractColumns([
+        { cutKey: "__total__::total", cutName: "Total", groupKey: "__total__", groupName: "Total", statLetter: "T", baseN: 120, isTotal: true },
+        { cutKey: "group:gender::female", cutName: "Female", groupKey: "group:gender", groupName: "Gender", statLetter: "A", baseN: 70, isTotal: false },
+        { cutKey: "group:gender::male", cutName: "Male", groupKey: "group:gender", groupName: "Gender", statLetter: "B", baseN: 50, isTotal: false },
+      ]),
+      rows: buildContractRows(
+        Array.from({ length: 10 }, (_, index) => ({
+          rowKey: `row_${index}_${index + 1}`,
+          label: `Option ${index + 1}`,
+          rowKind: "value",
+          statType: null,
+          valueType: "pct" as const,
+          format: { kind: "percent" as const, decimals: 0 },
+        })),
+      ),
       data: {
         Total: {
           stat_letter: "T",
@@ -138,12 +209,26 @@ const context: AnalysisGroundingContext = {
       tableType: "frequency",
       tableSubtitle: "Overall",
       baseText: "Respondents shown this item",
+      columns: buildContractColumns([
+        { cutKey: "__total__::total", cutName: "Total", groupKey: "__total__", groupName: "Total", statLetter: "T", baseN: 245, isTotal: true },
+      ]),
+      rows: buildContractRows([
+        { rowKey: "B1r2_row_1", label: "Top 2 Box", rowKind: "net", statType: null, isNet: true, valueType: "pct", format: { kind: "percent", decimals: 0 } },
+        { rowKey: "B1r2_row_2", label: "Probably would not consider this bank", rowKind: "value", statType: null, indent: 1, valueType: "pct", format: { kind: "percent", decimals: 0 } },
+        { rowKey: "B1r2_row_3", label: "Mean", rowKind: "stat", statType: "mean", valueType: "mean", format: { kind: "number", decimals: 1 } },
+        { rowKey: "B1r2_row_4", label: "Median", rowKind: "stat", statType: "median", valueType: "median", format: { kind: "number", decimals: 1 } },
+        { rowKey: "B1r2_row_10", label: "Std Dev", rowKind: "stat", statType: "stddev", valueType: "stddev", format: { kind: "number", decimals: 2 } },
+        { rowKey: "B1r2_row_11", label: "Std Err", rowKind: "stat", statType: "stderr", valueType: "stderr", format: { kind: "number", decimals: 2 } },
+      ]),
       data: {
         Total: {
           stat_letter: "T",
-          row_0_1: { label: "Top 2 Box", rowKind: "net", n: 245, count: 49, pct: 20, isNet: true, indent: 0 },
-          row_1_2: { label: "Std Dev", rowKind: "stat", statType: "stddev", n: 245, pct: 1.07, isNet: false, indent: 0 },
-          row_2_3: { label: "Std Err", rowKind: "stat", statType: "stderr", n: 245, pct: 0.07, isNet: false, indent: 0 },
+          B1r2_row_1: { label: "Top 2 Box", rowKind: "net", n: 245, count: 49, pct: 20, isNet: true, indent: 0 },
+          B1r2_row_2: { label: "Probably would not consider this bank", rowKind: "value", n: 245, count: 39, pct: 16, isNet: false, indent: 1 },
+          B1r2_row_3: { label: "Mean", rowKind: "stat", statType: "mean", n: 245, mean: 2.7, isNet: false, indent: 0 },
+          B1r2_row_4: { label: "Median", rowKind: "stat", statType: "median", n: 245, median: 3, isNet: false, indent: 0 },
+          B1r2_row_10: { label: "Std Dev", rowKind: "stat", statType: "stddev", n: 245, pct: 1.07, isNet: false, indent: 0, isStat: true },
+          B1r2_row_11: { label: "Std Err", rowKind: "stat", statType: "stderr", n: 245, pct: 0.07, isNet: false, indent: 0, isStat: true },
         },
       },
     },
@@ -409,6 +494,27 @@ describe("analysis grounding helpers", () => {
     expect(card.rows[0]?.cellsByCutKey?.["__total__::total"]?.displayValue).toBe("45%");
   });
 
+  it("returns unavailable when a specific table failed structured hydration", () => {
+    const card = getTableCard(
+      {
+        ...context,
+        brokenTables: {
+          q1_overall: "Final table contract mismatch for q1_overall",
+        },
+      },
+      {
+        tableId: "q1_overall",
+      },
+    );
+
+    expect(card.status).toBe("unavailable");
+    if (card.status !== "unavailable") {
+      throw new Error("expected unavailable card");
+    }
+
+    expect(card.message).toMatch(/structured metadata could not be loaded/i);
+  });
+
   it("carries the full USED cut set on every card and records explicit cut-group requests", () => {
     const card = getTableCard(context, {
       tableId: "q1_overall",
@@ -488,7 +594,6 @@ describe("analysis grounding helpers", () => {
   it("preserves row kind metadata for grounded table cards", () => {
     const card = getTableCard(context, {
       tableId: "q4_frequency_stats",
-      valueMode: "pct",
     });
 
     expect(card.status).toBe("available");
@@ -502,8 +607,39 @@ describe("analysis grounding helpers", () => {
       statType: row.statType,
     }))).toEqual([
       { label: "Top 2 Box", rowKind: "net", statType: null },
+      { label: "Probably would not consider this bank", rowKind: "value", statType: null },
+      { label: "Mean", rowKind: "stat", statType: "mean" },
+      { label: "Median", rowKind: "stat", statType: "median" },
       { label: "Std Dev", rowKind: "stat", statType: "stddev" },
       { label: "Std Err", rowKind: "stat", statType: "stderr" },
+    ]);
+  });
+
+  it("renders mixed percent and numeric stat rows using row-level formatting and contract order", () => {
+    const card = getTableCard(context, {
+      tableId: "q4_frequency_stats",
+    });
+
+    expect(card.status).toBe("available");
+    if (card.status !== "available") {
+      throw new Error("expected table card");
+    }
+
+    expect(card.rows.map((row) => row.rowKey)).toEqual([
+      "B1r2_row_1",
+      "B1r2_row_2",
+      "B1r2_row_3",
+      "B1r2_row_4",
+      "B1r2_row_10",
+      "B1r2_row_11",
+    ]);
+    expect(card.rows.map((row) => row.values[0]?.displayValue)).toEqual([
+      "20%",
+      "16%",
+      "2.7",
+      "3",
+      "1.07",
+      "0.07",
     ]);
   });
 
@@ -550,6 +686,25 @@ describe("analysis grounding helpers", () => {
     expect(markdown).toContain("Male (B){group:gender::male}");
     expect(markdown).toContain("| Base n | 120 | 70 | 50 |");
     expect(markdown).not.toContain("East (C)");
+  });
+
+  it("projects mixed-format rows to markdown exactly as the visible card renders them", () => {
+    const card = getTableCard(context, {
+      tableId: "q4_frequency_stats",
+    });
+
+    expect(card.status).toBe("available");
+    if (card.status !== "available") {
+      throw new Error("expected table card");
+    }
+
+    const markdown = buildFetchTableModelMarkdown(card);
+
+    expect(markdown).toContain("| Top 2 Box {B1r2_row_1} | **20%** |");
+    expect(markdown).toContain("| Mean {B1r2_row_3} | **2.7** |");
+    expect(markdown).toContain("| Median {B1r2_row_4} | **3** |");
+    expect(markdown).toContain("| Std Dev {B1r2_row_10} | **1.07** |");
+    expect(markdown).toContain("| Std Err {B1r2_row_11} | **0.07** |");
   });
 
   it("returns grounded question context with compact defaults", () => {

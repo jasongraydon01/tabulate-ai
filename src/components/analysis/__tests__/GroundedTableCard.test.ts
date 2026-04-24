@@ -163,10 +163,10 @@ const frequencyCardWithStats: AnalysisTableCard = {
       indent: 0,
       isNet: false,
       values: [
-        { cutKey: "__total__::total", cutName: "Total", rawValue: 1.07, displayValue: "1%", count: null, pct: null, n: 120, mean: null, sigHigherThan: [], sigVsTotal: null },
+        { cutKey: "__total__::total", cutName: "Total", rawValue: 1.07, displayValue: "1.07", count: null, pct: null, n: 120, mean: null, sigHigherThan: [], sigVsTotal: null },
       ],
       cellsByCutKey: {
-        "__total__::total": { cutKey: "__total__::total", cutName: "Total", rawValue: 1.07, displayValue: "1%", count: null, pct: null, n: 120, mean: null, sigHigherThan: [], sigVsTotal: null },
+        "__total__::total": { cutKey: "__total__::total", cutName: "Total", rawValue: 1.07, displayValue: "1.07", count: null, pct: null, n: 120, mean: null, sigHigherThan: [], sigVsTotal: null },
       },
     },
     {
@@ -191,10 +191,10 @@ const frequencyCardWithStats: AnalysisTableCard = {
       indent: 0,
       isNet: false,
       values: [
-        { cutKey: "__total__::total", cutName: "Total", rawValue: 0.07, displayValue: "0%", count: null, pct: null, n: 120, mean: null, sigHigherThan: [], sigVsTotal: null },
+        { cutKey: "__total__::total", cutName: "Total", rawValue: 0.07, displayValue: "0.07", count: null, pct: null, n: 120, mean: null, sigHigherThan: [], sigVsTotal: null },
       ],
       cellsByCutKey: {
-        "__total__::total": { cutKey: "__total__::total", cutName: "Total", rawValue: 0.07, displayValue: "0%", count: null, pct: null, n: 120, mean: null, sigHigherThan: [], sigVsTotal: null },
+        "__total__::total": { cutKey: "__total__::total", cutName: "Total", rawValue: 0.07, displayValue: "0.07", count: null, pct: null, n: 120, mean: null, sigHigherThan: [], sigVsTotal: null },
       },
     },
     {
@@ -238,10 +238,12 @@ describe("GroundedTableCard helpers", () => {
     expect(getGroundedTableCardVisibleRows(groupedCard, true)).toHaveLength(9);
   });
 
-  it("hides stat rows from compact frequency previews while preserving them in expanded view", () => {
+  it("keeps stat rows in both compact and expanded views; truncation is the only row simplification", () => {
     expect(getGroundedTableCardVisibleRows(frequencyCardWithStats, false).map((row) => row.label)).toEqual([
       "Top 2 Box",
+      "Std Dev",
       "Probably would not consider this bank",
+      "Std Err",
       "Bottom 2 Box",
     ]);
     expect(getGroundedTableCardVisibleRows(frequencyCardWithStats, true).map((row) => row.label)).toEqual([
@@ -284,16 +286,17 @@ describe("GroundedTableCard helpers", () => {
     expect(markup).not.toContain("vs total");
   });
 
-  it("renders the subtitle inline and omits stat rows from the compact frequency card", () => {
+  it("renders the subtitle inline and includes mixed numeric stat rows in the compact frequency card", () => {
     const markup = renderToStaticMarkup(
       React.createElement(GroundedTableCard, { card: frequencyCardWithStats }),
     );
 
     expect(markup).toContain("Bank consideration");
-    expect(markup).toContain("Additional rows available.");
     expect(markup).toContain("Expand table for deeper analysis");
-    expect(markup).not.toContain("Std Dev");
-    expect(markup).not.toContain("Std Err");
+    expect(markup).toContain("Std Dev");
+    expect(markup).toContain("Std Err");
+    expect(markup).toContain("1.07");
+    expect(markup).toContain("0.07");
   });
 
   it("keeps the expanded dialog header minimal without duplicate pills or helper copy", () => {

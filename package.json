@@ -7,6 +7,8 @@
     "dev": "next dev --turbopack",
     "dev:convex": "npx convex dev",
     "dev:all": "tsx scripts/dev-all.ts",
+    "dev:recovery:restore": "tsx scripts/restore-recovery-workspace.ts",
+    "dev:recovery:retry": "tsx scripts/retry-run-from-checkpoint.ts",
     "build": "next build",
     "start": "next start",
     "worker": "tsx scripts/worker.ts",

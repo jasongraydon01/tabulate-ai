@@ -31,10 +31,48 @@ export const SortedFinalArtifactSchema = z.object({
   tables: z.array(SortedFinalTableSchema),
 });
 
+const ResultsTableColumnSchema = z.object({
+  cutKey: z.string(),
+  cutName: z.string(),
+  groupKey: z.string(),
+  groupName: z.string().nullable(),
+  statLetter: z.string().nullable(),
+  baseN: z.number().nullable(),
+  isTotal: z.boolean(),
+  order: z.number().int(),
+});
+
+const ResultsTableRowFormatSchema = z.object({
+  kind: z.union([z.literal('percent'), z.literal('number')]),
+  decimals: z.number().int(),
+});
+
+const ResultsTableRowSchema = z.object({
+  rowKey: z.string(),
+  label: z.string(),
+  rowKind: z.string(),
+  statType: z.string().nullable(),
+  indent: z.number(),
+  isNet: z.boolean(),
+  valueType: z.union([
+    z.literal('pct'),
+    z.literal('count'),
+    z.literal('n'),
+    z.literal('mean'),
+    z.literal('median'),
+    z.literal('stddev'),
+    z.literal('stderr'),
+  ]),
+  format: ResultsTableRowFormatSchema,
+});
+
 const ResultsTableEntrySchema = z.object({
   tableId: z.string().optional(),
   questionId: z.string().optional(),
   tableType: z.string().optional(),
+  data: z.record(z.unknown()).optional(),
+  columns: z.array(ResultsTableColumnSchema).optional(),
+  rows: z.array(ResultsTableRowSchema).optional(),
 }).passthrough();
 
 export const ResultsTablesArtifactSchema = z.object({

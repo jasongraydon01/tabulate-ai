@@ -6,6 +6,43 @@ import {
 } from "@/lib/analysis/grounding";
 import { buildAnalysisCellId } from "@/lib/analysis/types";
 
+function buildContractColumns(
+  columns: Array<{
+    cutKey: string;
+    cutName: string;
+    groupKey: string;
+    groupName: string | null;
+    statLetter: string | null;
+    baseN: number | null;
+    isTotal: boolean;
+  }>,
+) {
+  return columns.map((column, order) => ({
+    ...column,
+    order,
+  }));
+}
+
+function buildContractRows(
+  rows: Array<{
+    rowKey: string;
+    label: string;
+    rowKind: string;
+    statType: string | null;
+    valueType: "pct" | "count" | "n" | "mean" | "median" | "stddev" | "stderr";
+    format: {
+      kind: "percent" | "number";
+      decimals: number;
+    };
+  }>,
+) {
+  return rows.map((row) => ({
+    indent: 0,
+    isNet: false,
+    ...row,
+  }));
+}
+
 function makeContext(overrides: Partial<AnalysisGroundingContext> = {}): AnalysisGroundingContext {
   return {
     availability: "available",
@@ -18,6 +55,15 @@ function makeContext(overrides: Partial<AnalysisGroundingContext> = {}): Analysi
         tableType: "frequency",
         baseText: "All respondents",
         tableSubtitle: "Overall",
+        columns: buildContractColumns([
+          { cutKey: "__total__::total", cutName: "Total", groupKey: "__total__", groupName: "Total", statLetter: "T", baseN: 120, isTotal: true },
+          { cutKey: "group:gender::female", cutName: "Female", groupKey: "group:gender", groupName: "Gender", statLetter: "A", baseN: 70, isTotal: false },
+          { cutKey: "group:gender::male", cutName: "Male", groupKey: "group:gender", groupName: "Gender", statLetter: "B", baseN: 50, isTotal: false },
+        ]),
+        rows: buildContractRows([
+          { rowKey: "row_0_1", label: "Very satisfied", rowKind: "value", statType: null, valueType: "pct", format: { kind: "percent", decimals: 0 } },
+          { rowKey: "row_1_2", label: "Somewhat satisfied", rowKind: "value", statType: null, valueType: "pct", format: { kind: "percent", decimals: 0 } },
+        ]),
         data: {
           Total: {
             stat_letter: "T",
@@ -42,6 +88,15 @@ function makeContext(overrides: Partial<AnalysisGroundingContext> = {}): Analysi
         questionText: "Familiarity follow-up",
         tableType: "frequency",
         baseText: "All respondents",
+        columns: buildContractColumns([
+          { cutKey: "__total__::total", cutName: "Total", groupKey: "__total__", groupName: "Total", statLetter: "T", baseN: 100, isTotal: true },
+          { cutKey: "group:gender::agree", cutName: "Agree", groupKey: "group:gender", groupName: "Gender", statLetter: "A", baseN: 55, isTotal: false },
+          { cutKey: "group:region::agree", cutName: "Agree!", groupKey: "group:region", groupName: "Region", statLetter: "B", baseN: 45, isTotal: false },
+        ]),
+        rows: buildContractRows([
+          { rowKey: "row_0_1", label: "Familiarity", rowKind: "value", statType: null, valueType: "pct", format: { kind: "percent", decimals: 0 } },
+          { rowKey: "row_1_2", label: "Familiarity", rowKind: "value", statType: null, valueType: "pct", format: { kind: "percent", decimals: 0 } },
+        ]),
         data: {
           Total: {
             stat_letter: "T",
@@ -195,6 +250,21 @@ describe("confirmCitation", () => {
     expect(result.status).toBe("unavailable");
   });
 
+  it("returns unavailable when the requested table failed structured hydration", () => {
+    const result = confirmCitation(
+      makeContext({
+        brokenTables: {
+          q1_overall: "Final table contract mismatch for q1_overall",
+        },
+      }),
+      { tableId: "q1_overall", rowKey: "row_0_1", cutKey: TOTAL_CUT_KEY },
+    );
+
+    expect(result.status).toBe("unavailable");
+    if (result.status !== "unavailable") return;
+    expect(result.message).toMatch(/structured metadata could not be loaded/i);
+  });
+
   it("returns invalid_row with allowedRowKeys when the rowKey is wrong", () => {
     const result = confirmCitation(makeContext(), {
       tableId: "q1_overall",
@@ -233,8 +303,8 @@ describe("confirmCitation", () => {
 
     expect(result.status).toBe("confirmed");
     if (result.status !== "confirmed") return;
-    expect(result.valueMode).toBe("count");
-    expect(result.displayValue).toBe("54");
+    expect(result.valueMode).toBe("pct");
+    expect(result.displayValue).toBe("45%");
   });
 
   it("confirms a cell from semantic row and column labels", () => {
@@ -356,7 +426,49 @@ describe("confirmCitation", () => {
 
     expect(result.status).toBe("confirmed");
     if (result.status !== "confirmed") return;
-    expect(result.valueMode).toBe("count");
-    expect(result.displayValue).toBe("54");
+    expect(result.valueMode).toBe("pct");
+    expect(result.displayValue).toBe("45%");
+  });
+
+  it("returns numeric display values for stat rows even when the source metric lives on pct", () => {
+    const statContext = makeContext({
+      tables: {
+        q4_frequency_stats: {
+          tableId: "q4_frequency_stats",
+          questionId: "Q4",
+          questionText: "Bank consideration",
+          tableType: "frequency",
+          columns: buildContractColumns([
+            { cutKey: "__total__::total", cutName: "Total", groupKey: "__total__", groupName: "Total", statLetter: "T", baseN: 245, isTotal: true },
+          ]),
+          rows: buildContractRows([
+            { rowKey: "B1r2_row_10", label: "Std Dev", rowKind: "stat", statType: "stddev", valueType: "stddev", format: { kind: "number", decimals: 2 } },
+          ]),
+          data: {
+            Total: {
+              stat_letter: "T",
+              B1r2_row_10: { label: "Std Dev", rowKind: "stat", statType: "stddev", n: 245, pct: 1.07, isStat: true, indent: 0 },
+            },
+          },
+        },
+      },
+    });
+
+    const result = confirmCitation(statContext, {
+      tableId: "q4_frequency_stats",
+      rowKey: "B1r2_row_10",
+      cutKey: "__total__::total",
+    });
+
+    expect(result.status).toBe("confirmed");
+    if (result.status !== "confirmed") return;
+    expect(result.displayValue).toBe("1.07");
+    expect(result.valueMode).toBe("mean");
+    expect(result.cellId).toBe(buildAnalysisCellId({
+      tableId: "q4_frequency_stats",
+      rowKey: "B1r2_row_10",
+      cutKey: "__total__::total",
+      valueMode: "mean",
+    }));
   });
 });

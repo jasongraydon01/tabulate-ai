@@ -262,9 +262,7 @@ export function getGroundedTableCardVisibleRows(
   },
 ): AnalysisTableCardRow[] {
   const focusedRowKeys = new Set(focus?.focusedRowKeys ?? card.focusedRowKeys ?? []);
-  const sourceRows = card.tableType === "frequency"
-    ? card.rows.filter((row) => row.rowKind !== "stat")
-    : card.rows;
+  const sourceRows = card.rows;
   const previewEligibleRows = focusedRowKeys.size > 0
     ? [
       ...sourceRows.filter((row) => focusedRowKeys.has(row.rowKey)),

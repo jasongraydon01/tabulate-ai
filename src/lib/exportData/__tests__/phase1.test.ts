@@ -52,7 +52,12 @@ async function seedPhase1Inputs(outputDir: string): Promise<void> {
       cutCount: 1,
     },
     tables: {
-      t1: { tableId: 't1' },
+      t1: {
+        tableId: 't1',
+        data: {},
+        columns: [],
+        rows: [],
+      },
     },
   });
 

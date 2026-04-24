@@ -21,6 +21,7 @@ import type { ExcelFormat, DisplayMode } from '@/lib/excel/ExcelFormatter';
 import { extractStreamlinedData } from '@/lib/data/extractStreamlinedData';
 import { fixRHexEscapes } from '@/lib/r/fixRHexEscapes';
 import { persistSystemError } from '@/lib/errors/ErrorPersistence';
+import { buildFinalTablesContract } from './finalTableContract';
 
 import type { ComputePackageOutput } from './compute/types';
 
@@ -343,13 +344,16 @@ export async function runPostV3Processing(
       if (resultFiles.includes('tables.json')) {
         const jsonPath = path.join(resultsDir, 'tables.json');
         const jsonContent = fixRHexEscapes(await fs.readFile(jsonPath, 'utf-8'));
-        const jsonData = JSON.parse(jsonContent);
+        const rawResultsTables = JSON.parse(jsonContent);
+        const computePackagePath = path.join(computeDir, '22-compute-package.json');
+        const computePackage = JSON.parse(await fs.readFile(computePackagePath, 'utf-8'));
+        const jsonData = buildFinalTablesContract(rawResultsTables, computePackage);
         rOutputTableCount = Object.keys(jsonData.tables || {}).length;
-        await fs.writeFile(jsonPath, jsonContent, 'utf-8');
+        await fs.writeFile(jsonPath, JSON.stringify(jsonData, null, 2), 'utf-8');
 
         log(`[PostV3] R output: tables.json (${rOutputTableCount} tables)`);
 
-        const streamlinedData = extractStreamlinedData(jsonData);
+        const streamlinedData = extractStreamlinedData(jsonData as Parameters<typeof extractStreamlinedData>[0]);
         await fs.writeFile(
           path.join(resultsDir, 'data-streamlined.json'),
           JSON.stringify(streamlinedData, null, 2),

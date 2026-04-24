@@ -62,6 +62,7 @@ describe('project detail page', () => {
 
   beforeEach(async () => {
     delete process.env.NEXT_PUBLIC_ENABLE_R2_ARTIFACT_DEBUG_PATH;
+    delete process.env.NEXT_PUBLIC_ENABLE_RUN_CHECKPOINT_RETRY;
 
     if (!Page) {
       ({ default: Page } = await import('@/app/(product)/projects/[projectId]/page'));
@@ -305,5 +306,59 @@ describe('project detail page', () => {
     expect(markup).toContain('Analysis is unavailable because this run&#x27;s artifacts have expired.');
     expect(markup).toContain('Artifacts expired');
     expect(markup).toContain('30-day retention period');
+  });
+
+  it('renders checkpoint retry when the latest failed run has a durable recovery checkpoint', () => {
+    process.env.NEXT_PUBLIC_ENABLE_RUN_CHECKPOINT_RETRY = 'true';
+
+    const runs = [
+      {
+        _id: 'run-1',
+        _creationTime: Date.UTC(2026, 2, 20),
+        status: 'error',
+        executionState: 'error',
+        error: 'Recoverable failure',
+        executionPayload: { sessionId: 'session-1' },
+        recoveryManifest: {
+          boundary: 'compute',
+          resumeStage: 'executing_r',
+          isComplete: true,
+        },
+        result: {},
+      },
+    ];
+
+    let queryCall = 0;
+    mocks.useQuery.mockImplementation(() => {
+      queryCall += 1;
+      if (queryCall === 1) {
+        return {
+          _id: 'project-1',
+          _creationTime: Date.UTC(2026, 2, 20),
+          name: 'Test Project',
+          intake: {},
+          config: {
+            studyMethodology: 'message_testing',
+            analysisMethod: 'standard_crosstab',
+            isWaveStudy: false,
+            bannerMode: 'auto_generate',
+            displayMode: 'frequency',
+            theme: 'classic',
+            statTesting: { thresholds: [90], minBase: 30 },
+            exportFormats: ['excel'],
+          },
+        };
+      }
+      if (queryCall === 2) return runs;
+      return [];
+    });
+
+    const markup = renderToStaticMarkup(
+      React.createElement(Page, {
+        params: { projectId: 'project-1' } as never,
+      }),
+    );
+
+    expect(markup).toContain('Retry from compute checkpoint');
   });
 });

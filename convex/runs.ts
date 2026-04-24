@@ -15,6 +15,7 @@ import {
   normalizeWorkerQueueCapacity,
   summarizeWorkerQueue,
 } from "../src/lib/worker/scheduling";
+import { getCheckpointRetryAvailability } from "../src/lib/runs/checkpointRetry";
 import type { WorkerQueueRunDiagnostics } from "../src/lib/worker/types";
 
 /** Statuses that represent an actively-running pipeline (heartbeat expected). */
@@ -302,6 +303,48 @@ export const enqueueReviewResume = internalMutation({
       lastHeartbeat: Date.now(),
       resumeFromStage: args.resumeFromStage ?? "applying_review",
       recoveryStatus: "none",
+    });
+  },
+});
+
+export const enqueueCheckpointRetry = internalMutation({
+  args: {
+    runId: v.id("runs"),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run) throw new Error("Run not found");
+
+    const availability = getCheckpointRetryAvailability({
+      status: run.status,
+      expiredAt: run.expiredAt,
+      executionState: run.executionState,
+      executionPayload: run.executionPayload,
+      recoveryManifest: run.recoveryManifest,
+    });
+    if (!availability.eligible) {
+      throw new Error(availability.reason ?? "Run is not eligible for checkpoint retry.");
+    }
+
+    const recoveryManifest = run.recoveryManifest;
+    if (!recoveryManifest) {
+      throw new Error("Run is missing a durable recovery manifest.");
+    }
+
+    await ctx.db.patch(args.runId, {
+      status: "resuming",
+      stage: recoveryManifest.resumeStage,
+      message: `Queued for checkpoint retry from ${recoveryManifest.boundary}.`,
+      executionState: "queued",
+      queueClass: "review_resume",
+      workerId: undefined,
+      claimedAt: undefined,
+      heartbeatAt: undefined,
+      lastHeartbeat: Date.now(),
+      resumeFromStage: recoveryManifest.resumeStage,
+      recoveryStatus: "queued_recovery",
+      cancelRequested: false,
+      error: undefined,
     });
   },
 });

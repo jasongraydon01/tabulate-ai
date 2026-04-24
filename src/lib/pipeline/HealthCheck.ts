@@ -12,6 +12,8 @@
 import { generateText } from 'ai';
 import { getActiveProvider, getEnvironmentConfig } from '../env';
 
+const HEALTH_CHECK_MAX_OUTPUT_TOKENS = 16;
+
 export interface DeploymentHealthResult {
   name: string;
   agents: string[];
@@ -132,9 +134,9 @@ async function runHealthCheckAgainstAgentModels(
     const probeStart = Date.now();
     try {
       await generateText({
-        model: provider.chat(deployment),
+        model: provider.responses(deployment),
         prompt: 'Respond with: OK',
-        maxOutputTokens: 5,
+        maxOutputTokens: HEALTH_CHECK_MAX_OUTPUT_TOKENS,
         maxRetries: 0,
         abortSignal: ac.signal,
       });

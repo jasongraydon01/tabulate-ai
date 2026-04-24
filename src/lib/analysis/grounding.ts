@@ -7,6 +7,7 @@ import {
 } from "@/lib/exportData/inputArtifactSchemas";
 import { buildQuestionContext, type QuestionIdFinalFile } from "@/lib/questionContext/adapters";
 import { downloadFile } from "@/lib/r2/r2";
+import { buildFinalTableContractEntry } from "@/lib/v3/runtime/finalTableContract";
 import { parseRunResult } from "@/schemas/runResultSchema";
 
 import type {
@@ -44,6 +45,7 @@ const BANNER_ROUTE_METADATA_PATH = "planning/banner-route-metadata.json";
 const CROSSTAB_PLAN_PATH = "planning/21-crosstab-plan.json";
 const SURVEY_MARKDOWN_PATH = "survey/survey-markdown.md";
 const SURVEY_PARSED_CLEANUP_PATH = "enrichment/08b-survey-parsed-cleanup.json";
+const COMPUTE_PACKAGE_PATH = "compute/22-compute-package.json";
 const DEFAULT_QUESTION_ITEM_LIMIT = 12;
 const DEFAULT_CARD_PREVIEW_ROW_LIMIT = 8;
 const TOTAL_GROUP_KEY = "__total__";
@@ -59,10 +61,14 @@ interface RawTableRow {
   count?: number;
   pct?: number;
   mean?: number;
+  median?: number;
+  sd?: number;
+  std_err?: number;
   sig_higher_than?: string[] | string | null;
   sig_vs_total?: string | null;
   isNet?: boolean;
   indent?: number;
+  isStat?: boolean;
 }
 
 interface RawTableCut {
@@ -82,6 +88,35 @@ interface RawTableEntry {
   tableSubtitle?: string;
   excluded?: boolean;
   data?: Record<string, RawTableCut>;
+  columns?: RawTableColumn[];
+  rows?: RawTableContractRow[];
+}
+
+interface RawTableColumn {
+  cutKey: string;
+  cutName: string;
+  groupKey: string;
+  groupName: string | null;
+  statLetter: string | null;
+  baseN: number | null;
+  isTotal: boolean;
+  order: number;
+}
+
+interface RawTableRowFormat {
+  kind: "percent" | "number";
+  decimals: number;
+}
+
+interface RawTableContractRow {
+  rowKey: string;
+  label: string;
+  rowKind: string;
+  statType: string | null;
+  indent: number;
+  isNet: boolean;
+  valueType: "pct" | "count" | "n" | "mean" | "median" | "stddev" | "stderr";
+  format: RawTableRowFormat;
 }
 
 interface RawBannerColumn {
@@ -176,6 +211,7 @@ interface SelectedCut {
 export interface AnalysisGroundingContext {
   availability: AnalysisAvailabilityStatus;
   tables: Record<string, RawTableEntry>;
+  brokenTables?: Record<string, string>;
   questions: BuiltQuestionContext[];
   bannerGroups: RawBannerGroup[];
   bannerPlanGroups: RawBannerPlanGroup[];
@@ -340,20 +376,14 @@ function formatNumber(value: number, digits: number): string {
   return value.toFixed(digits).replace(/\.0+$|(\.\d*?)0+$/, "$1");
 }
 
-function formatCellValue(value: number | null, valueMode: AnalysisValueMode): string {
+function formatDisplayValue(value: number | null, format: RawTableRowFormat | null | undefined): string {
   if (value === null || !Number.isFinite(value)) return "—";
 
-  switch (valueMode) {
-    case "pct":
-      return `${formatNumber(value, 0)}%`;
-    case "mean":
-      return formatNumber(value, 1);
-    case "count":
-    case "n":
-      return formatNumber(value, 0);
-    default:
-      return String(value);
+  if (format?.kind === "percent") {
+    return `${formatNumber(value, format.decimals)}%`;
   }
+
+  return formatNumber(value, format?.decimals ?? 0);
 }
 
 function normalizeSigHigherThan(value: string[] | string | null | undefined): string[] {
@@ -382,9 +412,13 @@ function getAnalysisCardPreviewRowLimit(): number {
   );
 }
 
-function deriveAvailability(missingArtifacts: string[], hasAnyArtifact: boolean): AnalysisAvailabilityStatus {
+function deriveAvailability(
+  missingArtifacts: string[],
+  hasBrokenTables: boolean,
+  hasAnyArtifact: boolean,
+): AnalysisAvailabilityStatus {
   if (!hasAnyArtifact) return "unavailable";
-  return missingArtifacts.length > 0 ? "partial" : "available";
+  return missingArtifacts.length > 0 || hasBrokenTables ? "partial" : "available";
 }
 
 function deriveTitle(table: RawTableEntry, tableId: string): string {
@@ -392,173 +426,107 @@ function deriveTitle(table: RawTableEntry, tableId: string): string {
   return primary || table.tableId || tableId;
 }
 
-function collectRowKeys(table: RawTableEntry): string[] {
-  const cuts = Object.values(table.data ?? {});
-  const rowKeySet = new Set<string>();
-
-  for (const cut of cuts) {
-    for (const key of Object.keys(cut)) {
-      if (key === "stat_letter" || key === "table_base_n") continue;
-      const value = cut[key];
-      if (isRawTableRow(value)) {
-        rowKeySet.add(key);
-      }
-    }
-  }
-
-  return [...rowKeySet].sort((a, b) => {
-    const aMatch = a.match(/^row_(\d+)_/);
-    const bMatch = b.match(/^row_(\d+)_/);
-    if (aMatch && bMatch) return Number(aMatch[1]) - Number(bMatch[1]);
-    return a.localeCompare(b);
-  });
+function getOrderedTableRows(table: RawTableEntry): RawTableContractRow[] {
+  return Array.isArray(table.rows) ? table.rows : [];
 }
 
-function resolveCutBaseN(cut: RawTableCut): number | null {
-  if (typeof cut.table_base_n === "number" && Number.isFinite(cut.table_base_n)) {
-    return cut.table_base_n;
-  }
+function getRowMetadataByKey(table: RawTableEntry): Map<string, RawTableContractRow> {
+  return new Map(getOrderedTableRows(table).map((row) => [row.rowKey, row]));
+}
 
-  for (const [key, value] of Object.entries(cut)) {
-    if (key === "stat_letter" || key === "table_base_n") continue;
-    if (isRawTableRow(value) && typeof value.n === "number" && Number.isFinite(value.n)) {
-      return value.n;
+function getNumericMetric(row: RawTableRow, keys: string[]): number | null {
+  const record = row as Record<string, unknown>;
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
     }
   }
 
   return null;
 }
 
-function isTotalCut(cutName: string, cut: RawTableCut): boolean {
-  if (normalizeText(cutName) === "total") return true;
-
-  const firstRow = Object.values(cut).find(isRawTableRow);
-  if (!firstRow) return false;
-
-  return normalizeText(firstRow.groupName) === "total";
-}
-
-function deriveCutGroupName(
-  cutName: string,
-  cut: RawTableCut,
-  bannerGroupLookup?: Map<string, string>,
-): string | null {
-  if (isTotalCut(cutName, cut)) return "Total";
-
-  const rowGroupName = Object.values(cut).find(isRawTableRow)?.groupName ?? null;
-  if (rowGroupName) return rowGroupName;
-
-  return bannerGroupLookup?.get(normalizeText(cutName)) ?? null;
-}
-
-function deriveCutGroupKey(groupName: string | null, cutName: string, isTotal: boolean): string {
-  if (isTotal) return TOTAL_GROUP_KEY;
-
-  const normalizedGroup = normalizeText(groupName);
-  if (normalizedGroup) return `group:${normalizedGroup}`;
-
-  return `cut:${normalizeText(cutName) || cutName.toLowerCase()}`;
-}
-
-function deriveCutKey(groupKey: string, cutName: string): string {
-  return `${groupKey}::${normalizeText(cutName) || cutName.toLowerCase()}`;
-}
-
-function buildBannerGroupLookup(bannerGroups: RawBannerGroup[]): Map<string, string> {
-  const lookup = new Map<string, string>();
-  for (const group of bannerGroups) {
-    for (const column of group.columns) {
-      lookup.set(normalizeText(column.name), group.groupName);
-    }
+function resolveContractRowValue(row: RawTableRow, contractRow: RawTableContractRow | undefined): number | null {
+  switch (contractRow?.valueType) {
+    case "count":
+      return getNumericMetric(row, ["count", "n", "pct", "mean", "median", "sd", "std_err"]);
+    case "n":
+      return getNumericMetric(row, ["n", "count", "pct", "mean", "median", "sd", "std_err"]);
+    case "mean":
+      return getNumericMetric(row, ["mean", "pct", "count", "n", "median", "sd", "std_err"]);
+    case "median":
+      return getNumericMetric(row, ["median", "mean", "pct", "count", "n", "sd", "std_err"]);
+    case "stddev":
+      return getNumericMetric(row, ["sd", "pct", "mean", "count", "n", "std_err", "median"]);
+    case "stderr":
+      return getNumericMetric(row, ["std_err", "pct", "mean", "count", "n", "sd", "median"]);
+    case "pct":
+    default:
+      return getNumericMetric(row, ["pct", "count", "n", "mean", "median", "sd", "std_err"]);
   }
-  return lookup;
+}
+
+function resolveCellValueMode(contractRow: RawTableContractRow | undefined): AnalysisValueMode {
+  switch (contractRow?.valueType) {
+    case "count":
+      return "count";
+    case "n":
+      return "n";
+    case "mean":
+    case "median":
+    case "stddev":
+    case "stderr":
+      return "mean";
+    case "pct":
+    default:
+      return "pct";
+  }
 }
 
 function buildSelectedCuts(
   table: RawTableEntry,
-  bannerGroups: RawBannerGroup[],
 ): {
   // Every USED cut from the source table, Total first. Cells built against
   // this set so the expand dialog + details disclosure always carry full data.
   allCuts: SelectedCut[];
   columnGroups: AnalysisTableCardColumnGroup[];
 } {
-  const bannerGroupLookup = buildBannerGroupLookup(bannerGroups);
-  const allCuts = Object.entries(table.data ?? {})
-    .map(([cutName, cut]): SelectedCut => {
-      const isTotal = isTotalCut(cutName, cut);
-      const groupName = deriveCutGroupName(cutName, cut, bannerGroupLookup);
-      const groupKey = deriveCutGroupKey(groupName, cutName, isTotal);
+  const allCuts = (table.columns ?? []).map((column): SelectedCut => ({
+    cutKey: column.cutKey,
+    cutName: column.cutName,
+    groupKey: column.groupKey,
+    groupName: column.groupName,
+    statLetter: column.statLetter,
+    baseN: column.baseN,
+    isTotal: column.isTotal,
+    cut: (table.data?.[column.cutName] ?? {}) as RawTableCut,
+  }));
 
-      return {
-        cutKey: deriveCutKey(groupKey, cutName),
-        cutName,
-        groupKey,
-        groupName,
-        statLetter: typeof cut.stat_letter === "string" ? cut.stat_letter : null,
-        baseN: resolveCutBaseN(cut),
-        isTotal,
-        cut,
-      };
-    });
-
-  const totalCuts = allCuts.filter((cut) => cut.isTotal);
-  const groupsByKey = new Map<string, SelectedCut[]>();
-  const orderedGroups: Array<{ groupKey: string; groupName: string | null; cuts: SelectedCut[] }> = [];
-
-  for (const cut of allCuts.filter((entry) => !entry.isTotal)) {
-    const existing = groupsByKey.get(cut.groupKey);
+  const columnGroups: AnalysisTableCardColumnGroup[] = [];
+  for (const cut of allCuts) {
+    const existing = columnGroups.find((group) => group.groupKey === cut.groupKey);
+    const nextColumn = {
+      cutKey: cut.cutKey,
+      cutName: cut.cutName,
+      groupName: cut.groupName,
+      statLetter: cut.statLetter,
+      baseN: cut.baseN,
+      isTotal: cut.isTotal,
+    };
     if (existing) {
-      existing.push(cut);
+      existing.columns.push(nextColumn);
       continue;
     }
 
-    const nextCuts = [cut];
-    groupsByKey.set(cut.groupKey, nextCuts);
-    orderedGroups.push({
+    columnGroups.push({
       groupKey: cut.groupKey,
       groupName: cut.groupName,
-      cuts: nextCuts,
-    });
-  }
-
-  const columnGroups: AnalysisTableCardColumnGroup[] = [];
-
-  if (totalCuts.length > 0) {
-    columnGroups.push({
-      groupKey: TOTAL_GROUP_KEY,
-      groupName: "Total",
-      columns: totalCuts.map((cut) => ({
-        cutKey: cut.cutKey,
-        cutName: cut.cutName,
-        groupName: cut.groupName,
-        statLetter: cut.statLetter,
-        baseN: cut.baseN,
-        isTotal: true,
-      })),
-    });
-  }
-
-  for (const group of orderedGroups) {
-    columnGroups.push({
-      groupKey: group.groupKey,
-      groupName: group.groupName,
-      columns: group.cuts.map((cut) => ({
-        cutKey: cut.cutKey,
-        cutName: cut.cutName,
-        groupName: cut.groupName,
-        statLetter: cut.statLetter,
-        baseN: cut.baseN,
-        isTotal: false,
-      })),
+      columns: [nextColumn],
     });
   }
 
   return {
-    allCuts: [
-      ...totalCuts,
-      ...orderedGroups.flatMap((group) => group.cuts),
-    ],
+    allCuts,
     columnGroups,
   };
 }
@@ -649,26 +617,6 @@ function resolvePreferredValueMode(tableType: string | null | undefined, request
   return "pct";
 }
 
-function resolveValueForMode(row: RawTableRow, valueMode: AnalysisValueMode): number | null {
-  const primary = row[valueMode];
-  if (typeof primary === "number" && Number.isFinite(primary)) return primary;
-
-  const fallbacks: AnalysisValueMode[] = valueMode === "mean"
-    ? ["mean", "pct", "count", "n"]
-    : valueMode === "pct"
-      ? ["pct", "count", "n", "mean"]
-      : valueMode === "count"
-        ? ["count", "n", "pct", "mean"]
-        : ["n", "count", "pct", "mean"];
-
-  for (const key of fallbacks) {
-    const next = row[key];
-    if (typeof next === "number" && Number.isFinite(next)) return next;
-  }
-
-  return null;
-}
-
 function buildBannerGroups(
   tablesArtifact: ReturnType<typeof ResultsTablesArtifactSchema.parse> | null,
   crosstabArtifact: ReturnType<typeof CrosstabRawArtifactSchema.parse> | null,
@@ -727,6 +675,62 @@ function buildTablesMetadata(
       ? metadata.comparisonGroups.filter((entry): entry is string => typeof entry === "string")
       : [],
   };
+}
+
+export function hydrateResultsTablesArtifactForAnalysis(
+  tablesValue: unknown,
+  computePackageValue?: unknown | null,
+): {
+  artifact: ReturnType<typeof ResultsTablesArtifactSchema.parse>;
+  brokenTables: Record<string, string>;
+} {
+  const parsed = ResultsTablesArtifactSchema.parse(tablesValue);
+  const brokenTables: Record<string, string> = {};
+
+  if (!computePackageValue) {
+    return {
+      artifact: parsed,
+      brokenTables,
+    };
+  }
+
+  const tables = Object.fromEntries(
+    Object.entries(parsed.tables).map(([tableId, table]) => {
+      if (table.columns && table.rows) {
+        return [tableId, table];
+      }
+
+      try {
+        return [
+          tableId,
+          buildFinalTableContractEntry(
+            tableId,
+            table as Parameters<typeof buildFinalTableContractEntry>[1],
+            parsed.metadata as Parameters<typeof buildFinalTableContractEntry>[2],
+            computePackageValue as Parameters<typeof buildFinalTableContractEntry>[3],
+          ),
+        ];
+      } catch (error) {
+        brokenTables[tableId] = error instanceof Error ? error.message : String(error);
+        return [tableId, table];
+      }
+    }),
+  ) as ReturnType<typeof ResultsTablesArtifactSchema.parse>["tables"];
+
+  return {
+    artifact: {
+      ...parsed,
+      tables,
+    },
+    brokenTables,
+  };
+}
+
+export function parseResultsTablesArtifactWithHydration(
+  tablesValue: unknown,
+  computePackageValue?: unknown | null,
+): ReturnType<typeof ResultsTablesArtifactSchema.parse> {
+  return hydrateResultsTablesArtifactForAnalysis(tablesValue, computePackageValue).artifact;
 }
 
 async function downloadJsonArtifact<T>(key: string): Promise<T> {
@@ -832,6 +836,13 @@ function buildMissingMessage(missingArtifacts: string[]): string {
   return `Some run artifacts are unavailable: ${missingArtifacts.join(", ")}.`;
 }
 
+function buildBrokenTableMessage(tableId: string, reason?: string): string {
+  const detail = process.env.NODE_ENV === "development" && reason
+    ? ` (${reason})`
+    : "";
+  return `Table ${tableId} is unavailable because its structured metadata could not be loaded for this run${detail}.`;
+}
+
 function resolveSourceRefs(tableId: string, questionId: string | null, title: string): AnalysisSourceRef[] {
   const refs: AnalysisSourceRef[] = [
     { refType: "table", refId: tableId, label: title },
@@ -861,6 +872,7 @@ export async function loadAnalysisGroundingContext(params: {
   const crosstabKey = outputs[CROSSTAB_PLAN_PATH] ?? runResult.reviewR2Keys?.v3CrosstabPlan ?? null;
   const surveyMarkdownKey = outputs[SURVEY_MARKDOWN_PATH] ?? null;
   const surveyParsedCleanupKey = outputs[SURVEY_PARSED_CLEANUP_PATH] ?? null;
+  const computePackageKey = outputs[COMPUTE_PACKAGE_PATH] ?? null;
 
   const [
     tablesResult,
@@ -870,6 +882,7 @@ export async function loadAnalysisGroundingContext(params: {
     crosstabResult,
     surveyMarkdownResult,
     surveyParsedCleanupResult,
+    computePackageResult,
   ] = await Promise.allSettled([
     tablesKey ? downloadJsonArtifact<unknown>(tablesKey) : Promise.resolve(null),
     questionKey ? downloadJsonArtifact<QuestionIdFinalFile>(questionKey) : Promise.resolve(null),
@@ -878,21 +891,33 @@ export async function loadAnalysisGroundingContext(params: {
     crosstabKey ? downloadJsonArtifact<unknown>(crosstabKey) : Promise.resolve(null),
     surveyMarkdownKey ? downloadTextArtifact(surveyMarkdownKey) : Promise.resolve(null),
     surveyParsedCleanupKey ? downloadJsonArtifact<unknown>(surveyParsedCleanupKey) : Promise.resolve(null),
+    computePackageKey ? downloadJsonArtifact<unknown>(computePackageKey) : Promise.resolve(null),
   ]);
 
   const missingArtifacts: string[] = [];
 
-  const tablesArtifact = (() => {
+  const tablesHydration = (() => {
     if (!tablesKey) {
       missingArtifacts.push(TABLES_JSON_PATH);
-      return null;
+      return {
+        artifact: null,
+        brokenTables: {} as Record<string, string>,
+      };
     }
     if (tablesResult.status !== "fulfilled" || !tablesResult.value) {
       missingArtifacts.push(TABLES_JSON_PATH);
-      return null;
+      return {
+        artifact: null,
+        brokenTables: {} as Record<string, string>,
+      };
     }
-    return ResultsTablesArtifactSchema.parse(tablesResult.value);
+    const computePackageValue = computePackageResult.status === "fulfilled"
+      ? computePackageResult.value
+      : null;
+    return hydrateResultsTablesArtifactForAnalysis(tablesResult.value, computePackageValue);
   })();
+  const tablesArtifact = tablesHydration.artifact;
+  const brokenTables = tablesHydration.brokenTables;
 
   const questionArtifact = (() => {
     if (!questionKey) {
@@ -974,6 +999,7 @@ export async function loadAnalysisGroundingContext(params: {
   return {
     availability: deriveAvailability(
       missingArtifacts,
+      Object.keys(brokenTables).length > 0,
       Boolean(
         tablesArtifact
         || questionArtifact
@@ -983,7 +1009,8 @@ export async function loadAnalysisGroundingContext(params: {
         || surveyParsedCleanupArtifact,
       ),
     ),
-    tables: tablesArtifact?.tables ?? {},
+    tables: (tablesArtifact?.tables ?? {}) as Record<string, RawTableEntry>,
+    brokenTables,
     questions,
     bannerGroups,
     bannerPlanGroups,
@@ -1130,13 +1157,9 @@ export function searchRunCatalog(
             table.tableSubtitle,
             table.baseText,
             table.userNote,
-            ...collectRowKeys(table)
+            ...getOrderedTableRows(table)
               .slice(0, 16)
-              .map((rowKey) => {
-                const totalCut = Object.values(table.data ?? {})[0];
-                const row = totalCut && isRawTableRow(totalCut[rowKey]) ? totalCut[rowKey] : null;
-                return row?.label ?? rowKey;
-              }),
+              .map((row) => row.label ?? row.rowKey),
           ),
         }))
         .filter((match) => match.score > 0),
@@ -1439,6 +1462,15 @@ export function getTableCard(
     valueMode?: AnalysisValueMode;
   },
 ): AnalysisTableCardResult {
+  const brokenReason = context.brokenTables?.[args.tableId];
+  if (brokenReason) {
+    return {
+      status: "unavailable",
+      tableId: args.tableId,
+      message: buildBrokenTableMessage(args.tableId, brokenReason),
+    };
+  }
+
   const table = context.tables[args.tableId];
   if (!table) {
     return {
@@ -1452,27 +1484,26 @@ export function getTableCard(
 
   const requestedCutGroups = normalizeRequestedCutGroups(args.cutGroups ?? null);
   const valueMode = resolvePreferredValueMode(table.tableType, args.valueMode);
-  const rowKeys = collectRowKeys(table);
+  const orderedRows = getOrderedTableRows(table);
   const {
     allCuts,
     columnGroups,
-  } = buildSelectedCuts(table, context.bannerGroups);
+  } = buildSelectedCuts(table);
   const columns: AnalysisTableCardColumn[] = columnGroups.flatMap((group) => group.columns);
-  const rows = rowKeys.map((rowKey) => {
-    const firstRow = allCuts
-      .map((cut) => cut.cut[rowKey])
-      .find(isRawTableRow);
+  const rows = orderedRows.map((contractRow) => {
+    const rowKey = contractRow.rowKey;
+    const firstRow = allCuts.map((cut) => cut.cut[rowKey]).find(isRawTableRow);
 
     const values: AnalysisTableCardCell[] = allCuts.map((cut) => {
       const row = cut.cut[rowKey];
       const rawRow = isRawTableRow(row) ? row : {};
-      const rawValue = resolveValueForMode(rawRow, valueMode);
+      const rawValue = resolveContractRowValue(rawRow, contractRow);
 
       return {
         cutKey: cut.cutKey,
         cutName: cut.cutName,
         rawValue,
-        displayValue: formatCellValue(rawValue, valueMode),
+        displayValue: formatDisplayValue(rawValue, contractRow.format),
         count: typeof rawRow.count === "number" ? rawRow.count : null,
         pct: typeof rawRow.pct === "number" ? rawRow.pct : null,
         n: typeof rawRow.n === "number" ? rawRow.n : null,
@@ -1484,11 +1515,11 @@ export function getTableCard(
 
     return {
       rowKey,
-      label: firstRow?.label ?? rowKey,
-      rowKind: typeof firstRow?.rowKind === "string" ? firstRow.rowKind : undefined,
-      statType: typeof firstRow?.statType === "string" ? firstRow.statType : null,
-      indent: typeof firstRow?.indent === "number" ? firstRow.indent : 0,
-      isNet: Boolean(firstRow?.isNet),
+      label: contractRow.label ?? firstRow?.label ?? rowKey,
+      rowKind: contractRow.rowKind,
+      statType: contractRow.statType,
+      indent: contractRow.indent,
+      isNet: contractRow.isNet,
       values,
       cellsByCutKey: Object.fromEntries(values.map((value) => [value.cutKey ?? value.cutName, value])),
     };
@@ -1514,7 +1545,7 @@ export function getTableCard(
     columns,
     columnGroups,
     rows,
-    totalRows: rows.length,
+    totalRows: orderedRows.length,
     totalColumns: allCuts.length,
     truncatedRows: hiddenRowCount,
     truncatedColumns: totalNonTotalCuts,
@@ -1715,19 +1746,20 @@ function buildResolvedCellSummary(params: {
   title: string;
   rowKey: string;
   rowLabel: string;
+  rowMetadata: RawTableContractRow | undefined;
   selectedCut: SelectedCut;
-  valueMode: AnalysisValueMode;
 }): AnalysisCellSummary {
   const rawRowValue = params.selectedCut.cut[params.rowKey];
   const rawRow = isRawTableRow(rawRowValue) ? rawRowValue : {};
-  const rawValue = resolveValueForMode(rawRow, params.valueMode);
-  const displayValue = formatCellValue(rawValue, params.valueMode);
+  const rawValue = resolveContractRowValue(rawRow, params.rowMetadata);
+  const displayValue = formatDisplayValue(rawValue, params.rowMetadata?.format);
+  const valueMode = resolveCellValueMode(params.rowMetadata);
 
   const cellId = buildAnalysisCellId({
     tableId: params.tableId,
     rowKey: params.rowKey,
     cutKey: params.selectedCut.cutKey,
-    valueMode: params.valueMode,
+    valueMode,
   });
 
   return {
@@ -1740,7 +1772,7 @@ function buildResolvedCellSummary(params: {
     cutKey: params.selectedCut.cutKey,
     cutName: params.selectedCut.cutName,
     groupName: params.selectedCut.groupName,
-    valueMode: params.valueMode,
+    valueMode,
     displayValue,
     pct: typeof rawRow.pct === "number" ? rawRow.pct : null,
     count: typeof rawRow.count === "number" ? rawRow.count : null,
@@ -1760,18 +1792,14 @@ function buildResolvedCellSummary(params: {
 }
 
 function buildRowCandidates(
-  allCuts: SelectedCut[],
-  rowKeys: string[],
+  rows: RawTableContractRow[],
   normalizedRowLabel: string,
 ): AnalysisCellConfirmationRowCandidate[] {
-  return rowKeys
-    .map((rowKey) => {
-      const firstRowForLabel = allCuts
-        .map((cut) => cut.cut[rowKey])
-        .find(isRawTableRow);
-      const rowLabel = firstRowForLabel?.label ?? rowKey;
-      return { rowLabel, rowRef: rowKey };
-    })
+  return rows
+    .map((row) => ({
+      rowLabel: row.label ?? row.rowKey,
+      rowRef: row.rowKey,
+    }))
     .filter((candidate) => normalizeText(candidate.rowLabel) === normalizedRowLabel)
     .slice(0, ALLOWED_HINT_LIMIT);
 }
@@ -1816,6 +1844,15 @@ export function confirmCitation(
   context: AnalysisGroundingContext,
   args: LegacyConfirmCitationArgs | SemanticConfirmCitationArgs,
 ): AnalysisCellConfirmationResult {
+  const brokenReason = context.brokenTables?.[args.tableId];
+  if (brokenReason) {
+    return {
+      status: "unavailable",
+      tableId: args.tableId,
+      message: buildBrokenTableMessage(args.tableId, brokenReason),
+    };
+  }
+
   const table = context.tables[args.tableId];
   if (!table) {
     return {
@@ -1827,19 +1864,19 @@ export function confirmCitation(
     };
   }
 
-  const valueMode = resolvePreferredValueMode(table.tableType, args.valueMode);
-  const rowKeys = collectRowKeys(table);
+  const orderedRows = getOrderedTableRows(table);
+  const rowMetadataByKey = getRowMetadataByKey(table);
   const title = deriveTitle(table, args.tableId);
-  const { allCuts } = buildSelectedCuts(table, context.bannerGroups);
+  const { allCuts } = buildSelectedCuts(table);
 
   if (isLegacyConfirmCitationArgs(args)) {
-    if (!rowKeys.includes(args.rowKey)) {
+    if (!rowMetadataByKey.has(args.rowKey)) {
       return {
         status: "invalid_row",
         tableId: args.tableId,
         rowKey: args.rowKey,
         message: `Row "${args.rowKey}" is not a row on table ${args.tableId}. Pick one of the allowed rowKeys and retry.`,
-        allowedRowKeys: rowKeys.slice(0, ALLOWED_HINT_LIMIT),
+        allowedRowKeys: orderedRows.slice(0, ALLOWED_HINT_LIMIT).map((row) => row.rowKey),
       };
     }
 
@@ -1856,10 +1893,8 @@ export function confirmCitation(
       };
     }
 
-    const firstRowForLabel = allCuts
-      .map((cut) => cut.cut[args.rowKey])
-      .find(isRawTableRow);
-    const rowLabel = firstRowForLabel?.label ?? args.rowKey;
+    const rowMetadata = rowMetadataByKey.get(args.rowKey);
+    const rowLabel = rowMetadata?.label ?? args.rowKey;
 
     return {
       status: "confirmed",
@@ -1869,8 +1904,8 @@ export function confirmCitation(
         title,
         rowKey: args.rowKey,
         rowLabel,
+        rowMetadata,
         selectedCut,
-        valueMode,
       }),
     };
   }
@@ -1878,13 +1913,9 @@ export function confirmCitation(
   const normalizedRowLabel = normalizeText(args.rowLabel);
   const normalizedColumnLabel = normalizeText(args.columnLabel);
 
-  let matchingRowKeys = rowKeys.filter((rowKey) => {
-    const firstRowForLabel = allCuts
-      .map((cut) => cut.cut[rowKey])
-      .find(isRawTableRow);
-    const rowLabel = firstRowForLabel?.label ?? rowKey;
-    return normalizeText(rowLabel) === normalizedRowLabel;
-  });
+  let matchingRowKeys = orderedRows
+    .filter((row) => normalizeText(row.label ?? row.rowKey) === normalizedRowLabel)
+    .map((row) => row.rowKey);
 
   if (matchingRowKeys.length === 0) {
     return {
@@ -1902,7 +1933,7 @@ export function confirmCitation(
         status: "invalid_row",
         tableId: args.tableId,
         message: `rowRef "${args.rowRef}" did not resolve a unique row for label "${args.rowLabel}" on table ${args.tableId}.`,
-        candidateRows: buildRowCandidates(allCuts, rowKeys, normalizedRowLabel),
+        candidateRows: buildRowCandidates(orderedRows, normalizedRowLabel),
       };
     }
   } else if (matchingRowKeys.length > 1) {
@@ -1910,15 +1941,16 @@ export function confirmCitation(
       status: "ambiguous_row",
       tableId: args.tableId,
       message: `More than one row matches "${args.rowLabel}" on table ${args.tableId}. Retry with rowRef from the fetched table.`,
-      candidateRows: buildRowCandidates(allCuts, matchingRowKeys, normalizedRowLabel),
+      candidateRows: buildRowCandidates(
+        orderedRows.filter((row) => matchingRowKeys.includes(row.rowKey)),
+        normalizedRowLabel,
+      ),
     };
   }
 
   const resolvedRowKey = matchingRowKeys[0]!;
-  const firstRowForLabel = allCuts
-    .map((cut) => cut.cut[resolvedRowKey])
-    .find(isRawTableRow);
-  const resolvedRowLabel = firstRowForLabel?.label ?? resolvedRowKey;
+  const rowMetadata = rowMetadataByKey.get(resolvedRowKey);
+  const resolvedRowLabel = rowMetadata?.label ?? resolvedRowKey;
 
   let matchingCuts = allCuts.filter((cut) => normalizeText(cut.cutName) === normalizedColumnLabel);
   if (matchingCuts.length === 0) {
@@ -1964,8 +1996,8 @@ export function confirmCitation(
       title,
       rowKey: resolvedRowKey,
       rowLabel: resolvedRowLabel,
+      rowMetadata,
       selectedCut,
-      valueMode,
     }),
   };
 }

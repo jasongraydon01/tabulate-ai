@@ -409,96 +409,87 @@ export const getEnvironmentConfig = (): EnvironmentConfig => {
 };
 
 /**
- * Per-Agent Model Selection
- * Each agent has its own model configuration for flexibility.
- * Uses getActiveProvider() to route through Azure or OpenAI based on AI_PROVIDER.
+ * Per-agent pipeline model selection.
  *
- * NOTE: Using .chat() for Chat Completions API instead of Responses API
- * The Responses API (default in AI SDK v6) may not be available on all Azure deployments.
+ * The pipeline now uses the provider's default Responses API surface for
+ * OpenAI and Azure. GPT-5.4 supports both Chat Completions and Responses, but
+ * OpenAI's current guidance and the AI SDK defaults both prefer Responses for
+ * tool use and reasoning controls.
  */
+
+function getPipelineModel(modelId: string) {
+  const provider = getActiveProvider();
+  return provider.responses(modelId);
+}
 
 export const getCrosstabModel = () => {
   const config = getEnvironmentConfig();
-  const provider = getActiveProvider();
-  return provider.chat(config.crosstabModel);
+  return getPipelineModel(config.crosstabModel);
 };
 
 export const getBannerModel = () => {
   const config = getEnvironmentConfig();
-  const provider = getActiveProvider();
-  return provider.chat(config.bannerModel);
+  return getPipelineModel(config.bannerModel);
 };
 
 export const getBannerGenerateModel = () => {
   const config = getEnvironmentConfig();
-  const provider = getActiveProvider();
-  return provider.chat(config.bannerGenerateModel);
+  return getPipelineModel(config.bannerGenerateModel);
 };
 
 export const getVerificationModel = () => {
   const config = getEnvironmentConfig();
-  const provider = getActiveProvider();
-  return provider.chat(config.verificationModel);
+  return getPipelineModel(config.verificationModel);
 };
 
 export const getSkipLogicModel = () => {
   const config = getEnvironmentConfig();
-  const provider = getActiveProvider();
-  return provider.chat(config.skipLogicModel);
+  return getPipelineModel(config.skipLogicModel);
 };
 
 export const getFilterTranslatorModel = () => {
   const config = getEnvironmentConfig();
-  const provider = getActiveProvider();
-  return provider.chat(config.filterTranslatorModel);
+  return getPipelineModel(config.filterTranslatorModel);
 };
 
 export const getLoopSemanticsModel = () => {
   const config = getEnvironmentConfig();
-  const provider = getActiveProvider();
-  return provider.chat(config.loopSemanticsModel);
+  return getPipelineModel(config.loopSemanticsModel);
 };
 
 export const getAIGateModel = () => {
   const config = getEnvironmentConfig();
-  const provider = getActiveProvider();
-  return provider.chat(config.aiGateModel);
+  return getPipelineModel(config.aiGateModel);
 };
 
 export const getLoopGateModel = () => {
   const config = getEnvironmentConfig();
-  const provider = getActiveProvider();
-  return provider.chat(config.loopGateModel);
+  return getPipelineModel(config.loopGateModel);
 };
 
 export const getSubtypeGateModel = () => {
   const config = getEnvironmentConfig();
-  const provider = getActiveProvider();
-  return provider.chat(config.subtypeGateModel);
+  return getPipelineModel(config.subtypeGateModel);
 };
 
 export const getStructureGateModel = () => {
   const config = getEnvironmentConfig();
-  const provider = getActiveProvider();
-  return provider.chat(config.structureGateModel);
+  return getPipelineModel(config.structureGateModel);
 };
 
 export const getSurveyCleanupModel = () => {
   const config = getEnvironmentConfig();
-  const provider = getActiveProvider();
-  return provider.chat(config.surveyCleanupModel);
+  return getPipelineModel(config.surveyCleanupModel);
 };
 
 export const getTableContextModel = () => {
   const config = getEnvironmentConfig();
-  const provider = getActiveProvider();
-  return provider.chat(config.tableContextModel);
+  return getPipelineModel(config.tableContextModel);
 };
 
 export const getNetEnrichmentModel = () => {
   const config = getEnvironmentConfig();
-  const provider = getActiveProvider();
-  return provider.chat(config.netEnrichmentModel);
+  return getPipelineModel(config.netEnrichmentModel);
 };
 
 /**
@@ -1028,8 +1019,7 @@ export function formatStatTestingConfig(config: StatTestingConfig): string {
  */
 export const getReasoningModel = () => {
   const config = getEnvironmentConfig();
-  const provider = getActiveProvider();
-  return provider.chat(config.reasoningModel);
+  return getPipelineModel(config.reasoningModel);
 };
 
 /**
@@ -1037,8 +1027,7 @@ export const getReasoningModel = () => {
  */
 export const getBaseModel = () => {
   const config = getEnvironmentConfig();
-  const provider = getActiveProvider();
-  return provider.chat(config.baseModel);
+  return getPipelineModel(config.baseModel);
 };
 
 /**
