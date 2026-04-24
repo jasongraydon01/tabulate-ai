@@ -28,6 +28,7 @@ import { buildAnalysisRenderableBlocks } from "@/lib/analysis/renderAnchors";
 import { getAnalysisToolActivityLabel } from "@/lib/analysis/toolLabels";
 import {
   buildAnalysisCellId,
+  isAnalysisCellSummary,
   isAnalysisTableCard,
   parseAnalysisCellId,
   type AnalysisEvidenceItem,
@@ -80,6 +81,72 @@ function useAnimationFrameThrottle<T>(value: T, enabled: boolean): T {
 function StreamingMarkdown({ text, isStreaming }: { text: string; isStreaming: boolean }) {
   const throttledText = useAnimationFrameThrottle(text, isStreaming);
   return <Streamdown>{throttledText}</Streamdown>;
+}
+
+interface CitationChipMeta {
+  chipLabel: string;
+  title: string;
+}
+
+function buildCitationChipMetaByCellId(parts: UIMessage["parts"]): Map<string, CitationChipMeta> {
+  const metaByCellId = new Map<string, CitationChipMeta>();
+
+  for (const part of parts) {
+    if (
+      !isToolUIPart(part)
+      || part.type !== "tool-confirmCitation"
+      || part.state !== "output-available"
+    ) {
+      continue;
+    }
+
+    const output = part.output;
+    if (!isAnalysisCellSummary(output)) {
+      continue;
+    }
+
+    const chipLabel = output.questionId?.trim() || output.tableId;
+    const title = `${output.tableTitle} — ${output.rowLabel} / ${output.cutName}`;
+    metaByCellId.set(output.cellId, {
+      chipLabel,
+      title,
+    });
+  }
+
+  return metaByCellId;
+}
+
+function InlineCitationText({
+  text,
+  citeMetaByCellId,
+}: {
+  text: string;
+  citeMetaByCellId: Map<string, CitationChipMeta>;
+}) {
+  const segments = buildAnalysisCiteSegments(text);
+
+  return (
+    <p className="min-w-0 whitespace-pre-wrap break-words text-[0.9375rem] leading-[1.65] [overflow-wrap:anywhere]">
+      {segments.map((segment, segmentIndex) => {
+        if (segment.kind === "text") {
+          return (
+            <span key={`text-${segmentIndex}`}>
+              {segment.text}
+            </span>
+          );
+        }
+
+        return (
+          <CiteChip
+            key={`cite-${segmentIndex}`}
+            index={segment.indexWithinMessage}
+            cellIds={segment.cellIds}
+            citeMetaByCellId={citeMetaByCellId}
+          />
+        );
+      })}
+    </p>
+  );
 }
 
 function CopyMessageButton({ text, label }: { text: string; label: string }) {
@@ -269,15 +336,26 @@ function toSuperscript(index: number): string {
 function CiteChip({
   index,
   cellIds,
+  citeMetaByCellId,
 }: {
   index: number;
   cellIds: string[];
+  citeMetaByCellId: Map<string, CitationChipMeta>;
 }) {
   if (cellIds.length === 0) return null;
 
   const primaryCellId = cellIds[0]!;
+  const labels = [...new Set(cellIds.map((cellId) => {
+    const meta = citeMetaByCellId.get(cellId);
+    if (meta?.chipLabel) return meta.chipLabel;
+    const parsed = parseAnalysisCellId(cellId);
+    return parsed?.tableId ?? cellId;
+  }))];
+  const chipLabel = labels.join(",");
   const title = cellIds
     .map((cellId) => {
+      const meta = citeMetaByCellId.get(cellId);
+      if (meta?.title) return meta.title;
       const parsed = parseAnalysisCellId(cellId);
       if (!parsed) return cellId;
       return `${parsed.tableId} — ${parsed.rowKey} / ${parsed.cutKey}`;
@@ -292,10 +370,11 @@ function CiteChip({
         scrollToCellAnchor(primaryCellId);
       }}
       title={title}
-      className="mx-0.5 inline-flex items-center align-super text-[0.65em] font-mono text-tab-teal/90 hover:text-tab-teal underline-offset-2 hover:underline"
-      aria-label={`Citation ${index}`}
+      className="mx-0.5 inline-flex items-baseline gap-0.5 align-super text-[0.65em] font-mono text-tab-teal/90 hover:text-tab-teal underline-offset-2 hover:underline"
+      aria-label={`Citation ${chipLabel} ${index}`}
     >
-      {toSuperscript(index)}
+      <span>{chipLabel}</span>
+      <span>{toSuperscript(index)}</span>
     </button>
   );
 }
@@ -343,6 +422,7 @@ export function AnalysisMessage({
   const effectiveFeedback = optimisticFeedback ?? feedback ?? null;
   const isDownvoteOpen = effectiveFeedback?.vote === "down";
   const renderableBlocks = buildAnalysisRenderableBlocks(message, { isStreaming });
+  const citeMetaByCellId = buildCitationChipMetaByCellId(message.parts);
 
   const hasTrace = traceEntries.length > 0;
 
@@ -579,24 +659,10 @@ export function AnalysisMessage({
                     key={block.key}
                     className="prose-analysis min-w-0 max-w-none break-words [overflow-wrap:anywhere]"
                   >
-                    {segments.map((segment, segmentIndex) => {
-                      if (segment.kind === "text") {
-                        return (
-                          <StreamingMarkdown
-                            key={`${block.key}-text-${segmentIndex}`}
-                            text={segment.text}
-                            isStreaming={isStreaming}
-                          />
-                        );
-                      }
-                      return (
-                        <CiteChip
-                          key={`${block.key}-cite-${segmentIndex}`}
-                          index={segment.indexWithinMessage}
-                          cellIds={segment.cellIds}
-                        />
-                      );
-                    })}
+                    <InlineCitationText
+                      text={block.text}
+                      citeMetaByCellId={citeMetaByCellId}
+                    />
                   </div>
                 );
               }

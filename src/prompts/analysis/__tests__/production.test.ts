@@ -56,6 +56,8 @@ describe("analysis agent production prompt", () => {
     expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("HOW TO READ THEM:");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("do not imply that it is statistically");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("THE CITE MARKER:");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("inline source-label");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("never on its own line");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).not.toContain("confirmCitation");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).not.toContain("[[cite cellIds=");
   });

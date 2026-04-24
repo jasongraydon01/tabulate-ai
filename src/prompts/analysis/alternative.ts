@@ -204,8 +204,9 @@ MARKERS — HOW YOU DISPLAY TO THE READER:
 
 Two inline markers control what the reader sees. \`[[render tableId=X]]\`
 places a full table card inline. \`[[cite cellIds=X,...]]\` pins a specific
-prose number to its source cell, rendering as a small numbered chip the
-reader can click to jump to the cell. The two compose — a response can
+prose number to its source cell, rendering as a small inline source-label
+chip (for example \`Q1¹\`) that the reader can click to jump to the cell.
+The two compose — a response can
 render a card, cite cells within it, both, or neither. Render is the
 picture; cite is the pin.
 
@@ -246,8 +247,8 @@ THE CITE MARKER:
 
 When you quote a specific number straight from a cell, end that sentence with
 \`[[cite cellIds=<id1>,<id2>,...]]\` listing the cellId(s) whose value the
-sentence is asserting. The UI renders a small numbered chip at the sentence
-end; clicking it jumps to the exact cell in its card.
+sentence is asserting. The UI renders a small inline source-label chip at the
+sentence end; clicking it jumps to the exact cell in its card.
 
 One marker can carry several cellIds — when a single sentence quotes multiple
 values (one overall figure and one subgroup figure, or a spread across three
@@ -258,7 +259,7 @@ one marker per claim-bearing sentence, not one omnibus marker at the end.
 
 Cite sparingly, not reflexively:
 - Placement rule: when you cite, put the marker at the end of the sentence —
-  not inline after every number.
+  not inline after every number, and never on its own line.
 - Trigger rule: only cite sentences that directly assert a specific number
   pulled from a cell. If a sentence is framing, interpretation, or restating
   a number already cited earlier in the reply, leave it uncited. A paragraph

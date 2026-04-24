@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { UIMessage } from "ai";
 
+import { buildAnalysisCiteMarker } from "@/lib/analysis/citeAnchors";
 import {
   AnalysisMessage,
   getAnalysisMessageEvidenceItems,
@@ -223,6 +224,79 @@ describe("AnalysisMessage trace presentation", () => {
     );
 
     expect(markup).not.toContain("aria-label=\"Copy response\"");
+  });
+
+  it("renders cite chips inline with the sentence and labels them with the question id", () => {
+    const cellId = "q1|row_0_1|__total__%3A%3Atotal|pct";
+    const assistantMessage: UIMessage = {
+      id: "assistant-cite-1",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-confirmCitation",
+          toolCallId: "cite-1",
+          state: "output-available",
+          input: { tableId: "q1", rowLabel: "Very satisfied", columnLabel: "Total" },
+          output: {
+            status: "confirmed",
+            cellId,
+            tableId: "q1",
+            tableTitle: "Q1 overall",
+            questionId: "Q1",
+            rowKey: "row_0_1",
+            rowLabel: "Very satisfied",
+            cutKey: "__total__::total",
+            cutName: "Total",
+            groupName: null,
+            valueMode: "pct",
+            displayValue: "45%",
+            pct: 45,
+            count: 54,
+            n: null,
+            mean: null,
+            baseN: 120,
+            sigHigherThan: [],
+            sigVsTotal: null,
+            sourceRefs: [],
+          },
+        } as UIMessage["parts"][number],
+        {
+          type: "text",
+          text: `Overall satisfaction is 45%.${buildAnalysisCiteMarker([cellId])}`,
+        },
+      ],
+    };
+
+    const markup = renderToStaticMarkup(
+      React.createElement(AnalysisMessage, { message: assistantMessage, isStreaming: false }),
+    );
+
+    expect(markup).toContain("Overall satisfaction is 45%.</span><button");
+    expect(markup).not.toContain("</p><button");
+    expect(markup).toContain("aria-label=\"Citation Q1 1\"");
+    expect(markup).toContain(">Q1<");
+    expect(markup).toContain(">¹<");
+  });
+
+  it("falls back to the table id when citation metadata is unavailable", () => {
+    const cellId = "q1|row_0_1|__total__%3A%3Atotal|pct";
+    const assistantMessage: UIMessage = {
+      id: "assistant-cite-fallback",
+      role: "assistant",
+      parts: [
+        {
+          type: "text",
+          text: `Overall satisfaction is 45%.${buildAnalysisCiteMarker([cellId])}`,
+        },
+      ],
+    };
+
+    const markup = renderToStaticMarkup(
+      React.createElement(AnalysisMessage, { message: assistantMessage, isStreaming: false }),
+    );
+
+    expect(markup).toContain("aria-label=\"Citation q1 1\"");
+    expect(markup).toContain(">q1<");
   });
 
   it("renders an edit affordance on user messages when an edit handler is provided", () => {
