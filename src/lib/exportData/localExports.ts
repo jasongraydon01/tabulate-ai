@@ -12,7 +12,7 @@ import {
 import {
   CrosstabRawArtifactSchema,
   LoopSummaryArtifactSchema,
-  ResultsTablesArtifactSchema,
+  ResultsTablesFinalContractSchema,
   SortedFinalArtifactSchema,
 } from '@/lib/exportData/inputArtifactSchemas';
 import { LoopSemanticsPolicySchema } from '@/schemas/loopSemanticsPolicySchema';
@@ -153,7 +153,7 @@ async function resolveLocalArtifacts(outputDir: string): Promise<{
   const sortedFinal = SortedFinalArtifactSchema.parse(
     await readJson(path.join(outputDir, metadata.artifactPaths.inputs.sortedFinal)),
   );
-  const resultsTables = ResultsTablesArtifactSchema.parse(
+  const resultsTables = ResultsTablesFinalContractSchema.parse(
     await readJson(path.join(outputDir, metadata.artifactPaths.inputs.resultsTables)),
   );
   const crosstabRaw = CrosstabRawArtifactSchema.parse(

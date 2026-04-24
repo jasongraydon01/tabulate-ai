@@ -1433,7 +1433,7 @@ export function listBannerCuts(
   };
 }
 
-export function getTableCard(
+export function fetchTable(
   context: AnalysisGroundingContext,
   args: {
     tableId: string;
@@ -1693,12 +1693,6 @@ export function buildFetchTableModelMarkdown(
 
 const ALLOWED_HINT_LIMIT = 20;
 
-type LegacyConfirmCitationArgs = {
-  tableId: string;
-  rowKey: string;
-  cutKey: string;
-};
-
 type SemanticConfirmCitationArgs = {
   tableId: string;
   rowLabel: string;
@@ -1706,12 +1700,6 @@ type SemanticConfirmCitationArgs = {
   rowRef?: string;
   columnRef?: string;
 };
-
-function isLegacyConfirmCitationArgs(
-  args: LegacyConfirmCitationArgs | SemanticConfirmCitationArgs,
-): args is LegacyConfirmCitationArgs {
-  return "rowKey" in args && "cutKey" in args;
-}
 
 function buildResolvedCellSummary(params: {
   table: RawTableEntry;
@@ -1811,7 +1799,7 @@ function resolveCellSourceRefs(params: {
 
 export function confirmCitation(
   context: AnalysisGroundingContext,
-  args: LegacyConfirmCitationArgs | SemanticConfirmCitationArgs,
+  args: SemanticConfirmCitationArgs,
 ): AnalysisCellConfirmationResult {
   const brokenReason = context.brokenTables?.[args.tableId];
   if (brokenReason) {
@@ -1837,53 +1825,6 @@ export function confirmCitation(
   const rowMetadataByKey = getRowMetadataByKey(table);
   const title = deriveTitle(table, args.tableId);
   const { allCuts } = buildSelectedCuts(table);
-
-  if (isLegacyConfirmCitationArgs(args)) {
-    if (!rowMetadataByKey.has(args.rowKey)) {
-      return {
-        status: "invalid_row",
-        tableId: args.tableId,
-        rowKey: args.rowKey,
-        message: `Row "${args.rowKey}" is not a row on table ${args.tableId}. Pick one of the allowed rowKeys and retry.`,
-        allowedRowKeys: orderedRows.slice(0, ALLOWED_HINT_LIMIT).map((row) => row.rowKey),
-      };
-    }
-
-    const selectedCut = allCuts.find((cut) => cut.cutKey === args.cutKey);
-
-    if (!selectedCut) {
-      return {
-        status: "invalid_cut",
-        tableId: args.tableId,
-        rowKey: args.rowKey,
-        cutKey: args.cutKey,
-        message: `Cut "${args.cutKey}" is not a cut on table ${args.tableId}. Pick one of the allowed cutKeys and retry.`,
-        allowedCutKeys: allCuts.slice(0, ALLOWED_HINT_LIMIT).map((cut) => cut.cutKey),
-      };
-    }
-
-    const rowMetadata = rowMetadataByKey.get(args.rowKey);
-    if (!rowMetadata) {
-      return {
-        status: "invalid_row",
-        tableId: args.tableId,
-        rowKey: args.rowKey,
-        message: `Row "${args.rowKey}" is not a row on table ${args.tableId}. Pick one of the allowed rowKeys and retry.`,
-        allowedRowKeys: orderedRows.slice(0, ALLOWED_HINT_LIMIT).map((row) => row.rowKey),
-      };
-    }
-
-    return {
-      status: "confirmed",
-      ...buildResolvedCellSummary({
-        table,
-        tableId: args.tableId,
-        title,
-        rowMetadata,
-        selectedCut,
-      }),
-    };
-  }
 
   const normalizedRowLabel = normalizeText(args.rowLabel);
   const normalizedColumnLabel = normalizeText(args.columnLabel);

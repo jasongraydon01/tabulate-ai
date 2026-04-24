@@ -27,7 +27,7 @@ import {
 import {
   CrosstabRawArtifactSchema,
   LoopSummaryArtifactSchema,
-  ResultsTablesArtifactSchema,
+  ResultsTablesFinalContractSchema,
   SortedFinalArtifactSchema,
 } from '@/lib/exportData/inputArtifactSchemas';
 import { LoopSemanticsPolicySchema } from '@/schemas/loopSemanticsPolicySchema';
@@ -111,7 +111,7 @@ async function main(): Promise<void> {
     supportReport,
   ] = await Promise.all([
     Promise.resolve(SortedFinalArtifactSchema.parse(sortedFinalRaw)),
-    readJson(path.join(downloadDir, inputPaths.resultsTables)).then(v => ResultsTablesArtifactSchema.parse(v)),
+    readJson(path.join(downloadDir, inputPaths.resultsTables)).then(v => ResultsTablesFinalContractSchema.parse(v)),
     readJson(path.join(downloadDir, inputPaths.crosstabRaw)).then(v => CrosstabRawArtifactSchema.parse(v)),
     readJson(path.join(downloadDir, inputPaths.loopSummary)).then(v => LoopSummaryArtifactSchema.parse(v)),
     readJson(path.join(downloadDir, outputPaths.tableRouting)).then(v => TableRoutingArtifactSchema.parse(v)),

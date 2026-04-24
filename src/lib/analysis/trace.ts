@@ -206,7 +206,7 @@ export function sanitizeForTrace(value: unknown, depth = 0): unknown {
   return sanitizeStringForTrace(String(value));
 }
 
-function getTableCardPreview(output: unknown): unknown {
+function getFetchTablePreview(output: unknown): unknown {
   if (!isAnalysisTableCard(output)) {
     return sanitizeForTrace(output);
   }
@@ -234,7 +234,7 @@ export function serializeAnalysisToolTimeline(parts: UIMessage["parts"]): Analys
       state: part.state ?? null,
       inputPreview: sanitizeForTrace("input" in part ? part.input : null),
       outputPreview: part.type === "tool-fetchTable"
-        ? getTableCardPreview("output" in part ? part.output : null)
+        ? getFetchTablePreview("output" in part ? part.output : null)
         : sanitizeForTrace("output" in part ? part.output : null),
     }];
   });

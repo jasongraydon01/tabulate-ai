@@ -177,6 +177,9 @@ function createArtifacts() {
       tables: {
         t1: {
           tableId: 't1',
+          questionId: 'Q1',
+          questionText: 'Question 1',
+          tableType: 'frequency',
           data: {},
           columns: [],
           rows: [],

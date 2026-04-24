@@ -248,11 +248,11 @@ const AGREE_GENDER_CUT_KEY = "group:gender::agree";
 const AGREE_REGION_CUT_KEY = "group:region::agree";
 
 describe("confirmCitation", () => {
-  it("returns a confirmed cell summary for the Total cut", () => {
+  it("returns a confirmed cell summary for the Total cut from semantic labels", () => {
     const result = confirmCitation(makeContext(), {
       tableId: "q1_overall",
-      rowKey: "row_0_1",
-      cutKey: TOTAL_CUT_KEY,
+      rowLabel: "Very satisfied",
+      columnLabel: "Total",
     });
 
     expect(result.status).toBe("confirmed");
@@ -282,8 +282,8 @@ describe("confirmCitation", () => {
   it("propagates sigHigherThan on a Female cell", () => {
     const result = confirmCitation(makeContext(), {
       tableId: "q1_overall",
-      rowKey: "row_0_1",
-      cutKey: FEMALE_CUT_KEY,
+      rowLabel: "Very satisfied",
+      columnLabel: "Female",
     });
 
     expect(result.status).toBe("confirmed");
@@ -298,8 +298,8 @@ describe("confirmCitation", () => {
   it("returns not_found for an unknown tableId", () => {
     const result = confirmCitation(makeContext(), {
       tableId: "does_not_exist",
-      rowKey: "row_0_1",
-      cutKey: TOTAL_CUT_KEY,
+      rowLabel: "Very satisfied",
+      columnLabel: "Total",
     });
 
     expect(result.status).toBe("not_found");
@@ -311,7 +311,7 @@ describe("confirmCitation", () => {
   it("returns unavailable when the context itself is unavailable and the table isn't loaded", () => {
     const result = confirmCitation(
       makeContext({ availability: "unavailable", missingArtifacts: ["results/tables.json"], tables: {} }),
-      { tableId: "q1_overall", rowKey: "row_0_1", cutKey: TOTAL_CUT_KEY },
+      { tableId: "q1_overall", rowLabel: "Very satisfied", columnLabel: "Total" },
     );
 
     expect(result.status).toBe("unavailable");
@@ -324,7 +324,7 @@ describe("confirmCitation", () => {
           q1_overall: "Final table contract mismatch for q1_overall",
         },
       }),
-      { tableId: "q1_overall", rowKey: "row_0_1", cutKey: TOTAL_CUT_KEY },
+      { tableId: "q1_overall", rowLabel: "Very satisfied", columnLabel: "Total" },
     );
 
     expect(result.status).toBe("unavailable");
@@ -332,32 +332,28 @@ describe("confirmCitation", () => {
     expect(result.message).toMatch(/structured metadata could not be loaded/i);
   });
 
-  it("returns invalid_row with allowedRowKeys when the rowKey is wrong", () => {
+  it("returns invalid_row when the semantic row label is wrong", () => {
     const result = confirmCitation(makeContext(), {
       tableId: "q1_overall",
-      rowKey: "row_not_there",
-      cutKey: TOTAL_CUT_KEY,
+      rowLabel: "Not a real row",
+      columnLabel: "Total",
     });
 
     expect(result.status).toBe("invalid_row");
     if (result.status !== "invalid_row") return;
-    expect(result.allowedRowKeys).toBeDefined();
-    expect(result.allowedRowKeys!.length).toBeGreaterThan(0);
-    expect(result.allowedRowKeys).toContain("row_0_1");
+    expect(result.candidateRows).toEqual([]);
   });
 
-  it("returns invalid_cut with allowedCutKeys when the cutKey is wrong", () => {
+  it("returns invalid_column when the semantic column label is wrong", () => {
     const result = confirmCitation(makeContext(), {
       tableId: "q1_overall",
-      rowKey: "row_0_1",
-      cutKey: "totally_wrong_cut_key",
+      rowLabel: "Very satisfied",
+      columnLabel: "Not a real column",
     });
 
-    expect(result.status).toBe("invalid_cut");
-    if (result.status !== "invalid_cut") return;
-    expect(result.allowedCutKeys).toBeDefined();
-    expect(result.allowedCutKeys!).toContain(TOTAL_CUT_KEY);
-    expect(result.allowedCutKeys!).toContain(FEMALE_CUT_KEY);
+    expect(result.status).toBe("invalid_column");
+    if (result.status !== "invalid_column") return;
+    expect(result.candidateColumns).toEqual([]);
   });
 
   it("confirms a cell from semantic row and column labels", () => {
@@ -505,8 +501,8 @@ describe("confirmCitation", () => {
 
     const result = confirmCitation(statContext, {
       tableId: "q4_frequency_stats",
-      rowKey: "B1r2_row_10",
-      cutKey: "__total__::total",
+      rowLabel: "Std Dev",
+      columnLabel: "Total",
     });
 
     expect(result.status).toBe("confirmed");

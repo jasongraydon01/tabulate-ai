@@ -11,7 +11,7 @@ import type {
 import {
   CrosstabRawArtifactSchema,
   LoopSummaryArtifactSchema,
-  ResultsTablesArtifactSchema,
+  ResultsTablesFinalContractSchema,
   SortedFinalArtifactSchema,
 } from '@/lib/exportData/inputArtifactSchemas';
 import type { LoopSemanticsPolicy } from '@/schemas/loopSemanticsPolicySchema';
@@ -29,7 +29,7 @@ export interface WinCrossResolvedArtifacts {
   loopPolicy: LoopSemanticsPolicy | null;
   supportReport: ExportSupportReport;
   sortedFinal: z.infer<typeof SortedFinalArtifactSchema>;
-  resultsTables: z.infer<typeof ResultsTablesArtifactSchema>;
+  resultsTables: z.infer<typeof ResultsTablesFinalContractSchema>;
   crosstabRaw: z.infer<typeof CrosstabRawArtifactSchema>;
   loopSummary: z.infer<typeof LoopSummaryArtifactSchema>;
   r2Keys: {

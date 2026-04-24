@@ -27,7 +27,7 @@ vi.mock("@/lib/analysis/model", () => ({
 
 vi.mock("@/lib/analysis/grounding", () => ({
   searchRunCatalog: vi.fn(async () => ({ matches: [] })),
-  getTableCard: vi.fn(async () => ({ status: "available" })),
+  fetchTable: vi.fn(async () => ({ status: "available" })),
   getQuestionContext: vi.fn(async () => ({ status: "available" })),
   listBannerCuts: vi.fn(async () => ({ status: "available" })),
   confirmCitation: vi.fn(async () => ({ status: "confirmed", cellId: "cell-1" })),

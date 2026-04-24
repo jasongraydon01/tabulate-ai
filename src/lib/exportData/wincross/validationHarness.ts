@@ -15,7 +15,7 @@ import {
 import {
   CrosstabRawArtifactSchema,
   LoopSummaryArtifactSchema,
-  ResultsTablesArtifactSchema,
+  ResultsTablesFinalContractSchema,
   SortedFinalArtifactSchema,
 } from '@/lib/exportData/inputArtifactSchemas';
 import { LoopSemanticsPolicySchema } from '@/schemas/loopSemanticsPolicySchema';
@@ -345,7 +345,7 @@ async function resolveLocalValidationArtifacts(runDir: string): Promise<WinCross
   const sortedFinal = SortedFinalArtifactSchema.parse(
     await readJson(path.join(runDir, metadata.artifactPaths.inputs.sortedFinal)),
   );
-  const resultsTables = ResultsTablesArtifactSchema.parse(
+  const resultsTables = ResultsTablesFinalContractSchema.parse(
     await readJson(path.join(runDir, metadata.artifactPaths.inputs.resultsTables)),
   );
   const crosstabRaw = CrosstabRawArtifactSchema.parse(

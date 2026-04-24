@@ -26,7 +26,6 @@
 ### Important naming clarification
 
 - The model-facing tool is **`fetchTable`**.
-- `getTableCard` is an **internal helper implementation** behind `fetchTable`.
 - There is currently **no `getRenderTable` symbol** in the repo.
 - If agents keep talking about `getTableCard`, that is stale internal/prompt language, not the actual tool workflow we want to preserve.
 
@@ -91,7 +90,7 @@ This slice is also the right place to:
 
 ## Specific Clarifications To Keep Us Aligned
 
-### `fetchTable` vs `getTableCard`
+### `fetchTable` vs stale helper language
 
 The planning and prompt language should describe the workflow as:
 

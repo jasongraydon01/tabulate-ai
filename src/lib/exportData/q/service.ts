@@ -14,7 +14,7 @@ import {
 import {
   CrosstabRawArtifactSchema,
   LoopSummaryArtifactSchema,
-  ResultsTablesArtifactSchema,
+  ResultsTablesFinalContractSchema,
   SortedFinalArtifactSchema,
 } from '@/lib/exportData/inputArtifactSchemas';
 import { LoopSemanticsPolicySchema } from '@/schemas/loopSemanticsPolicySchema';
@@ -283,7 +283,7 @@ async function resolveArtifacts(runResult: Record<string, unknown>): Promise<QEx
     downloadJsonFromKey(jobRoutingKey).then((value) => JobRoutingManifestSchema.parse(value)),
     downloadJsonFromKey(supportKey).then((value) => ExportSupportReportSchema.parse(value)),
     downloadJsonFromKey(sortedFinalKey).then((value) => SortedFinalArtifactSchema.parse(value)),
-    downloadJsonFromKey(resultsTablesKey).then((value) => ResultsTablesArtifactSchema.parse(value)),
+    downloadJsonFromKey(resultsTablesKey).then((value) => ResultsTablesFinalContractSchema.parse(value)),
     downloadJsonFromKey(crosstabRawKey).then((value) => CrosstabRawArtifactSchema.parse(value)),
     downloadJsonFromKey(loopSummaryKey).then((value) => LoopSummaryArtifactSchema.parse(value)),
   ]);

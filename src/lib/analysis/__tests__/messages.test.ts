@@ -194,7 +194,7 @@ describe("analysis message helpers", () => {
     ]);
   });
 
-  it("rehydrates persisted non-getTableCard tool parts when allowlisted and toolCallId is present", () => {
+  it("rehydrates persisted non-fetchTable tool parts when allowlisted and toolCallId is present", () => {
     const messages = persistedAnalysisMessagesToUIMessages([
       {
         _id: "msg-1",
@@ -306,7 +306,6 @@ describe("analysis message helpers", () => {
             input: {
               tableId: "q1",
               cutGroups: null,
-              valueMode: "pct",
             },
             output: {
               status: "available",
@@ -379,7 +378,7 @@ describe("analysis message helpers", () => {
             type: "tool-confirmCitation",
             toolCallId: "cite-1",
             state: "output-available",
-            input: { tableId: "q1", rowKey: "row_1", cutKey: "__total__::total" },
+            input: { tableId: "q1", rowLabel: "Aware", columnLabel: "Total" },
             output: {
               status: "confirmed",
               cellId: "q1|row_1|__total__%3A%3Atotal",

@@ -470,7 +470,7 @@ describe("AnalysisMessage trace presentation", () => {
           type: "tool-fetchTable",
           toolCallId: "fetch-1",
           state: "output-available",
-          input: { tableId: "q1", cutGroups: null, valueMode: "pct" },
+          input: { tableId: "q1", cutGroups: null },
           output: {
             status: "available",
             tableId: "q1",

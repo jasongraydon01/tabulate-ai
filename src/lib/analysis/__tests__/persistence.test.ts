@@ -147,7 +147,7 @@ describe("buildPersistedAnalysisParts", () => {
     ]);
   });
 
-  it("emits a tableCard entry with artifact metadata for output-available getTableCard parts", () => {
+  it("emits a tableCard entry with artifact metadata for output-available fetchTable parts", () => {
     const payload = makeTableCardPayload();
     const parts: UIMessage["parts"] = [
       {
@@ -179,7 +179,7 @@ describe("buildPersistedAnalysisParts", () => {
     });
   });
 
-  it("persists getTableCard parts inline when no artifact-backed table card is available", () => {
+  it("persists fetchTable parts inline when no artifact-backed table card is available", () => {
     const parts: UIMessage["parts"] = [
       {
         type: "tool-fetchTable",
@@ -202,7 +202,7 @@ describe("buildPersistedAnalysisParts", () => {
     ]);
   });
 
-  it("persists getTableCard parts inline when the output is not a valid analysis table card", () => {
+  it("persists fetchTable parts inline when the output is not a valid analysis table card", () => {
     const parts: UIMessage["parts"] = [
       {
         type: "tool-fetchTable",
@@ -255,7 +255,7 @@ describe("buildPersistedAnalysisParts", () => {
         type: "tool-confirmCitation",
         toolCallId: "call-cite",
         state: "output-available",
-        input: { tableId: "q1", rowKey: "row_1_csb", cutKey: "__total__::total" },
+        input: { tableId: "q1", rowLabel: "CSB", columnLabel: "Total" },
         output: cellSummary,
       } as UIMessage["parts"][number],
     ];
@@ -271,7 +271,7 @@ describe("buildPersistedAnalysisParts", () => {
         toolCallId: "call-cite",
         label: "CSB / Total",
         cellSummary,
-        input: { tableId: "q1", rowKey: "row_1_csb", cutKey: "__total__::total" },
+        input: { tableId: "q1", rowLabel: "CSB", columnLabel: "Total" },
         output: { status: "confirmed", ...cellSummary },
       },
     });

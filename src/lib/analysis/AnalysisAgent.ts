@@ -18,9 +18,9 @@ import {
   attachRetrievedContextXml,
   buildFetchTableModelMarkdown,
   confirmCitation,
+  fetchTable,
   getQuestionContext,
   sanitizeGroundingToolOutput,
-  getTableCard,
   listBannerCuts,
   searchRunCatalog,
   type AnalysisGroundingContext,
@@ -163,7 +163,7 @@ export async function streamAnalysisResponse({
             }),
             execute: async ({ tableId, cutGroups }, options) => executeGroundedTool(
               "fetchTable",
-              () => getTableCard(groundingContext, {
+              () => fetchTable(groundingContext, {
                 tableId,
                 cutGroups,
               }),

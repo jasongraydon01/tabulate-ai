@@ -336,7 +336,7 @@ describe("analysis chat route", () => {
               state: "output-available",
               toolCallId: "tool-fetch-1",
               artifactId: "artifact-1",
-              input: { tableId: "q1", cutGroups: null, valueMode: "pct" },
+              input: { tableId: "q1", cutGroups: null },
             },
             {
               type: "tool-someNewThing",
@@ -423,7 +423,7 @@ describe("analysis chat route", () => {
               type: "tool-fetchTable",
               toolCallId: "tool-fetch-1",
               state: "output-available",
-              input: { tableId: "q1", cutGroups: null, valueMode: "pct" },
+              input: { tableId: "q1", cutGroups: null },
               output: expect.objectContaining({
                 tableId: "q1",
                 title: "Q1 overall",

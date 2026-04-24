@@ -19,7 +19,6 @@ type FetchTableUIPart = UIMessage["parts"][number] & {
   input?: {
     tableId?: string;
     cutGroups?: AnalysisFetchTableCutGroups | null;
-    valueMode?: string;
   };
   output: AnalysisTableCard;
 };

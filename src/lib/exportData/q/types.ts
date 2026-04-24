@@ -7,7 +7,7 @@ import type {
   QExportPackageDescriptor,
   TableRoutingArtifact,
 } from '@/lib/exportData/types';
-import { CrosstabRawArtifactSchema, LoopSummaryArtifactSchema, ResultsTablesArtifactSchema, SortedFinalArtifactSchema } from '@/lib/exportData/inputArtifactSchemas';
+import { CrosstabRawArtifactSchema, LoopSummaryArtifactSchema, ResultsTablesFinalContractSchema, SortedFinalArtifactSchema } from '@/lib/exportData/inputArtifactSchemas';
 import type { LoopSemanticsPolicy } from '@/schemas/loopSemanticsPolicySchema';
 import {
   Q_EXPORT_HELPER_RUNTIME_HASH,
@@ -34,7 +34,7 @@ export interface QExportResolvedArtifacts {
   loopPolicy: LoopSemanticsPolicy | null;
   supportReport: ExportSupportReport;
   sortedFinal: z.infer<typeof SortedFinalArtifactSchema>;
-  resultsTables: z.infer<typeof ResultsTablesArtifactSchema>;
+  resultsTables: z.infer<typeof ResultsTablesFinalContractSchema>;
   crosstabRaw: z.infer<typeof CrosstabRawArtifactSchema>;
   loopSummary: z.infer<typeof LoopSummaryArtifactSchema>;
   verboseDataMap: unknown[] | null;
