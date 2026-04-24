@@ -373,6 +373,37 @@ describe("AnalysisMessage trace presentation", () => {
     expect(markup).not.toContain("aria-label=\"Copy response\"");
   });
 
+  it("shows the animated loader in the reasoning header before answer reveal begins", () => {
+    const assistantMessage: UIMessage = {
+      id: "assistant-thinking-1",
+      role: "assistant",
+      parts: [{ type: "reasoning", text: "Checking the most relevant cuts first." }],
+    };
+
+    const markup = renderToStaticMarkup(
+      React.createElement(AnalysisMessage, { message: assistantMessage, isStreaming: true }),
+    );
+
+    expect(markup).toContain("aria-label=\"Loading\"");
+  });
+
+  it("removes the animated loader from the reasoning header once answer content is present", () => {
+    const assistantMessage: UIMessage = {
+      id: "assistant-thinking-2",
+      role: "assistant",
+      parts: [
+        { type: "reasoning", text: "Checking the most relevant cuts first." },
+        { type: "text", text: "Here is the answer." },
+      ],
+    };
+
+    const markup = renderToStaticMarkup(
+      React.createElement(AnalysisMessage, { message: assistantMessage, isStreaming: false }),
+    );
+
+    expect(markup).not.toContain("aria-label=\"Loading\"");
+  });
+
   it("renders cite chips inline with the sentence and labels them with the question id", () => {
     const cellId = "q1|row_0_1|__total__%3A%3Atotal|pct";
     const assistantMessage: UIMessage = {

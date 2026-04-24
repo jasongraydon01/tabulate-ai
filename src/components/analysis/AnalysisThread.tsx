@@ -89,23 +89,21 @@ export function shouldShowAnalysisPendingState(
 
 function PendingAnalysisMessage({ isSubmitted }: { isSubmitted: boolean }) {
   const summaryLabel = "TabulateAI is analyzing the artifacts...";
-  const detailLabel = isSubmitted
-    ? "Checking the run artifacts and preparing a grounded answer."
-    : "Grounding the answer in the run artifacts.";
+  const statusLabel = isSubmitted
+    ? "Checking the run artifacts"
+    : "Grounding the answer";
 
   return (
     <div className="flex w-full justify-start">
       <div className="min-w-0 max-w-[88%]">
-        <div className="min-w-0 space-y-3">
-          <div className="space-y-1">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <ChevronDown className={cn("h-3 w-3 transition-transform", "-rotate-90")} />
-              <span className="italic">{summaryLabel}</span>
-            </div>
-            <div className="ml-4.5 flex items-center gap-2 border-l border-border/40 pl-3 text-xs leading-relaxed text-muted-foreground">
-              <GridLoader size="sm" />
-              <span>{detailLabel}</span>
-            </div>
+        <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+          <div className="flex min-w-0 items-center gap-2">
+            <GridLoader size="sm" />
+            <span className="min-w-0 truncate italic">{summaryLabel}</span>
+          </div>
+          <div className="flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground/75">
+            <span>{statusLabel}</span>
+            <ChevronDown className={cn("h-3 w-3 transition-transform", "-rotate-90")} />
           </div>
         </div>
       </div>

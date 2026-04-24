@@ -13,6 +13,7 @@ import {
 import { Check, ChevronDown, Copy, Link2, Pencil, ThumbsDown, ThumbsUp } from "lucide-react";
 
 import { GroundedTableCard } from "@/components/analysis/GroundedTableCard";
+import { GridLoader } from "@/components/ui/grid-loader";
 import {
   Collapsible,
   CollapsibleContent,
@@ -927,6 +928,7 @@ export function AnalysisMessage({
     });
   const answerRevealBegins = displayBlocks.length > 0;
   const isFooterReady = revealPhase === "settled";
+  const showThinkingLoader = !answerRevealBegins;
 
   useEffect(() => {
     if (!shouldUseRevealController) return;
@@ -1181,17 +1183,20 @@ export function AnalysisMessage({
                     hasTouchedThinkingRef.current = true;
                     setIsThinkingExpanded((open) => !open);
                   }}
-                  className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground/70"
+                  className="flex w-full items-center justify-between gap-3 text-[11px] text-muted-foreground hover:text-foreground/70"
                 >
+                  <span className="flex min-w-0 items-center gap-2">
+                    {showThinkingLoader ? <GridLoader size="sm" /> : null}
+                    <span className="min-w-0 truncate italic">
+                      {getAnalysisTraceHeaderLabel(traceEntries, collapsedSummary, isThinkingExpanded)}
+                    </span>
+                  </span>
                   <ChevronDown
                     className={cn(
-                      "h-3 w-3 transition-transform",
+                      "h-3 w-3 shrink-0 transition-transform",
                       !isThinkingExpanded && "-rotate-90",
                     )}
                   />
-                  <span className="italic">
-                    {getAnalysisTraceHeaderLabel(traceEntries, collapsedSummary, isThinkingExpanded)}
-                  </span>
                 </button>
 
                 {isThinkingExpanded ? (
