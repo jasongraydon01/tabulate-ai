@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { Streamdown } from "streamdown";
 import { toast } from "sonner";
 import {
@@ -88,10 +89,52 @@ interface CitationChipMeta {
   title: string;
 }
 
-function buildCitationChipMetaByCellId(parts: UIMessage["parts"]): Map<string, CitationChipMeta> {
-  const metaByCellId = new Map<string, CitationChipMeta>();
+interface CitationChipLookup {
+  exactMetaByCellId: Map<string, CitationChipMeta>;
+  chipLabelByTableId: Map<string, string>;
+}
 
-  for (const part of parts) {
+function getEvidenceItemCellId(item: AnalysisEvidenceItem): string | null {
+  if (
+    item.evidenceKind !== "cell"
+    || !item.sourceTableId
+    || !item.rowKey
+    || !item.cutKey
+  ) {
+    return null;
+  }
+
+  return buildAnalysisCellId({
+    tableId: item.sourceTableId,
+    rowKey: item.rowKey,
+    cutKey: item.cutKey,
+    valueMode: "pct",
+  });
+}
+
+function buildCitationChipLookup(message: UIMessage): CitationChipLookup {
+  const exactMetaByCellId = new Map<string, CitationChipMeta>();
+  const chipLabelByTableId = new Map<string, string>();
+  const evidenceItems = getAnalysisMessageEvidenceItems(message);
+
+  for (const item of evidenceItems) {
+    if (item.sourceTableId && item.sourceQuestionId?.trim()) {
+      chipLabelByTableId.set(item.sourceTableId, item.sourceQuestionId.trim());
+    }
+
+    const cellId = getEvidenceItemCellId(item);
+    if (!cellId) continue;
+
+    const chipLabel = item.sourceQuestionId?.trim() || item.sourceTableId;
+    if (!chipLabel) continue;
+
+    exactMetaByCellId.set(cellId, {
+      chipLabel,
+      title: item.label,
+    });
+  }
+
+  for (const part of message.parts) {
     if (
       !isToolUIPart(part)
       || part.type !== "tool-confirmCitation"
@@ -107,21 +150,62 @@ function buildCitationChipMetaByCellId(parts: UIMessage["parts"]): Map<string, C
 
     const chipLabel = output.questionId?.trim() || output.tableId;
     const title = `${output.tableTitle} — ${output.rowLabel} / ${output.cutName}`;
-    metaByCellId.set(output.cellId, {
+    exactMetaByCellId.set(output.cellId, {
       chipLabel,
       title,
     });
+    chipLabelByTableId.set(output.tableId, chipLabel);
   }
 
-  return metaByCellId;
+  for (const part of message.parts) {
+    if (
+      !isToolUIPart(part)
+      || part.type !== "tool-fetchTable"
+      || part.state !== "output-available"
+      || !isAnalysisTableCard(part.output)
+    ) {
+      continue;
+    }
+
+    const chipLabel = part.output.questionId?.trim();
+    if (!chipLabel) continue;
+
+    chipLabelByTableId.set(part.output.tableId, chipLabel);
+  }
+
+  return {
+    exactMetaByCellId,
+    chipLabelByTableId,
+  };
+}
+
+function resolveCitationChipMeta(
+  cellId: string,
+  citeLookup: CitationChipLookup,
+): CitationChipMeta | null {
+  const exactMeta = citeLookup.exactMetaByCellId.get(cellId);
+  if (exactMeta) {
+    return exactMeta;
+  }
+
+  const parsed = parseAnalysisCellId(cellId);
+  if (!parsed) return null;
+
+  const chipLabel = citeLookup.chipLabelByTableId.get(parsed.tableId);
+  if (!chipLabel) return null;
+
+  return {
+    chipLabel,
+    title: `${parsed.tableId} — ${parsed.rowKey} / ${parsed.cutKey}`,
+  };
 }
 
 function InlineCitationText({
   text,
-  citeMetaByCellId,
+  citeLookup,
 }: {
   text: string;
-  citeMetaByCellId: Map<string, CitationChipMeta>;
+  citeLookup: CitationChipLookup;
 }) {
   const segments = buildAnalysisCiteSegments(text);
 
@@ -130,18 +214,22 @@ function InlineCitationText({
       {segments.map((segment, segmentIndex) => {
         if (segment.kind === "text") {
           return (
-            <span key={`text-${segmentIndex}`}>
+            <ReactMarkdown
+              key={`text-${segmentIndex}`}
+              components={{
+                p: ({ children }) => <>{children}</>,
+              }}
+            >
               {segment.text}
-            </span>
+            </ReactMarkdown>
           );
         }
 
         return (
           <CiteChip
             key={`cite-${segmentIndex}`}
-            index={segment.indexWithinMessage}
             cellIds={segment.cellIds}
-            citeMetaByCellId={citeMetaByCellId}
+            citeLookup={citeLookup}
           />
         );
       })}
@@ -292,6 +380,38 @@ export function getAnalysisMessageFollowUpItems(message: UIMessage): string[] {
   return getAnalysisMessageFollowUpSuggestions(message);
 }
 
+function getInlineCitedCellIds(message: Pick<UIMessage, "parts">): Set<string> {
+  const citedCellIds = new Set<string>();
+  const text = getAnalysisUIMessageText(message);
+
+  for (const segment of buildAnalysisCiteSegments(text)) {
+    if (segment.kind !== "cite") continue;
+    for (const cellId of segment.cellIds) {
+      citedCellIds.add(cellId);
+    }
+  }
+
+  return citedCellIds;
+}
+
+export function getVisibleEvidenceItems(
+  message: UIMessage,
+  evidenceItems: AnalysisEvidenceItem[],
+): AnalysisEvidenceItem[] {
+  if (evidenceItems.length === 0) return [];
+
+  const citedCellIds = getInlineCitedCellIds(message);
+
+  return evidenceItems.filter((item) => {
+    const cellId = getEvidenceItemCellId(item);
+    if (!cellId) {
+      return true;
+    }
+
+    return !item.renderedInCurrentMessage || !citedCellIds.has(cellId);
+  });
+}
+
 function getAnalysisEvidenceAnchorId(anchorId: string): string {
   return `analysis-evidence-${anchorId.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
 }
@@ -313,40 +433,36 @@ export function getAnalysisCellAnchorId(cellId: string): string {
   return `analysis-cell-${cellId.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
 }
 
-function scrollToCellAnchor(cellId: string) {
-  const target = document.getElementById(getAnalysisCellAnchorId(cellId));
-  if (!target) return;
-
-  target.scrollIntoView({ behavior: "smooth", block: "center" });
+function highlightAnchor(target: HTMLElement) {
   target.classList.add("ring-2", "ring-tab-teal/40", "ring-offset-2", "ring-offset-background");
   window.setTimeout(() => {
     target.classList.remove("ring-2", "ring-tab-teal/40", "ring-offset-2", "ring-offset-background");
   }, 1200);
 }
 
-const SUPERSCRIPT_DIGITS = ["⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹"];
+function scrollToCellAnchors(cellIds: string[]) {
+  const targets = cellIds
+    .map((cellId) => document.getElementById(getAnalysisCellAnchorId(cellId)))
+    .filter((target): target is HTMLElement => target instanceof HTMLElement);
+  if (targets.length === 0) return;
 
-function toSuperscript(index: number): string {
-  return String(index)
-    .split("")
-    .map((digit) => SUPERSCRIPT_DIGITS[Number(digit)] ?? digit)
-    .join("");
+  targets[0].scrollIntoView({ behavior: "smooth", block: "center" });
+  for (const target of targets) {
+    highlightAnchor(target);
+  }
 }
 
 function CiteChip({
-  index,
   cellIds,
-  citeMetaByCellId,
+  citeLookup,
 }: {
-  index: number;
   cellIds: string[];
-  citeMetaByCellId: Map<string, CitationChipMeta>;
+  citeLookup: CitationChipLookup;
 }) {
   if (cellIds.length === 0) return null;
 
-  const primaryCellId = cellIds[0]!;
   const labels = [...new Set(cellIds.map((cellId) => {
-    const meta = citeMetaByCellId.get(cellId);
+    const meta = resolveCitationChipMeta(cellId, citeLookup);
     if (meta?.chipLabel) return meta.chipLabel;
     const parsed = parseAnalysisCellId(cellId);
     return parsed?.tableId ?? cellId;
@@ -354,7 +470,7 @@ function CiteChip({
   const chipLabel = labels.join(",");
   const title = cellIds
     .map((cellId) => {
-      const meta = citeMetaByCellId.get(cellId);
+      const meta = resolveCitationChipMeta(cellId, citeLookup);
       if (meta?.title) return meta.title;
       const parsed = parseAnalysisCellId(cellId);
       if (!parsed) return cellId;
@@ -367,14 +483,13 @@ function CiteChip({
       type="button"
       onClick={(event) => {
         event.preventDefault();
-        scrollToCellAnchor(primaryCellId);
+        scrollToCellAnchors(cellIds);
       }}
       title={title}
-      className="mx-0.5 inline-flex items-baseline gap-0.5 align-super text-[0.65em] font-mono text-tab-teal/90 hover:text-tab-teal underline-offset-2 hover:underline"
-      aria-label={`Citation ${chipLabel} ${index}`}
+      className="mx-0.5 inline-flex items-baseline align-super text-[0.65em] font-mono text-tab-teal/90 hover:text-tab-teal underline-offset-2 hover:underline"
+      aria-label={`Citation ${chipLabel}`}
     >
       <span>{chipLabel}</span>
-      <span>{toSuperscript(index)}</span>
     </button>
   );
 }
@@ -418,11 +533,13 @@ export function AnalysisMessage({
 
   const traceEntries = getAnalysisTraceEntries(message);
   const evidenceItems = getAnalysisMessageEvidenceItems(message);
+  const visibleEvidenceItems = getVisibleEvidenceItems(message, evidenceItems);
   const followUpSuggestions = getAnalysisMessageFollowUpItems(message);
   const effectiveFeedback = optimisticFeedback ?? feedback ?? null;
   const isDownvoteOpen = effectiveFeedback?.vote === "down";
   const renderableBlocks = buildAnalysisRenderableBlocks(message, { isStreaming });
-  const citeMetaByCellId = buildCitationChipMetaByCellId(message.parts);
+  const citeLookup = buildCitationChipLookup(message);
+  const shouldShowEvidence = visibleEvidenceItems.length > 0;
 
   const hasTrace = traceEntries.length > 0;
 
@@ -661,7 +778,7 @@ export function AnalysisMessage({
                   >
                     <InlineCitationText
                       text={block.text}
-                      citeMetaByCellId={citeMetaByCellId}
+                      citeLookup={citeLookup}
                     />
                   </div>
                 );
@@ -723,7 +840,7 @@ export function AnalysisMessage({
               </div>
             ) : null}
 
-            {evidenceItems.length > 0 ? (
+            {shouldShowEvidence ? (
               <Collapsible open={isEvidenceOpen} onOpenChange={setIsEvidenceOpen}>
                 <div className="pt-1">
                   <CollapsibleTrigger asChild>
@@ -734,32 +851,18 @@ export function AnalysisMessage({
                       <ChevronDown
                         className={cn("h-3 w-3 transition-transform", isEvidenceOpen && "rotate-180")}
                       />
-                      <span>Evidence ({evidenceItems.length})</span>
+                      <span>Evidence ({visibleEvidenceItems.length})</span>
                     </button>
                   </CollapsibleTrigger>
                   <CollapsibleContent className="pt-2">
                     <div className="rounded-xl border border-border/60 bg-muted/15 px-3 py-2">
                       <div className="space-y-1.5">
-                        {evidenceItems.map((item) => {
-                          const cellAnchorCellId = item.evidenceKind === "cell"
-                            && item.sourceTableId
-                            && item.rowKey
-                            && item.cutKey
-                            ? buildAnalysisCellId({
-                                tableId: item.sourceTableId,
-                                rowKey: item.rowKey,
-                                cutKey: item.cutKey,
-                                // evidenceItems don't carry valueMode; the cell's
-                                // anchor id on the rendered card uses the card's
-                                // valueMode. Try pct first (most common), fall
-                                // back to the card anchor on miss.
-                                valueMode: "pct",
-                              })
-                            : null;
+                        {visibleEvidenceItems.map((item) => {
+                          const cellAnchorCellId = getEvidenceItemCellId(item);
 
                           const handleClick = () => {
                             if (cellAnchorCellId) {
-                              scrollToCellAnchor(cellAnchorCellId);
+                              scrollToCellAnchors([cellAnchorCellId]);
                               return;
                             }
                             if (item.anchorId) {

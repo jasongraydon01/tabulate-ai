@@ -10,6 +10,7 @@ import {
   getAnalysisMessageFollowUpItems,
   getAnalysisTraceEntries,
   getAnalysisTraceHeaderLabel,
+  getVisibleEvidenceItems,
 } from "@/components/analysis/AnalysisMessage";
 
 describe("AnalysisMessage trace presentation", () => {
@@ -164,6 +165,102 @@ describe("AnalysisMessage trace presentation", () => {
     ]);
   });
 
+  it("hides the Evidence block when inline citations already surface rendered cell refs", () => {
+    const cellId = "q1|row_0_1|__total__%3A%3Atotal|pct";
+    const message: UIMessage = {
+      id: "assistant-inline-only",
+      role: "assistant",
+      metadata: {
+        hasGroundedClaims: true,
+        evidence: [
+          {
+            key: "cell::q1",
+            claimType: "cell",
+            evidenceKind: "cell",
+            refType: "table",
+            refId: "q1",
+            label: "Q1 overall — Very satisfied / Total",
+            anchorId: "tool-fetch-1",
+            sourceTableId: "q1",
+            sourceQuestionId: "Q1",
+            rowKey: "row_0_1",
+            cutKey: "__total__::total",
+            renderedInCurrentMessage: true,
+          },
+        ],
+      },
+      parts: [
+        {
+          type: "tool-confirmCitation",
+          toolCallId: "cite-1",
+          state: "output-available",
+          input: { tableId: "q1", rowLabel: "Very satisfied", columnLabel: "Total" },
+          output: {
+            status: "confirmed",
+            cellId,
+            tableId: "q1",
+            tableTitle: "Q1 overall",
+            questionId: "Q1",
+            rowKey: "row_0_1",
+            rowLabel: "Very satisfied",
+            cutKey: "__total__::total",
+            cutName: "Total",
+            groupName: null,
+            valueMode: "pct",
+            displayValue: "45%",
+            pct: 45,
+            count: 54,
+            n: null,
+            mean: null,
+            baseN: 120,
+            sigHigherThan: [],
+            sigVsTotal: null,
+            sourceRefs: [],
+          },
+        } as UIMessage["parts"][number],
+        {
+          type: "text",
+          text: `Overall satisfaction is **45%**.${buildAnalysisCiteMarker([cellId])}`,
+        },
+      ],
+    };
+
+    const markup = renderToStaticMarkup(
+      React.createElement(AnalysisMessage, { message, isStreaming: false }),
+    );
+
+    expect(markup).not.toContain("Evidence (");
+  });
+
+  it("shows the Evidence block when grounded support is not surfaced inline", () => {
+    const message: UIMessage = {
+      id: "assistant-extra-evidence",
+      role: "assistant",
+      metadata: {
+        hasGroundedClaims: true,
+        evidence: [
+          {
+            key: "context::q1",
+            claimType: "context",
+            evidenceKind: "context",
+            refType: "question",
+            refId: "Q1",
+            label: "Q1",
+            sourceQuestionId: "Q1",
+            renderedInCurrentMessage: false,
+          },
+        ],
+      },
+      parts: [{ type: "text", text: "Here is the read on Q1." }],
+    };
+
+    const markup = renderToStaticMarkup(
+      React.createElement(AnalysisMessage, { message, isStreaming: false }),
+    );
+
+    expect(markup).toContain("Evidence (1)");
+  });
+
   it("reads follow-up suggestions from message metadata", () => {
     const message: UIMessage = {
       id: "assistant-5",
@@ -262,7 +359,7 @@ describe("AnalysisMessage trace presentation", () => {
         } as UIMessage["parts"][number],
         {
           type: "text",
-          text: `Overall satisfaction is 45%.${buildAnalysisCiteMarker([cellId])}`,
+          text: `Overall satisfaction is **45%**.${buildAnalysisCiteMarker([cellId])}`,
         },
       ],
     };
@@ -271,11 +368,12 @@ describe("AnalysisMessage trace presentation", () => {
       React.createElement(AnalysisMessage, { message: assistantMessage, isStreaming: false }),
     );
 
-    expect(markup).toContain("Overall satisfaction is 45%.</span><button");
+    expect(markup).toContain("<strong>45%</strong>.");
     expect(markup).not.toContain("</p><button");
-    expect(markup).toContain("aria-label=\"Citation Q1 1\"");
+    expect(markup).toContain("aria-label=\"Citation Q1\"");
     expect(markup).toContain(">Q1<");
-    expect(markup).toContain(">¹<");
+    expect(markup).not.toContain(">¹<");
+    expect(markup).not.toContain("**45%**");
   });
 
   it("falls back to the table id when citation metadata is unavailable", () => {
@@ -295,8 +393,115 @@ describe("AnalysisMessage trace presentation", () => {
       React.createElement(AnalysisMessage, { message: assistantMessage, isStreaming: false }),
     );
 
-    expect(markup).toContain("aria-label=\"Citation q1 1\"");
+    expect(markup).toContain("aria-label=\"Citation q1\"");
     expect(markup).toContain(">q1<");
+  });
+
+  it("uses evidence metadata to label citations with the question id when confirmCitation metadata is unavailable", () => {
+    const cellId = "a3__standard_overview|A3r2_row_2|group%3Aage%20group%20hids3%3A%3A18%2024|pct";
+    const assistantMessage: UIMessage = {
+      id: "assistant-cite-evidence-meta",
+      role: "assistant",
+      metadata: {
+        hasGroundedClaims: true,
+        evidence: [
+          {
+            key: "cell::a3-18-24",
+            claimType: "cell",
+            evidenceKind: "cell",
+            refType: "table",
+            refId: "a3__standard_overview",
+            label: "A3 — Cambridge Savings Bank / 18-24",
+            sourceTableId: "a3__standard_overview",
+            sourceQuestionId: "A3",
+            rowKey: "A3r2_row_2",
+            cutKey: "group:age group hids3::18 24",
+            renderedInCurrentMessage: true,
+          },
+        ],
+      },
+      parts: [
+        {
+          type: "text",
+          text: `Cambridge Savings Bank is at 33%.${buildAnalysisCiteMarker([cellId])}`,
+        },
+      ],
+    };
+
+    const markup = renderToStaticMarkup(
+      React.createElement(AnalysisMessage, { message: assistantMessage, isStreaming: false }),
+    );
+
+    expect(markup).toContain("aria-label=\"Citation A3\"");
+    expect(markup).toContain(">A3<");
+    expect(markup).not.toContain(">a3__standard_overview<");
+  });
+
+  it("filters inline-covered cell refs out of the Evidence block while preserving uncited support", () => {
+    const citedCellId = "q1|row_0_1|__total__%3A%3Atotal|pct";
+    const message: UIMessage = {
+      id: "assistant-partial-evidence",
+      role: "assistant",
+      metadata: {
+        hasGroundedClaims: true,
+        evidence: [
+          {
+            key: "cell::q1-cited",
+            claimType: "cell",
+            evidenceKind: "cell",
+            refType: "table",
+            refId: "q1",
+            label: "Q1 overall — Very satisfied / Total",
+            sourceTableId: "q1",
+            sourceQuestionId: "Q1",
+            rowKey: "row_0_1",
+            cutKey: "__total__::total",
+            renderedInCurrentMessage: true,
+          },
+          {
+            key: "cell::q1-uncited",
+            claimType: "cell",
+            evidenceKind: "cell",
+            refType: "table",
+            refId: "q1",
+            label: "Q1 overall — Somewhat satisfied / Total",
+            sourceTableId: "q1",
+            sourceQuestionId: "Q1",
+            rowKey: "row_0_2",
+            cutKey: "__total__::total",
+            renderedInCurrentMessage: true,
+          },
+          {
+            key: "context::q1",
+            claimType: "context",
+            evidenceKind: "context",
+            refType: "question",
+            refId: "Q1",
+            label: "Q1 wording",
+            sourceQuestionId: "Q1",
+            renderedInCurrentMessage: false,
+          },
+        ],
+      },
+      parts: [
+        {
+          type: "text",
+          text: `Overall satisfaction is 45%.${buildAnalysisCiteMarker([citedCellId])}`,
+        },
+      ],
+    };
+
+    expect(getVisibleEvidenceItems(message, getAnalysisMessageEvidenceItems(message))).toEqual([
+      expect.objectContaining({ key: "cell::q1-uncited" }),
+      expect.objectContaining({ key: "context::q1" }),
+    ]);
+
+    const markup = renderToStaticMarkup(
+      React.createElement(AnalysisMessage, { message, isStreaming: false }),
+    );
+
+    expect(markup).toContain("Evidence (2)");
+    expect(markup).toContain("aria-label=\"Citation Q1\"");
   });
 
   it("renders an edit affordance on user messages when an edit handler is provided", () => {

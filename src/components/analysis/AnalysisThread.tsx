@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { useChat } from "@ai-sdk/react";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, ChevronDown } from "lucide-react";
 
 import { AnalysisMessage } from "@/components/analysis/AnalysisMessage";
 import {
@@ -15,6 +15,7 @@ import { PromptComposer } from "@/components/analysis/PromptComposer";
 import { GridLoader } from "@/components/ui/grid-loader";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { AnalysisMessageFeedbackRecord, AnalysisMessageFeedbackVote } from "@/lib/analysis/types";
+import { cn } from "@/lib/utils";
 
 interface AnalysisThreadProps {
   runId: string;
@@ -53,6 +54,62 @@ export function shouldShowAnalysisMessageActions(
   }
 
   return !messages.slice(messageIndex + 1).some((entry) => entry.role === "user");
+}
+
+export function hasVisibleAnalysisMessageParts(message: UIMessage): boolean {
+  return message.parts.some((part) => {
+    if (part.type === "text" || part.type === "reasoning") {
+      return part.text.trim().length > 0;
+    }
+
+    return part.type.startsWith("tool-");
+  });
+}
+
+export function shouldShowAnalysisPendingState(
+  messages: UIMessage[],
+  status: "submitted" | "streaming" | "ready" | "error",
+): boolean {
+  if (status !== "submitted" && status !== "streaming") {
+    return false;
+  }
+
+  const lastMessage = messages.at(-1);
+  if (!lastMessage) {
+    return true;
+  }
+
+  if (lastMessage.role !== "assistant") {
+    return true;
+  }
+
+  return !hasVisibleAnalysisMessageParts(lastMessage);
+}
+
+function PendingAnalysisMessage({ isSubmitted }: { isSubmitted: boolean }) {
+  const summaryLabel = "TabulateAI is analyzing the artifacts...";
+  const detailLabel = isSubmitted
+    ? "Checking the run artifacts and preparing a grounded answer."
+    : "Grounding the answer in the run artifacts.";
+
+  return (
+    <div className="flex w-full justify-start">
+      <div className="min-w-0 max-w-[88%]">
+        <div className="min-w-0 space-y-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <ChevronDown className={cn("h-3 w-3 transition-transform", "-rotate-90")} />
+              <span className="italic">{summaryLabel}</span>
+            </div>
+            <div className="ml-4.5 flex items-center gap-2 border-l border-border/40 pl-3 text-xs leading-relaxed text-muted-foreground">
+              <GridLoader size="sm" />
+              <span>{detailLabel}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function AnalysisThread({
@@ -101,6 +158,7 @@ export function AnalysisThread({
   });
 
   const isBusy = status === "submitted" || status === "streaming";
+  const shouldShowPendingState = shouldShowAnalysisPendingState(messages, status);
 
   // Reconcile useChat's client-generated message ids against the Convex
   // authoritative list after a turn persists. Only acts when both lists are
@@ -236,6 +294,14 @@ export function AnalysisThread({
           ) : (
             messages.map((message, index) => {
               const isLastMessage = index === messages.length - 1;
+              const isPendingAssistantShell = isBusy
+                && isLastMessage
+                && message.role === "assistant"
+                && !hasVisibleAnalysisMessageParts(message);
+              if (isPendingAssistantShell) {
+                return null;
+              }
+
               const shouldShowMessageActions = shouldShowAnalysisMessageActions(messages, index);
               const showFollowUps = shouldShowMessageActions && !isBusy;
               const isPersistedUserMessage = message.role === "user"
@@ -259,16 +325,7 @@ export function AnalysisThread({
             })
           )}
 
-          {isBusy && status === "submitted" && (
-            <div className="flex w-full justify-start">
-              <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                  <GridLoader size="sm" />
-                  TabulateAI is checking the run artifacts...
-                </div>
-              </div>
-            </div>
-          )}
+          {shouldShowPendingState ? <PendingAnalysisMessage isSubmitted={status === "submitted"} /> : null}
 
           {error && (
             <div className="rounded-2xl border border-tab-rose/30 bg-tab-rose/10 p-4 text-sm text-tab-rose">

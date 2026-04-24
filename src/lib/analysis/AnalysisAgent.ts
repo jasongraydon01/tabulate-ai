@@ -36,6 +36,53 @@ import {
 import { calculateCostSync, recordAgentMetrics } from "@/lib/observability";
 import { retryWithPolicyHandling } from "@/lib/retryWithPolicyHandling";
 
+const confirmCitationInputSchema = z.object({
+  tableId: z.string().min(1).max(200),
+  rowKey: z.string().min(1).max(200).optional(),
+  cutKey: z.string().min(1).max(400).optional(),
+  rowLabel: z.string().min(1).max(400).optional(),
+  columnLabel: z.string().min(1).max(400).optional(),
+  rowRef: z.string().min(1).max(200).optional(),
+  columnRef: z.string().min(1).max(400).optional(),
+  valueMode: z.enum(["pct", "count", "n", "mean"]).optional(),
+}).superRefine((value, ctx) => {
+  const hasLegacyShape = typeof value.rowKey === "string" && typeof value.cutKey === "string";
+  const hasSemanticShape = typeof value.rowLabel === "string" && typeof value.columnLabel === "string";
+
+  if (hasLegacyShape || hasSemanticShape) {
+    return;
+  }
+
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    message: "Provide either rowKey + cutKey or rowLabel + columnLabel.",
+  });
+});
+
+function normalizeConfirmCitationInput(input: z.infer<typeof confirmCitationInputSchema>) {
+  if (typeof input.rowKey === "string" && typeof input.cutKey === "string") {
+    return {
+      tableId: input.tableId,
+      rowKey: input.rowKey,
+      cutKey: input.cutKey,
+      valueMode: input.valueMode,
+    };
+  }
+
+  if (typeof input.rowLabel === "string" && typeof input.columnLabel === "string") {
+    return {
+      tableId: input.tableId,
+      rowLabel: input.rowLabel,
+      columnLabel: input.columnLabel,
+      rowRef: input.rowRef,
+      columnRef: input.columnRef,
+      valueMode: input.valueMode,
+    };
+  }
+
+  throw new Error("confirmCitation received an invalid input shape after schema validation.");
+}
+
 export async function streamAnalysisResponse({
   messages,
   groundingContext,
@@ -185,25 +232,10 @@ export async function streamAnalysisResponse({
           confirmCitation: tool({
             description: "Confirm a specific cell before citing its number in prose. Returns the cell summary (displayValue, pct/count/n/mean, baseN, sig markers) plus a stable cellId. Required before emitting any `[[cite cellIds=...]]` marker for that cell IN THIS TURN. Hierarchy: fetch → (optionally) render → confirm → cite.",
             providerOptions: ANALYSIS_ANTHROPIC_EPHEMERAL_CACHE_CONTROL_PROVIDER_OPTIONS,
-            inputSchema: z.union([
-              z.object({
-                tableId: z.string().min(1).max(200),
-                rowKey: z.string().min(1).max(200),
-                cutKey: z.string().min(1).max(400),
-                valueMode: z.enum(["pct", "count", "n", "mean"]).optional(),
-              }),
-              z.object({
-                tableId: z.string().min(1).max(200),
-                rowLabel: z.string().min(1).max(400),
-                columnLabel: z.string().min(1).max(400),
-                rowRef: z.string().min(1).max(200).optional(),
-                columnRef: z.string().min(1).max(400).optional(),
-                valueMode: z.enum(["pct", "count", "n", "mean"]).optional(),
-              }),
-            ]),
+            inputSchema: confirmCitationInputSchema,
             execute: async (input, options) => executeGroundedTool(
               "confirmCitation",
-              () => confirmCitation(groundingContext, input),
+              () => confirmCitation(groundingContext, normalizeConfirmCitationInput(input)),
               { toolCallId: options.toolCallId },
             ),
           }),
