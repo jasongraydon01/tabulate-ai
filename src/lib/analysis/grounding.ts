@@ -14,7 +14,10 @@ import type {
   AnalysisBannerCutsInclude,
   AnalysisBannerCutsResult,
   AnalysisBannerGroupResult,
+  AnalysisCatalogCutMatch,
+  AnalysisCatalogQuestionMatch,
   AnalysisCatalogSearchScope,
+  AnalysisCatalogTableMatch,
   AnalysisCellConfirmationColumnCandidate,
   AnalysisCellConfirmationRowCandidate,
   AnalysisCatalogSearchResult,
@@ -1008,14 +1011,20 @@ export async function loadAnalysisGroundingContext(params: {
 
 export function searchRunCatalog(
   context: AnalysisGroundingContext,
-  query: string,
-  scope: AnalysisCatalogSearchScope = "all",
+  query?: string | null,
+  scope?: AnalysisCatalogSearchScope,
 ): AnalysisCatalogSearchResult {
+  const trimmedQuery = typeof query === "string" ? query.trim() : "";
+  const isListing = trimmedQuery.length === 0;
+  const mode: "search" | "listing" = isListing ? "listing" : "search";
+  const effectiveScope: AnalysisCatalogSearchScope = scope ?? (isListing ? "questions" : "all");
+
   if (context.availability === "unavailable") {
     return {
       status: "unavailable",
-      query,
-      scope,
+      mode,
+      ...(isListing ? {} : { query: trimmedQuery }),
+      scope: effectiveScope,
       questions: [],
       tables: [],
       cuts: [],
@@ -1023,7 +1032,67 @@ export function searchRunCatalog(
     };
   }
 
-  const questionMatches = scope === "all" || scope === "questions"
+  if (isListing) {
+    const includeQuestions = effectiveScope === "all" || effectiveScope === "questions";
+    const includeTables = effectiveScope === "all" || effectiveScope === "tables";
+    const includeCuts = effectiveScope === "all" || effectiveScope === "cuts";
+
+    const questions: AnalysisCatalogQuestionMatch[] = includeQuestions
+      ? [...context.questions]
+          .sort((left, right) =>
+            left.questionId.trim().toLowerCase().localeCompare(right.questionId.trim().toLowerCase()),
+          )
+          .map((question) => ({
+            questionId: question.questionId,
+            questionText: question.questionText,
+            normalizedType: question.normalizedType,
+            analyticalSubtype: question.analyticalSubtype ?? null,
+          }))
+      : [];
+
+    const tables: AnalysisCatalogTableMatch[] = includeTables
+      ? Object.entries(context.tables)
+          .sort(([leftId], [rightId]) => leftId.localeCompare(rightId))
+          .map(([tableId, table]) => ({
+            tableId,
+            title: deriveTitle(table, tableId),
+            questionId: table.questionId ?? null,
+            questionText: table.questionText ?? null,
+            tableType: table.tableType ?? null,
+          }))
+      : [];
+
+    const cuts: AnalysisCatalogCutMatch[] = includeCuts
+      ? context.bannerGroups.flatMap((group) =>
+          group.columns.map((column) => ({
+            groupName: group.groupName,
+            cutName: column.name,
+            statLetter: column.statLetter,
+          })),
+        )
+      : [];
+
+    const totals = {
+      questions: context.questions.length,
+      tables: Object.keys(context.tables).length,
+      cuts: context.bannerGroups.reduce((sum, group) => sum + group.columns.length, 0),
+    };
+
+    return {
+      status: context.availability,
+      mode: "listing",
+      scope: effectiveScope,
+      questions,
+      tables,
+      cuts,
+      totals,
+      ...(context.missingArtifacts.length > 0
+        ? { message: buildMissingMessage(context.missingArtifacts) }
+        : {}),
+    };
+  }
+
+  const questionMatches = effectiveScope === "all" || effectiveScope === "questions"
     ? sortByScore(
       context.questions
         .map((question) => ({
@@ -1032,7 +1101,7 @@ export function searchRunCatalog(
           normalizedType: question.normalizedType,
           analyticalSubtype: question.analyticalSubtype ?? null,
           score: scoreMatch(
-            query,
+            trimmedQuery,
             question.questionId,
             question.questionText,
             question.normalizedType,
@@ -1044,7 +1113,7 @@ export function searchRunCatalog(
     ).slice(0, 5)
     : [];
 
-  const tableMatches = scope === "all" || scope === "tables"
+  const tableMatches = effectiveScope === "all" || effectiveScope === "tables"
     ? sortByScore(
       Object.entries(context.tables)
         .map(([tableId, table]) => ({
@@ -1054,7 +1123,7 @@ export function searchRunCatalog(
           questionText: table.questionText ?? null,
           tableType: table.tableType ?? null,
           score: scoreMatch(
-            query,
+            trimmedQuery,
             tableId,
             table.questionId,
             table.questionText,
@@ -1074,14 +1143,14 @@ export function searchRunCatalog(
     ).slice(0, 5)
     : [];
 
-  const cutMatches = scope === "all" || scope === "cuts"
+  const cutMatches = effectiveScope === "all" || effectiveScope === "cuts"
     ? sortByScore(
       context.bannerGroups
         .flatMap((group) => group.columns.map((column) => ({
           groupName: group.groupName,
           cutName: column.name,
           statLetter: column.statLetter,
-          score: scoreMatch(query, group.groupName, column.name, column.statLetter),
+          score: scoreMatch(trimmedQuery, group.groupName, column.name, column.statLetter),
         })))
         .filter((match) => match.score > 0),
     ).slice(0, 8)
@@ -1089,8 +1158,9 @@ export function searchRunCatalog(
 
   return {
     status: context.availability,
-    query,
-    scope,
+    mode: "search",
+    query: trimmedQuery,
+    scope: effectiveScope,
     questions: questionMatches,
     tables: tableMatches,
     cuts: cutMatches,

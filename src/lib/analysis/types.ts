@@ -71,7 +71,7 @@ export interface AnalysisCatalogQuestionMatch {
   questionText: string;
   normalizedType: string;
   analyticalSubtype: string | null;
-  score: number;
+  score?: number;
 }
 
 export interface AnalysisCatalogTableMatch {
@@ -80,23 +80,31 @@ export interface AnalysisCatalogTableMatch {
   questionId: string | null;
   questionText: string | null;
   tableType: string | null;
-  score: number;
+  score?: number;
 }
 
 export interface AnalysisCatalogCutMatch {
   groupName: string;
   cutName: string;
   statLetter: string | null;
-  score: number;
+  score?: number;
 }
+
+export type AnalysisCatalogSearchMode = "search" | "listing";
 
 export interface AnalysisCatalogSearchResult {
   status: AnalysisAvailabilityStatus;
-  query: string;
+  mode: AnalysisCatalogSearchMode;
+  query?: string;
   scope?: AnalysisCatalogSearchScope;
   questions: AnalysisCatalogQuestionMatch[];
   tables: AnalysisCatalogTableMatch[];
   cuts: AnalysisCatalogCutMatch[];
+  totals?: {
+    questions: number;
+    tables: number;
+    cuts: number;
+  };
   message?: string;
 }
 

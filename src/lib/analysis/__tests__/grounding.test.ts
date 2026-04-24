@@ -309,10 +309,84 @@ describe("analysis grounding helpers", () => {
   it("supports scoped catalog search", () => {
     const result = searchRunCatalog(context, "female satisfaction", "tables");
 
+    expect(result.mode).toBe("search");
     expect(result.scope).toBe("tables");
     expect(result.questions).toEqual([]);
     expect(result.tables[0]?.tableId).toBe("q1_overall");
     expect(result.cuts).toEqual([]);
+  });
+
+  it("lists every question in the run when no query is provided", () => {
+    const result = searchRunCatalog(context);
+
+    expect(result.mode).toBe("listing");
+    expect(result.scope).toBe("questions");
+    expect(result.query).toBeUndefined();
+    expect(result.questions.map((question) => question.questionId)).toEqual(["Q1"]);
+    expect(result.questions[0]?.score).toBeUndefined();
+    expect(result.questions[0]).toEqual(expect.objectContaining({
+      questionId: "Q1",
+      questionText: "Overall satisfaction with TabulateAI",
+      normalizedType: "single_punch",
+      analyticalSubtype: "standard_overview",
+    }));
+    expect(result.tables).toEqual([]);
+    expect(result.cuts).toEqual([]);
+    expect(result.totals).toEqual({ questions: 1, tables: 4, cuts: 4 });
+  });
+
+  it("treats an empty or whitespace query as a listing-mode call", () => {
+    const empty = searchRunCatalog(context, "");
+    const whitespace = searchRunCatalog(context, "   ");
+
+    expect(empty.mode).toBe("listing");
+    expect(empty.scope).toBe("questions");
+    expect(empty.questions).toHaveLength(1);
+    expect(whitespace.mode).toBe("listing");
+    expect(whitespace.questions).toHaveLength(1);
+  });
+
+  it("supports scoped listing mode across tables and cuts", () => {
+    const tables = searchRunCatalog(context, undefined, "tables");
+
+    expect(tables.mode).toBe("listing");
+    expect(tables.scope).toBe("tables");
+    expect(tables.questions).toEqual([]);
+    expect(tables.tables.map((table) => table.tableId)).toEqual([
+      "q1_overall",
+      "q2_mean",
+      "q3_long",
+      "q4_frequency_stats",
+    ]);
+    expect(tables.tables[0]?.score).toBeUndefined();
+    expect(tables.cuts).toEqual([]);
+
+    const cuts = searchRunCatalog(context, undefined, "cuts");
+    expect(cuts.mode).toBe("listing");
+    expect(cuts.scope).toBe("cuts");
+    expect(cuts.cuts.map((cut) => `${cut.groupName}:${cut.cutName}`)).toEqual([
+      "Gender:Female",
+      "Gender:Male",
+      "Region:East",
+      "Region:West",
+    ]);
+    expect(cuts.cuts[0]?.score).toBeUndefined();
+
+    const all = searchRunCatalog(context, undefined, "all");
+    expect(all.mode).toBe("listing");
+    expect(all.scope).toBe("all");
+    expect(all.questions).toHaveLength(1);
+    expect(all.tables).toHaveLength(4);
+    expect(all.cuts).toHaveLength(4);
+  });
+
+  it("search mode surfaces mode and trimmed query on the result", () => {
+    const result = searchRunCatalog(context, "  female satisfaction  ");
+
+    expect(result.mode).toBe("search");
+    expect(result.query).toBe("female satisfaction");
+    expect(result.scope).toBe("all");
+    expect(result.questions[0]?.score).toBeGreaterThan(0);
   });
 
   it("defaults to total-first preview while keeping grouped payload data available", () => {

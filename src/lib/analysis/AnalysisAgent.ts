@@ -168,9 +168,15 @@ export async function streamAnalysisResponse({
         ...(getAnalysisProviderOptions() ? { providerOptions: getAnalysisProviderOptions() } : {}),
         tools: {
           searchRunCatalog: tool({
-            description: "Search the current run's catalog of questions, tables, and banner cuts from grounded artifacts. Use this first when the user refers to a topic or concept rather than a specific ID.",
+            description: [
+              "Browse or search the current run's catalog of questions, tables, and banner cuts.",
+              "Two modes:",
+              "- Listing mode: omit `query` to get a compact snapshot of everything in the run. Default `scope` is \"questions\" — returns every question with its id, type, and wording. Use this to orient yourself on open-ended asks (\"what's in this run?\", \"what did they ask about X?\"). Pass `scope: \"tables\"` or `\"cuts\"` for the equivalent table or banner-cut inventory; `scope: \"all\"` returns all three.",
+              "- Search mode: pass a `query` (a topic, concept, or phrase) to get lexical-scored top matches across questions, tables, and cuts. Use this when the user names a specific topic and you want the best matches rather than the full list.",
+              "Prefer listing mode for orientation; prefer search mode once you know what you're looking for.",
+            ].join("\n"),
             inputSchema: z.object({
-              query: z.string().min(1).max(200),
+              query: z.string().min(1).max(200).optional(),
               scope: z.enum(["all", "questions", "tables", "cuts"]).optional(),
             }),
             execute: async ({ query, scope }, options) => executeGroundedTool(
