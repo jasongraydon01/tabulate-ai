@@ -38,6 +38,8 @@ Three decisions that originally looked independent are actually one decision:
 
 **Compute-lane design checkpoint.** Still backlog, still driven by usage signal.
 
+Change citation to show the question ID, comma-separated versus just the number. Also, update so that the model doesn't put it on its own line and it's inline.
+
 ## Recommended next step
 
 Sequence the four pieces, not parallelize. (1) cache audit first, because it's the prerequisite. (2) tool-shape redesign next, because it has the largest behavioral impact and stands on its own value even without the transport flip. (3) transport pass-through after cache is measured as healthy, so we know the cost shape. (4) format benchmark last, once the narrowed payload exists to compare against. Production prompt stays frozen throughout; experiments land on `alternative.ts`. Each step is a focused PR, not an omnibus.
