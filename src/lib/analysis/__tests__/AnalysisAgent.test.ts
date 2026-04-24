@@ -29,6 +29,7 @@ vi.mock("@/lib/analysis/grounding", () => ({
   getTableCard: vi.fn(async () => ({ status: "available" })),
   getQuestionContext: vi.fn(async () => ({ status: "available" })),
   listBannerCuts: vi.fn(async () => ({ status: "available" })),
+  buildFetchTableModelMarkdown: vi.fn(() => "markdown table"),
   sanitizeGroundingToolOutput: vi.fn((value) => value),
   attachRetrievedContextXml: vi.fn((_toolName, value) => value),
 }));
@@ -221,6 +222,14 @@ describe("streamAnalysisResponse", () => {
         },
       });
       expect(tools?.listBannerCuts.providerOptions).toBeUndefined();
+      expect(tools?.fetchTable.toModelOutput?.({
+        toolCallId: "tool-1",
+        input: { tableId: "q1" },
+        output: { status: "available", tableId: "q1" },
+      })).toEqual({
+        type: "text",
+        value: "markdown table",
+      });
 
       onFinish?.({
         totalUsage: {

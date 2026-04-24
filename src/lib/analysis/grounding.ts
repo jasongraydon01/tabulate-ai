@@ -21,6 +21,7 @@ import type {
   AnalysisTableCardCell,
   AnalysisTableCardColumn,
   AnalysisTableCardColumnGroup,
+  AnalysisTableCardRow,
   AnalysisTableCardResult,
   AnalysisValueMode,
 } from "@/lib/analysis/types";
@@ -1415,6 +1416,134 @@ export function getTableCard(
     comparisonGroups: context.tablesMetadata.comparisonGroups,
     sourceRefs: resolveSourceRefs(args.tableId, table.questionId ?? null, title),
   };
+}
+
+function markdownEscapeCell(value: string | null | undefined): string {
+  return (value ?? "")
+    .replace(/\\/g, "\\\\")
+    .replace(/\|/g, "\\|")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\n/g, "<br />");
+}
+
+function formatModelTableValueMode(valueMode: AnalysisValueMode): string {
+  switch (valueMode) {
+    case "pct":
+      return "percent";
+    case "count":
+      return "count";
+    case "n":
+      return "base n";
+    case "mean":
+      return "mean";
+    default:
+      return valueMode;
+  }
+}
+
+function formatAnalysisTableRowLabel(row: AnalysisTableCardRow): string {
+  const indentPrefix = row.indent > 0 ? `${"  ".repeat(row.indent)}` : "";
+  const netPrefix = row.isNet ? "NET: " : "";
+  const statSuffix = row.statType ? ` [${row.statType}]` : "";
+  return `${indentPrefix}${netPrefix}${row.label}${statSuffix}`;
+}
+
+function formatAnalysisTableColumnGuide(column: AnalysisTableCardColumn): string {
+  const details = [
+    column.groupName ? `group: ${column.groupName}` : null,
+    column.statLetter ? `stat: ${column.statLetter}` : null,
+    typeof column.baseN === "number" ? `base n: ${column.baseN}` : null,
+    column.isTotal ? "total column" : null,
+  ].filter((value): value is string => Boolean(value));
+
+  return details.length > 0
+    ? `${column.cutName} (${details.join(", ")})`
+    : column.cutName;
+}
+
+function formatAnalysisTableCellForMarkdown(cell: AnalysisTableCardCell): string {
+  const significanceNotes: string[] = [];
+  if (cell.sigHigherThan.length > 0) {
+    significanceNotes.push(cell.sigHigherThan.join(""));
+  }
+  if (cell.sigVsTotal) {
+    significanceNotes.push(`vs-total:${cell.sigVsTotal}`);
+  }
+
+  return significanceNotes.length > 0
+    ? `${cell.displayValue} ^${significanceNotes.join(";")}`
+    : cell.displayValue;
+}
+
+export function buildFetchTableModelMarkdown(result: AnalysisTableCardResult): string {
+  if (result.status !== "available") {
+    return [
+      `Table ${result.tableId}`,
+      "",
+      result.message,
+    ].join("\n");
+  }
+
+  const lines: string[] = [
+    `### ${result.title}`,
+    "",
+    `- tableId: ${result.tableId}`,
+    `- question: ${compactText([result.questionId, result.questionText]) || result.title}`,
+    `- value mode: ${formatModelTableValueMode(result.valueMode)}`,
+    `- rows: ${result.totalRows}`,
+    `- cuts: ${result.totalColumns}`,
+  ];
+
+  if (result.baseText) {
+    lines.push(`- base: ${result.baseText}`);
+  }
+  if (result.tableSubtitle) {
+    lines.push(`- subtitle: ${result.tableSubtitle}`);
+  }
+  if (result.requestedRowFilter) {
+    lines.push(`- requested row filter: ${result.requestedRowFilter}`);
+  }
+  if (result.requestedCutFilter) {
+    lines.push(`- requested cut filter: ${result.requestedCutFilter}`);
+  }
+  if (result.significanceTest) {
+    const significanceSuffix = typeof result.significanceLevel === "number"
+      ? ` (level ${result.significanceLevel})`
+      : "";
+    lines.push(`- significance: ${result.significanceTest}${significanceSuffix}`);
+  }
+
+  lines.push("- use the rowKey and cutKey exactly as shown below when calling confirmCitation.");
+  lines.push("");
+  lines.push("Column guide:");
+  for (const column of result.columns) {
+    lines.push(`- ${column.cutKey ?? column.cutName}: ${formatAnalysisTableColumnGuide(column)}`);
+  }
+  lines.push("");
+
+  if (result.rows.length === 0) {
+    lines.push("_No rows available._");
+    return lines.join("\n");
+  }
+
+  const headerCells = [
+    "rowKey",
+    "Row label",
+    ...result.columns.map((column) => `${column.cutName} [${column.cutKey ?? column.cutName}]`),
+  ];
+  lines.push(`| ${headerCells.map(markdownEscapeCell).join(" | ")} |`);
+  lines.push(`| ${headerCells.map(() => "---").join(" | ")} |`);
+
+  for (const row of result.rows) {
+    const valueCells = row.values.map((cell) => markdownEscapeCell(formatAnalysisTableCellForMarkdown(cell)));
+    lines.push(`| ${[
+      markdownEscapeCell(row.rowKey),
+      markdownEscapeCell(formatAnalysisTableRowLabel(row)),
+      ...valueCells,
+    ].join(" | ")} |`);
+  }
+
+  return lines.join("\n");
 }
 
 const ALLOWED_HINT_LIMIT = 20;

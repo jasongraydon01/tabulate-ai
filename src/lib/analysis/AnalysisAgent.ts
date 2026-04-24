@@ -16,6 +16,7 @@ import {
 } from "@/lib/analysis/promptPrefix";
 import {
   attachRetrievedContextXml,
+  buildFetchTableModelMarkdown,
   confirmCitation,
   getQuestionContext,
   sanitizeGroundingToolOutput,
@@ -137,6 +138,10 @@ export async function streamAnalysisResponse({
               rowFilter: z.string().min(1).max(200).nullable().optional(),
               cutFilter: z.string().min(1).max(200).nullable().optional(),
               valueMode: z.enum(["pct", "count", "n", "mean"]).optional(),
+            }),
+            toModelOutput: ({ output }) => ({
+              type: "text",
+              value: buildFetchTableModelMarkdown(output),
             }),
             execute: async ({ tableId, rowFilter, cutFilter, valueMode }, options) => executeGroundedTool(
               "fetchTable",

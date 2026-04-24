@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   attachRetrievedContextXml,
+  buildFetchTableModelMarkdown,
   getQuestionContext,
   getTableCard,
   listBannerCuts,
@@ -439,6 +440,26 @@ describe("analysis grounding helpers", () => {
       { label: "Std Dev", rowKind: "stat", statType: "stddev" },
       { label: "Std Err", rowKind: "stat", statType: "stderr" },
     ]);
+  });
+
+  it("projects fetchTable results to markdown for the model while keeping rowKey and cutKey references", () => {
+    const card = getTableCard(context, {
+      tableId: "q1_overall",
+      valueMode: "pct",
+    });
+
+    expect(card.status).toBe("available");
+    if (card.status !== "available") {
+      throw new Error("expected table card");
+    }
+
+    const markdown = buildFetchTableModelMarkdown(card);
+
+    expect(markdown).toContain("- tableId: q1_overall");
+    expect(markdown).toContain("- value mode: percent");
+    expect(markdown).toContain("- use the rowKey and cutKey exactly as shown below when calling confirmCitation.");
+    expect(markdown).toContain("Female [group:gender::female]");
+    expect(markdown).toContain("| row_0_1 | Very satisfied | 45% | 54% ^B | 32% ^vs-total:lower | 51% | 39% |");
   });
 
   it("returns grounded question context with related tables", () => {
