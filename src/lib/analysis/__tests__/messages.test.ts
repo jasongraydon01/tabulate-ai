@@ -166,7 +166,6 @@ describe("analysis message helpers", () => {
         input: {
           tableId: "q1",
           cutGroups: null,
-          valueMode: "pct",
         },
         output: expect.objectContaining({
           tableId: "q1",

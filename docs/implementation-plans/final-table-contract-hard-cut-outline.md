@@ -37,36 +37,19 @@
 - typed ordered `columns` / `rows` / `cells` added to results artifacts
 - contract-driven row order and row semantics established in analysis grounding
 - stable cell identity simplified to `tableId + rowKey + cutKey`
+- **Slice C is complete.**
+  - live analysis grounding now validates final-contract tables without analysis-time rebuild-on-read recovery
+  - malformed tables are quarantined into `brokenTables` so one bad table does not take down the whole analysis session
+  - `fetchTable` is contract-driven and no longer accepts live `valueMode` input
+  - live `confirmCitation` is semantic-first (`tableId + rowLabel + columnLabel`, with optional fallback refs for ambiguity)
+  - the default active analysis prompt is aligned with the live Slice C fetch/render/cite contract
 
 ### What is not done yet
 
-- complete removal of analysis-time compatibility/hydration logic
-- complete cleanup of stale `getTableCard` wording in prompts, comments, and tests
 - full rendered-table / citation alignment audit
 - downstream consumer audit and cleanup
 
 ## Remaining Work
-
-### Slice C — Analysis Grounding And Model Projection
-
-**Goal:** make live analysis ingestion and model-facing projection contract-only.
-
-This slice owns:
-
-- removing analysis-time rebuilding / hydration as a normal path in `src/lib/analysis/grounding.ts`
-- making `fetchTable` and `confirmCitation` rely on finalized contract data rather than compatibility recovery
-- deciding whether live analysis still needs `valueMode` now that row-level display semantics are authoritative
-- keeping model markdown projection aligned with contract row order, row semantics, and cut order
-- making the slice language explicitly `fetchTable`-first rather than `getTableCard`-first
-
-This slice does **not** own:
-
-- `GroundedTableCard` UI behavior
-- render markers and render-focus UX
-- persisted replay cleanup
-- broad downstream consumer cleanup
-
-**Boundary rule:** Slice C is about the data/grounding path the model and citation logic consume, not the rendered card UX.
 
 ### Slice D — Rendered Analysis Tables And Citations
 

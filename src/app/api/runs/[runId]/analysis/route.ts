@@ -160,7 +160,6 @@ function emitInjectedTableCards(
       input: {
         tableId: injected.card.tableId,
         cutGroups: injected.card.requestedCutGroups ?? null,
-        valueMode: injected.card.valueMode,
       },
     });
     writer.write({
@@ -289,7 +288,6 @@ function buildFinalAssistantParts(params: {
     input: {
       tableId: entry.card.tableId,
       cutGroups: entry.card.requestedCutGroups ?? null,
-      valueMode: entry.card.valueMode,
     },
     output: entry.card,
   }));

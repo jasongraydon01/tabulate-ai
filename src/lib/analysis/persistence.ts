@@ -105,7 +105,6 @@ export function buildPersistedAnalysisParts(parts: UIMessage["parts"]): PendingA
             input: "input" in part ? sanitizeGroundingToolOutput(part.input) : {
               tableId: tableCard.tableId,
               cutGroups: tableCard.requestedCutGroups ?? null,
-              valueMode: tableCard.valueMode,
             },
           },
           artifact: {

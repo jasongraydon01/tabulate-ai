@@ -233,7 +233,6 @@ function persistedTableCardPart(
     input: (params.input ?? {
       tableId: payload.tableId,
       cutGroups: payload.requestedCutGroups ?? null,
-      valueMode: payload.valueMode,
     }) as Record<string, unknown>,
     output: payload,
   };

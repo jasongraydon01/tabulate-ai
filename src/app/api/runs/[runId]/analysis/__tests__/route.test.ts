@@ -472,7 +472,6 @@ describe("analysis chat route", () => {
               input: {
                 tableId: "q1",
                 cutGroups: null,
-                valueMode: "pct",
               },
               output: {
                 status: "available",
@@ -554,7 +553,6 @@ describe("analysis chat route", () => {
           input: {
             tableId: "q1",
             cutGroups: null,
-            valueMode: "pct",
           },
         },
         { type: "text", text: "Here is the grounded table." },
@@ -578,9 +576,9 @@ describe("analysis chat route", () => {
   });
 
   it("persists a cell grounding ref when the assistant cites a confirmed cell inline", async () => {
-    // Mirrors buildAnalysisCellId: encodeURIComponent(tableId)|rowKey|cutKey|valueMode.
+    // Mirrors buildAnalysisCellId: encodeURIComponent(tableId)|rowKey|cutKey.
     // `::` in cutKey is URL-encoded to `%3A%3A`; the `|` delimiters stay literal.
-    const cellId = "q1|row_0_1|__total__%3A%3Atotal|pct";
+    const cellId = "q1|row_0_1|__total__%3A%3Atotal";
     const cellSummary = {
       cellId,
       tableId: "q1",
@@ -627,7 +625,6 @@ describe("analysis chat route", () => {
               input: {
                 tableId: "q1",
                 cutGroups: null,
-                valueMode: "pct",
               },
               output: {
                 status: "available",

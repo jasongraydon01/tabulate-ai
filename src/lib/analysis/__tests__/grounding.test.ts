@@ -618,7 +618,6 @@ describe("analysis grounding helpers", () => {
   it("defaults to total-first preview while keeping grouped payload data available", () => {
     const card = getTableCard(context, {
       tableId: "q1_overall",
-      valueMode: "pct",
     });
 
     expect(card.status).toBe("available");
@@ -660,7 +659,6 @@ describe("analysis grounding helpers", () => {
     const card = getTableCard(context, {
       tableId: "q1_overall",
       cutGroups: ["Gender"],
-      valueMode: "pct",
     });
 
     expect(card.status).toBe("available");
@@ -701,7 +699,6 @@ describe("analysis grounding helpers", () => {
   it("reports preview metadata for long tables", () => {
     const card = getTableCard(context, {
       tableId: "q3_long",
-      valueMode: "pct",
     });
 
     expect(card.status).toBe("available");
@@ -787,7 +784,6 @@ describe("analysis grounding helpers", () => {
   it("projects fetchTable results to markdown with total only by default", () => {
     const card = getTableCard(context, {
       tableId: "q1_overall",
-      valueMode: "pct",
     });
 
     expect(card.status).toBe("available");
@@ -811,7 +807,6 @@ describe("analysis grounding helpers", () => {
     const card = getTableCard(context, {
       tableId: "q1_overall",
       cutGroups: ["Gender"],
-      valueMode: "pct",
     });
 
     expect(card.status).toBe("available");

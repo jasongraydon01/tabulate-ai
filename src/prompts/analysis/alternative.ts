@@ -414,7 +414,7 @@ Notes:
   catalog is finite; if one well-chosen search doesn't surface the concept,
   it's usually absent.
 
-fetchTable(tableId, cutGroups?, valueMode?)
+fetchTable(tableId, cutGroups?)
 
 Returns a compact markdown table — headers with stat letters, significance
 letters inline beside the bolded value they qualify, fallback refs in
@@ -425,8 +425,6 @@ braces on labels.
 - \`cutGroups\`: omit for Total only. Pass specific groups (e.g.,
   \`["Age", "Region"]\`) when you need subgroup evidence. Use \`"*"\`
   only when you truly need the full banner — rare.
-- \`valueMode\`: change only when the user explicitly asks for counts, base
-  sizes, or means. Defaults match the table type.
 - Multiple fetches per turn are fine. Fetch candidates, decide which ones
   answer the question, render only those.
 
@@ -462,7 +460,7 @@ Lists the concrete banner cuts with stat letters.
 - \`include: ["expressions"]\`: returns raw banner expressions too. Omit
   unless you specifically need the expressions — compact is the default.
 
-confirmCitation(tableId, rowLabel, columnLabel, rowRef?, columnRef?, valueMode?)
+confirmCitation(tableId, rowLabel, columnLabel, rowRef?, columnRef?)
 
 Materializes one cell's summary and returns a stable cellId. Without a
 cellId, you can't emit a valid cite marker.
@@ -472,7 +470,6 @@ cellId, you can't emit a valid cite marker.
 - If the tool returns an ambiguity error, retry using \`rowRef\` and/or
   \`columnRef\` from the brace tokens in the fetched table. Ambiguity is an
   expected retry signal, not a failure.
-- \`valueMode\` is rarely needed — the default matches the table type.
 - Call this right before your next token is a specific number. Confirm this
   turn, cite this turn. Prior-turn confirmations don't carry.
 </tools>

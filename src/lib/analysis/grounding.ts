@@ -2,13 +2,14 @@ import {
   BannerPlanArtifactSchema,
   BannerRouteMetadataArtifactSchema,
   CrosstabRawArtifactSchema,
+  FinalResultsTableEntrySchema,
   ResultsTablesArtifactSchema,
   SurveyParsedCleanupArtifactSchema,
 } from "@/lib/exportData/inputArtifactSchemas";
 import { buildQuestionContext, type QuestionIdFinalFile } from "@/lib/questionContext/adapters";
 import { downloadFile } from "@/lib/r2/r2";
-import { buildFinalTableContractEntry } from "@/lib/v3/runtime/finalTableContract";
 import { parseRunResult } from "@/schemas/runResultSchema";
+import { z, type ZodError } from "zod";
 
 import type {
   AnalysisAvailabilityStatus,
@@ -45,7 +46,6 @@ const BANNER_ROUTE_METADATA_PATH = "planning/banner-route-metadata.json";
 const CROSSTAB_PLAN_PATH = "planning/21-crosstab-plan.json";
 const SURVEY_MARKDOWN_PATH = "survey/survey-markdown.md";
 const SURVEY_PARSED_CLEANUP_PATH = "enrichment/08b-survey-parsed-cleanup.json";
-const COMPUTE_PACKAGE_PATH = "compute/22-compute-package.json";
 const DEFAULT_QUESTION_ITEM_LIMIT = 12;
 const DEFAULT_CARD_PREVIEW_ROW_LIMIT = 8;
 const TOTAL_GROUP_KEY = "__total__";
@@ -467,6 +467,11 @@ function resolveCellValueMode(contractRow: RawTableContractRow | undefined): Ana
   }
 }
 
+function resolveCompatibilityValueMode(tableType: string | null | undefined): AnalysisValueMode {
+  if ((tableType ?? "").toLowerCase().includes("mean")) return "mean";
+  return "pct";
+}
+
 function buildSelectedCuts(
   table: RawTableEntry,
 ): {
@@ -595,12 +600,6 @@ function projectTableCardForModel(
   };
 }
 
-function resolvePreferredValueMode(tableType: string | null | undefined, requested: AnalysisValueMode | undefined): AnalysisValueMode {
-  if (requested) return requested;
-  if ((tableType ?? "").toLowerCase().includes("mean")) return "mean";
-  return "pct";
-}
-
 function buildBannerGroups(
   tablesArtifact: ReturnType<typeof ResultsTablesArtifactSchema.parse> | null,
   crosstabArtifact: ReturnType<typeof CrosstabRawArtifactSchema.parse> | null,
@@ -661,45 +660,46 @@ function buildTablesMetadata(
   };
 }
 
-export function hydrateResultsTablesArtifactForAnalysis(
+function formatTableContractIssuePath(path: Array<string | number>): string {
+  return path.length > 0 ? path.join(".") : "table";
+}
+
+function formatInvalidFinalTableContractError(
+  tableId: string,
+  error: ZodError,
+): string {
+  const issueSummary = error.issues
+    .slice(0, 4)
+    .map((issue) => `${formatTableContractIssuePath(issue.path)}: ${issue.message}`)
+    .join("; ");
+
+  return `Invalid final table contract for ${tableId}: ${issueSummary}`;
+}
+
+const AnalysisResultsTablesEnvelopeSchema = ResultsTablesArtifactSchema
+  .omit({ tables: true })
+  .extend({
+    tables: z.record(z.unknown()),
+  });
+
+export function validateResultsTablesArtifactForAnalysis(
   tablesValue: unknown,
-  computePackageValue?: unknown | null,
 ): {
   artifact: ReturnType<typeof ResultsTablesArtifactSchema.parse>;
   brokenTables: Record<string, string>;
 } {
-  const parsed = ResultsTablesArtifactSchema.parse(tablesValue);
+  const parsed = AnalysisResultsTablesEnvelopeSchema.parse(tablesValue);
   const brokenTables: Record<string, string> = {};
 
-  if (!computePackageValue) {
-    return {
-      artifact: parsed,
-      brokenTables,
-    };
-  }
-
   const tables = Object.fromEntries(
-    Object.entries(parsed.tables).map(([tableId, table]) => {
-      const hasCompleteContractRows = Array.isArray(table.rows)
-        && table.rows.every((row) => Array.isArray(row.cells));
-      if (table.columns && hasCompleteContractRows) {
-        return [tableId, table];
+    Object.entries(parsed.tables).flatMap(([tableId, table]) => {
+      const result = FinalResultsTableEntrySchema.safeParse(table);
+      if (result.success) {
+        return [[tableId, result.data]];
       }
 
-      try {
-        return [
-          tableId,
-          buildFinalTableContractEntry(
-            tableId,
-            table as Parameters<typeof buildFinalTableContractEntry>[1],
-            parsed.metadata as Parameters<typeof buildFinalTableContractEntry>[2],
-            computePackageValue as Parameters<typeof buildFinalTableContractEntry>[3],
-          ),
-        ];
-      } catch (error) {
-        brokenTables[tableId] = error instanceof Error ? error.message : String(error);
-        return [tableId, table];
-      }
+      brokenTables[tableId] = formatInvalidFinalTableContractError(tableId, result.error);
+      return [];
     }),
   ) as ReturnType<typeof ResultsTablesArtifactSchema.parse>["tables"];
 
@@ -712,11 +712,10 @@ export function hydrateResultsTablesArtifactForAnalysis(
   };
 }
 
-export function parseResultsTablesArtifactWithHydration(
+export function parseResultsTablesArtifactForAnalysis(
   tablesValue: unknown,
-  computePackageValue?: unknown | null,
 ): ReturnType<typeof ResultsTablesArtifactSchema.parse> {
-  return hydrateResultsTablesArtifactForAnalysis(tablesValue, computePackageValue).artifact;
+  return validateResultsTablesArtifactForAnalysis(tablesValue).artifact;
 }
 
 async function downloadJsonArtifact<T>(key: string): Promise<T> {
@@ -858,7 +857,6 @@ export async function loadAnalysisGroundingContext(params: {
   const crosstabKey = outputs[CROSSTAB_PLAN_PATH] ?? runResult.reviewR2Keys?.v3CrosstabPlan ?? null;
   const surveyMarkdownKey = outputs[SURVEY_MARKDOWN_PATH] ?? null;
   const surveyParsedCleanupKey = outputs[SURVEY_PARSED_CLEANUP_PATH] ?? null;
-  const computePackageKey = outputs[COMPUTE_PACKAGE_PATH] ?? null;
 
   const [
     tablesResult,
@@ -868,7 +866,6 @@ export async function loadAnalysisGroundingContext(params: {
     crosstabResult,
     surveyMarkdownResult,
     surveyParsedCleanupResult,
-    computePackageResult,
   ] = await Promise.allSettled([
     tablesKey ? downloadJsonArtifact<unknown>(tablesKey) : Promise.resolve(null),
     questionKey ? downloadJsonArtifact<QuestionIdFinalFile>(questionKey) : Promise.resolve(null),
@@ -877,12 +874,11 @@ export async function loadAnalysisGroundingContext(params: {
     crosstabKey ? downloadJsonArtifact<unknown>(crosstabKey) : Promise.resolve(null),
     surveyMarkdownKey ? downloadTextArtifact(surveyMarkdownKey) : Promise.resolve(null),
     surveyParsedCleanupKey ? downloadJsonArtifact<unknown>(surveyParsedCleanupKey) : Promise.resolve(null),
-    computePackageKey ? downloadJsonArtifact<unknown>(computePackageKey) : Promise.resolve(null),
   ]);
 
   const missingArtifacts: string[] = [];
 
-  const tablesHydration = (() => {
+  const tablesValidation = (() => {
     if (!tablesKey) {
       missingArtifacts.push(TABLES_JSON_PATH);
       return {
@@ -897,13 +893,10 @@ export async function loadAnalysisGroundingContext(params: {
         brokenTables: {} as Record<string, string>,
       };
     }
-    const computePackageValue = computePackageResult.status === "fulfilled"
-      ? computePackageResult.value
-      : null;
-    return hydrateResultsTablesArtifactForAnalysis(tablesResult.value, computePackageValue);
+    return validateResultsTablesArtifactForAnalysis(tablesResult.value);
   })();
-  const tablesArtifact = tablesHydration.artifact;
-  const brokenTables = tablesHydration.brokenTables;
+  const tablesArtifact = tablesValidation.artifact;
+  const brokenTables = tablesValidation.brokenTables;
 
   const questionArtifact = (() => {
     if (!questionKey) {
@@ -1445,7 +1438,6 @@ export function getTableCard(
   args: {
     tableId: string;
     cutGroups?: AnalysisFetchTableCutGroups | null;
-    valueMode?: AnalysisValueMode;
   },
 ): AnalysisTableCardResult {
   const brokenReason = context.brokenTables?.[args.tableId];
@@ -1469,7 +1461,7 @@ export function getTableCard(
   }
 
   const requestedCutGroups = normalizeRequestedCutGroups(args.cutGroups ?? null);
-  const valueMode = resolvePreferredValueMode(table.tableType, args.valueMode);
+  const valueMode = resolveCompatibilityValueMode(table.tableType ?? null);
   const orderedRows = getOrderedTableRows(table);
   const {
     allCuts,

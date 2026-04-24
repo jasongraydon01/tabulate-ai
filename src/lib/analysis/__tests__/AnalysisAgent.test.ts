@@ -234,16 +234,26 @@ describe("streamAnalysisResponse", () => {
       });
       expect(tools?.confirmCitation.inputSchema.safeParse({
         tableId: "q1",
-        rowKey: "row_1",
-        cutKey: "cut_1",
-      }).success).toBe(true);
-      expect(tools?.confirmCitation.inputSchema.safeParse({
-        tableId: "q1",
         rowLabel: "Very satisfied",
         columnLabel: "Female",
         rowRef: "row_1",
         columnRef: "group:gender::female",
       }).success).toBe(true);
+      expect(tools?.confirmCitation.inputSchema.safeParse({
+        tableId: "q1",
+        rowKey: "row_1",
+        cutKey: "cut_1",
+      }).success).toBe(false);
+      expect(tools?.confirmCitation.inputSchema.safeParse({
+        tableId: "q1",
+        rowLabel: "Very satisfied",
+        columnLabel: "Female",
+        valueMode: "pct",
+      }).success).toBe(false);
+      expect(tools?.fetchTable.inputSchema.safeParse({
+        tableId: "q1",
+        valueMode: "pct",
+      }).success).toBe(false);
 
       onFinish?.({
         totalUsage: {

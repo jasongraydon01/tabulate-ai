@@ -38,47 +38,11 @@ import { retryWithPolicyHandling } from "@/lib/retryWithPolicyHandling";
 
 const confirmCitationInputSchema = z.object({
   tableId: z.string().min(1).max(200),
-  rowKey: z.string().min(1).max(200).optional(),
-  cutKey: z.string().min(1).max(400).optional(),
-  rowLabel: z.string().min(1).max(400).optional(),
-  columnLabel: z.string().min(1).max(400).optional(),
+  rowLabel: z.string().min(1).max(400),
+  columnLabel: z.string().min(1).max(400),
   rowRef: z.string().min(1).max(200).optional(),
   columnRef: z.string().min(1).max(400).optional(),
-}).superRefine((value, ctx) => {
-  const hasLegacyShape = typeof value.rowKey === "string" && typeof value.cutKey === "string";
-  const hasSemanticShape = typeof value.rowLabel === "string" && typeof value.columnLabel === "string";
-
-  if (hasLegacyShape || hasSemanticShape) {
-    return;
-  }
-
-  ctx.addIssue({
-    code: z.ZodIssueCode.custom,
-    message: "Provide either rowKey + cutKey or rowLabel + columnLabel.",
-  });
-});
-
-function normalizeConfirmCitationInput(input: z.infer<typeof confirmCitationInputSchema>) {
-  if (typeof input.rowKey === "string" && typeof input.cutKey === "string") {
-    return {
-      tableId: input.tableId,
-      rowKey: input.rowKey,
-      cutKey: input.cutKey,
-    };
-  }
-
-  if (typeof input.rowLabel === "string" && typeof input.columnLabel === "string") {
-    return {
-      tableId: input.tableId,
-      rowLabel: input.rowLabel,
-      columnLabel: input.columnLabel,
-      rowRef: input.rowRef,
-      columnRef: input.columnRef,
-    };
-  }
-
-  throw new Error("confirmCitation received an invalid input shape after schema validation.");
-}
+}).strict();
 
 export async function streamAnalysisResponse({
   messages,
@@ -190,20 +154,18 @@ export async function streamAnalysisResponse({
                 z.literal("*"),
                 z.array(z.string().min(1).max(100)).min(1).max(20),
               ]).optional(),
-              valueMode: z.enum(["pct", "count", "n", "mean"]).optional(),
-            }),
+            }).strict(),
             toModelOutput: ({ input, output }) => ({
               type: "text",
               value: buildFetchTableModelMarkdown(output, {
                 requestedCutGroups: input.cutGroups,
               }),
             }),
-            execute: async ({ tableId, cutGroups, valueMode }, options) => executeGroundedTool(
+            execute: async ({ tableId, cutGroups }, options) => executeGroundedTool(
               "fetchTable",
               () => getTableCard(groundingContext, {
                 tableId,
                 cutGroups,
-                valueMode,
               }),
               { toolCallId: options.toolCallId },
             ),
@@ -238,7 +200,7 @@ export async function streamAnalysisResponse({
             inputSchema: confirmCitationInputSchema,
             execute: async (input, options) => executeGroundedTool(
               "confirmCitation",
-              () => confirmCitation(groundingContext, normalizeConfirmCitationInput(input)),
+              () => confirmCitation(groundingContext, input),
               { toolCallId: options.toolCallId },
             ),
           }),
