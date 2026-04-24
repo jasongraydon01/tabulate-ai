@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { UIMessage } from "ai";
 
 import {
   MAX_ANALYSIS_ASSISTANT_MESSAGE_CHARS,
@@ -243,20 +244,33 @@ describe("analysis message helpers", () => {
     ]);
   });
 
-  it("skips persisted tool parts with unknown tool types", () => {
+  it("rehydrates persisted tool parts with arbitrary tool types when toolCallId is present", () => {
     const messages = persistedAnalysisMessagesToUIMessages([
       {
         _id: "msg-1",
         role: "assistant",
         content: "Answer.",
         parts: [
-          { type: "tool-newExperimentalThing", toolCallId: "call-x", state: "output-available" },
+          {
+            type: "tool-newExperimentalThing",
+            toolCallId: "call-x",
+            state: "output-available",
+            input: { topic: "brands" },
+            output: { ok: true },
+          },
           { type: "text", text: "Answer." },
         ],
       },
     ]);
 
     expect(messages[0].parts).toEqual([
+      {
+        type: "tool-newExperimentalThing",
+        toolCallId: "call-x",
+        state: "output-available",
+        input: { topic: "brands" },
+        output: { ok: true },
+      },
       { type: "text", text: "Answer." },
     ]);
   });
@@ -279,7 +293,7 @@ describe("analysis message helpers", () => {
     ]);
   });
 
-  it("keeps allowlisted tool parts in sanitized model messages", () => {
+  it("keeps tool history in sanitized model messages", () => {
     const sanitized = getSanitizedConversationMessagesForModel([
       {
         id: "assistant-1",
@@ -329,6 +343,12 @@ describe("analysis message helpers", () => {
               sourceRefs: [],
             },
           },
+          {
+            type: "tool-newExperimentalThing",
+            toolCallId: "call-2",
+            state: "input-available",
+            input: { topic: "follow-up" },
+          } as UIMessage["parts"][number],
         ],
       },
     ]);
@@ -340,6 +360,12 @@ describe("analysis message helpers", () => {
         toolCallId: "artifact-1",
         state: "output-available",
       }),
+      {
+        type: "tool-newExperimentalThing",
+        toolCallId: "call-2",
+        state: "input-available",
+        input: { topic: "follow-up" },
+      },
     ]);
   });
 

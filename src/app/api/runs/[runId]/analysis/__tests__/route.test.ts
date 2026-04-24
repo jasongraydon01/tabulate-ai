@@ -79,6 +79,7 @@ vi.mock("@/lib/analysis/AnalysisAgent", () => ({
 
 vi.mock("@/lib/analysis/grounding", () => ({
   loadAnalysisGroundingContext: mocks.loadAnalysisGroundingContext,
+  sanitizeGroundingToolOutput: (value: unknown) => value,
 }));
 
 vi.mock("@/lib/analysis/trace", () => ({
@@ -320,6 +321,133 @@ describe("analysis chat route", () => {
     });
   });
 
+  it("rehydrates persisted tool history before the next turn", async () => {
+    mocks.query
+      .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
+      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Audit Session", titleSource: "manual" })
+      .mockResolvedValueOnce([
+        {
+          _id: "assistant-msg-0",
+          role: "assistant",
+          content: "Prior answer.",
+          parts: [
+            {
+              type: "tool-fetchTable",
+              state: "output-available",
+              toolCallId: "tool-fetch-1",
+              artifactId: "artifact-1",
+              input: { tableId: "q1", rowFilter: "aware", cutFilter: null, valueMode: "pct" },
+            },
+            {
+              type: "tool-someNewThing",
+              state: "input-available",
+              toolCallId: "tool-generic-1",
+              input: { topic: "brands" },
+            },
+            { type: "text", text: "Prior answer." },
+          ],
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          _id: "artifact-1",
+          artifactType: "table_card",
+          payload: {
+            status: "available",
+            tableId: "q1",
+            title: "Q1 overall",
+            questionId: "Q1",
+            questionText: "How satisfied are you?",
+            tableType: "frequency",
+            surveySection: null,
+            baseText: "All respondents",
+            tableSubtitle: null,
+            userNote: null,
+            valueMode: "pct",
+            columns: [],
+            columnGroups: [{ groupKey: "__total__", groupName: "Total", columns: [] }],
+            rows: [],
+            totalRows: 0,
+            totalColumns: 0,
+            truncatedRows: 0,
+            truncatedColumns: 0,
+            defaultScope: "total_only",
+            initialVisibleRowCount: 0,
+            initialVisibleGroupCount: 0,
+            hiddenRowCount: 0,
+            hiddenGroupCount: 0,
+            focusedCutIds: null,
+            requestedRowFilter: "aware",
+            requestedCutFilter: null,
+            significanceTest: null,
+            significanceLevel: null,
+            comparisonGroups: [],
+            sourceRefs: [],
+          },
+        },
+      ])
+      .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
+    mocks.mutateInternal.mockResolvedValueOnce("user-msg-1").mockResolvedValueOnce("assistant-msg-1");
+    mocks.streamAnalysisResponse.mockResolvedValueOnce({
+      streamResult: makeStreamResult({
+        responseMessage: {
+          parts: [{ type: "text", text: "Still grounded." }],
+        },
+      }),
+      getTraceCapture: () => makeTraceCapture(),
+      getGroundingCapture: () => [],
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/runs/run-1/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          messages: [{ id: "user-1", role: "user", parts: [{ type: "text", text: "Use the prior grounding" }] }],
+        }),
+      }),
+      { params: Promise.resolve({ runId: "run-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(mocks.streamAnalysisResponse).toHaveBeenCalledWith(expect.objectContaining({
+      messages: [
+        {
+          id: "assistant-msg-0",
+          role: "assistant",
+          parts: [
+            {
+              type: "tool-fetchTable",
+              toolCallId: "tool-fetch-1",
+              state: "output-available",
+              input: { tableId: "q1", rowFilter: "aware", cutFilter: null, valueMode: "pct" },
+              output: expect.objectContaining({
+                tableId: "q1",
+                title: "Q1 overall",
+              }),
+            },
+            {
+              type: "tool-someNewThing",
+              toolCallId: "tool-generic-1",
+              state: "input-available",
+              input: { topic: "brands" },
+            },
+            { type: "text", text: "Prior answer." },
+          ],
+        },
+        {
+          id: "user-msg-1",
+          role: "user",
+          parts: [{ type: "text", text: "Use the prior grounding" }],
+        },
+      ],
+      groundingContext: expect.any(Object),
+      abortSignal: expect.any(AbortSignal),
+    }));
+  });
+
   it("persists grounded table cards as analysis artifacts", async () => {
     mocks.query
       .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
@@ -422,6 +550,12 @@ describe("analysis chat route", () => {
           artifactId: "artifact-1",
           label: "Q1 overall",
           toolCallId: "tool-1",
+          input: {
+            tableId: "q1",
+            rowFilter: null,
+            cutFilter: null,
+            valueMode: "pct",
+          },
         },
         { type: "text", text: "Here is the grounded table." },
       ],

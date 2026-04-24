@@ -79,7 +79,7 @@ describe("buildPersistedAnalysisParts", () => {
     expect(buildPersistedAnalysisParts(parts)).toEqual([]);
   });
 
-  it("persists allowlisted tool parts with model-facing input and output", () => {
+  it("persists standard tool parts with input and output", () => {
     const parts: UIMessage["parts"] = [
       {
         type: "tool-searchRunCatalog",
@@ -123,18 +123,27 @@ describe("buildPersistedAnalysisParts", () => {
     ]);
   });
 
-  it("drops non-allowlisted tool parts", () => {
+  it("persists arbitrary tool parts when they carry a toolCallId", () => {
     const parts: UIMessage["parts"] = [
       {
         type: "tool-someNewThing",
         toolCallId: "call-x",
-        state: "output-available",
-        input: {},
-        output: undefined,
+        state: "input-available",
+        input: { questionId: "Q1" },
       } as UIMessage["parts"][number],
     ];
 
-    expect(buildPersistedAnalysisParts(parts)).toEqual([]);
+    expect(buildPersistedAnalysisParts(parts)).toEqual([
+      {
+        kind: "ready",
+        part: {
+          type: "tool-someNewThing",
+          state: "input-available",
+          toolCallId: "call-x",
+          input: { questionId: "Q1" },
+        },
+      },
+    ]);
   });
 
   it("emits a tableCard entry with artifact metadata for output-available getTableCard parts", () => {
@@ -154,7 +163,12 @@ describe("buildPersistedAnalysisParts", () => {
     expect(pending).toHaveLength(1);
     expect(pending[0]).toEqual({
       kind: "tableCard",
-      template: { state: "output-available", label: "Q1 overall", toolCallId: "call-table" },
+      template: {
+        state: "output-available",
+        label: "Q1 overall",
+        toolCallId: "call-table",
+        input: { tableId: "q1" },
+      },
       artifact: {
         title: "Q1 overall",
         tableId: "q1",
@@ -164,21 +178,30 @@ describe("buildPersistedAnalysisParts", () => {
     });
   });
 
-  it("drops getTableCard parts that are not output-available", () => {
+  it("persists getTableCard parts inline when no artifact-backed table card is available", () => {
     const parts: UIMessage["parts"] = [
       {
         type: "tool-fetchTable",
         toolCallId: "call-table",
         state: "input-available",
         input: { tableId: "q1" },
-        output: undefined,
       } as UIMessage["parts"][number],
     ];
 
-    expect(buildPersistedAnalysisParts(parts)).toEqual([]);
+    expect(buildPersistedAnalysisParts(parts)).toEqual([
+      {
+        kind: "ready",
+        part: {
+          type: "tool-fetchTable",
+          state: "input-available",
+          toolCallId: "call-table",
+          input: { tableId: "q1" },
+        },
+      },
+    ]);
   });
 
-  it("drops getTableCard parts whose output is not a valid analysis table card", () => {
+  it("persists getTableCard parts inline when the output is not a valid analysis table card", () => {
     const parts: UIMessage["parts"] = [
       {
         type: "tool-fetchTable",
@@ -189,7 +212,18 @@ describe("buildPersistedAnalysisParts", () => {
       } as UIMessage["parts"][number],
     ];
 
-    expect(buildPersistedAnalysisParts(parts)).toEqual([]);
+    expect(buildPersistedAnalysisParts(parts)).toEqual([
+      {
+        kind: "ready",
+        part: {
+          type: "tool-fetchTable",
+          state: "output-available",
+          toolCallId: "call-table",
+          input: { tableId: "q1" },
+          output: { nope: true },
+        },
+      },
+    ]);
   });
 
   it("persists tool-confirmCitation parts inline with the cell summary", () => {
@@ -242,7 +276,7 @@ describe("buildPersistedAnalysisParts", () => {
     });
   });
 
-  it("drops tool-confirmCitation parts whose output is not a valid cell summary", () => {
+  it("persists tool-confirmCitation parts even when the output is not a valid cell summary", () => {
     const parts: UIMessage["parts"] = [
       {
         type: "tool-confirmCitation",
@@ -253,7 +287,18 @@ describe("buildPersistedAnalysisParts", () => {
       } as UIMessage["parts"][number],
     ];
 
-    expect(buildPersistedAnalysisParts(parts)).toEqual([]);
+    expect(buildPersistedAnalysisParts(parts)).toEqual([
+      {
+        kind: "ready",
+        part: {
+          type: "tool-confirmCitation",
+          state: "output-available",
+          toolCallId: "call-cite",
+          input: {},
+          output: { status: "invalid_row", tableId: "q1", message: "bad row" },
+        },
+      },
+    ]);
   });
 
   it("preserves order across mixed parts", () => {

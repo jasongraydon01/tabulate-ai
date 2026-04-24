@@ -10,7 +10,6 @@ import { stripAnalysisRenderAnchors } from "@/lib/analysis/renderAnchors";
 import {
   CONFIRM_CITATION_TOOL_TYPE,
   FETCH_TABLE_TOOL_TYPE,
-  isRenderableAnalysisToolType,
 } from "@/lib/analysis/toolLabels";
 import {
   isAnalysisCellSummary,
@@ -201,19 +200,24 @@ export function getAnalysisUIMessageText(message: Pick<UIMessage, "parts">): str
 }
 
 function persistedTableCardPart(
-  artifactId: string,
+  params: {
+    artifactId: string;
+    toolCallId?: string;
+    state?: string;
+    input?: unknown;
+  },
   payload: AnalysisTableCard,
 ) {
   return {
     type: "tool-fetchTable" as const,
-    toolCallId: artifactId,
-    state: "output-available" as const,
-    input: {
+    toolCallId: params.toolCallId ?? params.artifactId,
+    state: (params.state ?? "output-available") as "output-available",
+    input: (params.input ?? {
       tableId: payload.tableId,
       rowFilter: payload.requestedRowFilter,
       cutFilter: payload.requestedCutFilter,
       valueMode: payload.valueMode,
-    },
+    }) as Record<string, unknown>,
     output: payload,
   };
 }
@@ -289,39 +293,35 @@ export function persistedAnalysisMessagesToUIMessages(
         if (part.type === FETCH_TABLE_TOOL_TYPE && part.artifactId) {
           const artifact = artifactLookup.get(part.artifactId);
           if (artifact?.artifactType === "table_card" && isAnalysisTableCard(artifact.payload)) {
-            parts.push(persistedTableCardPart(String(artifact._id), artifact.payload));
+            parts.push(persistedTableCardPart({
+              artifactId: String(artifact._id),
+              toolCallId: part.toolCallId,
+              state: part.state,
+              input: part.input,
+            }, artifact.payload));
           }
           continue;
         }
 
-        if (part.type === CONFIRM_CITATION_TOOL_TYPE && part.toolCallId) {
-          const cellSummary = extractCellSummary(part.output)
-            ?? (isAnalysisCellSummary(part.cellSummary)
-              ? (part.cellSummary as AnalysisCellSummary)
-              : null);
+        if (part.type.startsWith("tool-") && part.toolCallId) {
+          const cellSummary = part.type === CONFIRM_CITATION_TOOL_TYPE
+            ? extractCellSummary(part.output)
+              ?? (isAnalysisCellSummary(part.cellSummary)
+                ? (part.cellSummary as AnalysisCellSummary)
+                : null)
+            : null;
           parts.push({
             type: part.type,
             toolCallId: part.toolCallId,
-            state: "output-available",
-            input: (part.input ?? {}) as Record<string, unknown>,
-            output: cellSummary
-              ? { status: "confirmed", ...cellSummary }
-              : part.output,
-          } as UIMessage["parts"][number]);
-          continue;
-        }
-
-        if (
-          part.type.startsWith("tool-")
-          && isRenderableAnalysisToolType(part.type)
-          && part.toolCallId
-        ) {
-          parts.push({
-            type: part.type,
-            toolCallId: part.toolCallId,
-            state: "output-available",
-            input: (part.input ?? {}) as Record<string, unknown>,
-            output: part.output,
+            ...(part.state ? { state: part.state } : {}),
+            ...(part.input !== undefined ? { input: part.input as Record<string, unknown> } : {}),
+            ...(part.output !== undefined
+              ? {
+                  output: cellSummary
+                    ? { status: "confirmed", ...cellSummary }
+                    : part.output,
+                }
+              : {}),
           } as UIMessage["parts"][number]);
         }
       }
@@ -342,11 +342,10 @@ export function getSanitizedConversationMessagesForModel(
   messages: UIMessage[],
 ): UIMessage[] {
   return messages.map((message) => {
-    const sanitizedParts = message.parts.reduce<UIMessage["parts"]>((acc, part) => {
+    const sanitizedParts = (message.parts ?? []).reduce<UIMessage["parts"]>((acc, part) => {
       if (isTextUIPart(part)) {
-        // Strip both marker families from prior-turn text — cite markers are
-        // per-turn contracts, so historical markers are noise in the model's
-        // view of history. Keep the surrounding prose.
+        // Keep historical prose, but strip marker syntax whose trust contract
+        // is scoped to the turn where it was emitted.
         const markerFree = stripAnalysisCiteAnchors(stripAnalysisRenderAnchors(part.text));
         const text = sanitizeAnalysisMessageContent(markerFree);
         if (text.length > 0) {
@@ -370,60 +369,9 @@ export function getSanitizedConversationMessagesForModel(
         return acc;
       }
 
-      if (!isToolUIPart(part) || !isRenderableAnalysisToolType(part.type) || !part.toolCallId) {
-        return acc;
+      if (isToolUIPart(part)) {
+        acc.push(part);
       }
-
-      if (part.state !== "output-available") {
-        return acc;
-      }
-
-      if (part.type === FETCH_TABLE_TOOL_TYPE) {
-        if (!isAnalysisTableCard(part.output)) {
-          return acc;
-        }
-
-        const tableCard = part.output;
-        acc.push({
-          type: part.type,
-          toolCallId: part.toolCallId,
-          state: part.state,
-          input: "input" in part
-            ? part.input
-            : {
-                tableId: tableCard.tableId,
-                rowFilter: tableCard.requestedRowFilter,
-                cutFilter: tableCard.requestedCutFilter,
-                valueMode: tableCard.valueMode,
-              },
-          output: tableCard,
-        } as UIMessage["parts"][number]);
-        return acc;
-      }
-
-      if (part.type === CONFIRM_CITATION_TOOL_TYPE) {
-        const cellSummary = extractCellSummary("output" in part ? part.output : undefined);
-        if (!cellSummary) {
-          return acc;
-        }
-
-        acc.push({
-          type: part.type,
-          toolCallId: part.toolCallId,
-          state: part.state,
-          input: "input" in part ? part.input : {},
-          output: cellSummary,
-        } as UIMessage["parts"][number]);
-        return acc;
-      }
-
-      acc.push({
-        type: part.type,
-        toolCallId: part.toolCallId,
-        state: part.state,
-        input: "input" in part ? part.input : {},
-        output: "output" in part ? part.output : undefined,
-      } as UIMessage["parts"][number]);
       return acc;
     }, []);
 

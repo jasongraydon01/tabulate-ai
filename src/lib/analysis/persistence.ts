@@ -5,7 +5,6 @@ import { sanitizeAnalysisAssistantMessageContent } from "@/lib/analysis/messages
 import {
   CONFIRM_CITATION_TOOL_TYPE,
   FETCH_TABLE_TOOL_TYPE,
-  isRenderableAnalysisToolType,
 } from "@/lib/analysis/toolLabels";
 import {
   isAnalysisCellSummary,
@@ -36,6 +35,7 @@ export interface PendingTableCardTemplate {
   state: string;
   label: string;
   toolCallId?: string;
+  input?: unknown;
 }
 
 export type PendingAnalysisPart =
@@ -53,11 +53,11 @@ export type PendingAnalysisPart =
  * corresponding persisted part before handing the final array to the message
  * `create` mutation.
  *
- * Allowlist policy: text and reasoning parts always pass through (after
- * sanitization / whitespace-only filtering). Tool parts pass through only if
- * they are `tool-fetchTable` (handled via the artifact flow) or in the
- * renderable-tool allowlist. Unknown tool types are dropped so the UI never
- * has to render a chip it does not know how to label.
+ * Transport policy: text and reasoning parts persist after sanitization /
+ * whitespace-only filtering. Tool parts persist in their standard AI SDK
+ * shape so prior tool-use / tool-result history can survive reloads. Successful
+ * `tool-fetchTable` outputs still flow through `analysisArtifacts` to avoid
+ * duplicating large table payloads inline.
  */
 export function buildPersistedAnalysisParts(parts: UIMessage["parts"]): PendingAnalysisPart[] {
   const pending: PendingAnalysisPart[] = [];
@@ -91,48 +91,56 @@ export function buildPersistedAnalysisParts(parts: UIMessage["parts"]): PendingA
       continue;
     }
 
-    if (!isToolUIPart(part)) continue;
+    if (!isToolUIPart(part) || !part.toolCallId) continue;
 
     if (part.type === FETCH_TABLE_TOOL_TYPE) {
       if (part.state === "output-available" && isAnalysisTableCard(part.output)) {
+        const tableCard = part.output as AnalysisTableCard;
         pending.push({
           kind: "tableCard",
           template: {
             state: part.state,
-            label: part.output.title,
+            label: tableCard.title,
             toolCallId: part.toolCallId,
+            input: "input" in part ? sanitizeGroundingToolOutput(part.input) : {
+              tableId: tableCard.tableId,
+              rowFilter: tableCard.requestedRowFilter,
+              cutFilter: tableCard.requestedCutFilter,
+              valueMode: tableCard.valueMode,
+            },
           },
           artifact: {
-            title: part.output.title,
-            tableId: part.output.tableId,
-            questionId: part.output.questionId ?? null,
-            payload: part.output,
+            title: tableCard.title,
+            tableId: tableCard.tableId,
+            questionId: tableCard.questionId ?? null,
+            payload: tableCard,
           },
         });
+        continue;
       }
-      continue;
     }
 
     if (part.type === CONFIRM_CITATION_TOOL_TYPE) {
-      if (part.state === "output-available" && isAnalysisCellSummary(part.output)) {
-        const cellSummary = part.output as AnalysisCellSummary;
-        pending.push({
-          kind: "ready",
-          part: {
-            type: part.type,
-            state: part.state,
-            toolCallId: part.toolCallId,
-            label: `${cellSummary.rowLabel} / ${cellSummary.cutName}`,
-            cellSummary,
-            input: "input" in part ? sanitizeGroundingToolOutput(part.input) : {},
-            output: { status: "confirmed", ...cellSummary },
-          },
-        });
-      }
+      const cellSummary = part.state === "output-available" && isAnalysisCellSummary(part.output)
+        ? (part.output as AnalysisCellSummary)
+        : null;
+      pending.push({
+        kind: "ready",
+        part: {
+          type: part.type,
+          state: part.state,
+          toolCallId: part.toolCallId,
+          ...(cellSummary ? { label: `${cellSummary.rowLabel} / ${cellSummary.cutName}`, cellSummary } : {}),
+          ...("input" in part ? { input: sanitizeGroundingToolOutput(part.input) } : {}),
+          ...(cellSummary
+            ? { output: { status: "confirmed", ...cellSummary } }
+            : "output" in part
+              ? { output: sanitizeGroundingToolOutput(part.output) }
+              : {}),
+        },
+      });
       continue;
     }
-
-    if (!isRenderableAnalysisToolType(part.type)) continue;
 
     pending.push({
       kind: "ready",
@@ -140,8 +148,8 @@ export function buildPersistedAnalysisParts(parts: UIMessage["parts"]): PendingA
         type: part.type,
         state: part.state,
         toolCallId: part.toolCallId,
-        input: "input" in part ? sanitizeGroundingToolOutput(part.input) : {},
-        output: "output" in part ? sanitizeGroundingToolOutput(part.output) : undefined,
+        ...("input" in part ? { input: sanitizeGroundingToolOutput(part.input) } : {}),
+        ...("output" in part ? { output: sanitizeGroundingToolOutput(part.output) } : {}),
       },
     });
   }

@@ -1,8 +1,6 @@
 /**
  * Human-readable labels for analysis tool calls that appear in the thinking
- * disclosure. The set of keys here doubles as the allowlist for persistence:
- * only these tool types survive to Convex, and only these types are
- * rehydrated from persisted records.
+ * disclosure.
  *
  * `tool-fetchTable` plays two roles: it is the data source for inline table
  * card rendering (via `[[render tableId=…]]` prose markers) AND it appears as

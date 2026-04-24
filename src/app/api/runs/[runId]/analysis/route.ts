@@ -344,6 +344,7 @@ async function persistAssistantMessageParts(params: {
       state: entry.template.state,
       artifactId,
       label: entry.template.label,
+      ...(entry.template.input !== undefined ? { input: entry.template.input } : {}),
       ...(entry.template.toolCallId ? { toolCallId: entry.template.toolCallId } : {}),
     });
   }

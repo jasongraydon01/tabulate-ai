@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   streamText: vi.fn(),
+  convertToModelMessages: vi.fn(async (messages) => messages),
   retryWithPolicyHandling: vi.fn(),
   recordAgentMetrics: vi.fn(),
   buildAnalysisSystemMessage: vi.fn(() => ({ role: "system", content: "system prompt" })),
@@ -11,7 +12,7 @@ vi.mock("ai", async (importOriginal) => {
   const actual = await importOriginal<typeof import("ai")>();
   return {
     ...actual,
-    convertToModelMessages: vi.fn(async (messages) => messages),
+    convertToModelMessages: mocks.convertToModelMessages,
     stepCountIs: vi.fn((count: number) => count),
     streamText: mocks.streamText,
     tool: vi.fn((config) => config),
@@ -304,5 +305,109 @@ describe("streamAnalysisResponse", () => {
     });
 
     expect(mocks.buildAnalysisSystemMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes prior tool history through to model conversion", async () => {
+    mocks.streamText.mockImplementationOnce(({ onFinish }) => {
+      onFinish?.({
+        totalUsage: {
+          inputTokens: 12,
+          outputTokens: 4,
+        },
+      });
+      return {
+        toUIMessageStreamResponse: vi.fn(() => new Response("ok")),
+      };
+    });
+
+    mocks.retryWithPolicyHandling.mockImplementationOnce(async (fn: () => Promise<unknown>) => ({
+      success: true,
+      result: await fn(),
+      attempts: 1,
+      wasPolicyError: false,
+      finalClassification: null,
+    }));
+
+    await streamAnalysisResponse({
+      messages: [{
+        id: "a1",
+        role: "assistant",
+        parts: [
+          { type: "text", text: "Prior answer.[[render tableId=q1]]" },
+          {
+            type: "tool-someNewThing",
+            toolCallId: "tool-1",
+            state: "input-available",
+            input: { topic: "brands" },
+          } as never,
+          {
+            type: "tool-fetchTable",
+            toolCallId: "tool-2",
+            state: "output-available",
+            input: { tableId: "q1" },
+            output: { status: "available", tableId: "q1" },
+          } as never,
+        ],
+      }],
+      groundingContext: {
+        availability: "available",
+        missingArtifacts: [],
+        tables: {},
+        questions: [],
+        bannerGroups: [],
+        bannerRouteMetadata: null,
+        surveyMarkdown: null,
+        surveyQuestions: [],
+        bannerPlanGroups: [],
+        projectContext: {
+          projectName: "TabulateAI Study",
+          runStatus: "success",
+          studyMethodology: null,
+          analysisMethod: null,
+          bannerSource: null,
+          bannerMode: null,
+          tableCount: null,
+          bannerGroupCount: null,
+          totalCuts: null,
+          bannerGroupNames: [],
+          researchObjectives: null,
+          bannerHints: null,
+          intakeFiles: {
+            dataFile: null,
+            survey: null,
+            bannerPlan: null,
+            messageList: null,
+          },
+        },
+        tablesMetadata: {
+          significanceTest: null,
+          significanceLevel: null,
+          comparisonGroups: [],
+        },
+      },
+    });
+
+    expect(mocks.convertToModelMessages).toHaveBeenCalledWith([
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [
+          { type: "text", text: "Prior answer." },
+          {
+            type: "tool-someNewThing",
+            toolCallId: "tool-1",
+            state: "input-available",
+            input: { topic: "brands" },
+          },
+          {
+            type: "tool-fetchTable",
+            toolCallId: "tool-2",
+            state: "output-available",
+            input: { tableId: "q1" },
+            output: { status: "available", tableId: "q1" },
+          },
+        ],
+      },
+    ]);
   });
 });
