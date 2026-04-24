@@ -1491,6 +1491,8 @@ export function getTableCard(
       label: contractRow.label ?? contractRow.rowKey,
       rowKind: contractRow.rowKind,
       statType: contractRow.statType,
+      valueType: contractRow.valueType,
+      format: contractRow.format,
       indent: contractRow.indent,
       isNet: contractRow.isNet,
       values,

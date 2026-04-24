@@ -147,11 +147,18 @@ export interface AnalysisTableCardCell {
   sigVsTotal: string | null;
 }
 
+export interface AnalysisTableCardRowFormat {
+  kind: "percent" | "number";
+  decimals: number;
+}
+
 export interface AnalysisTableCardRow {
   rowKey: string;
   label: string;
   rowKind?: string;
   statType?: string | null;
+  valueType?: "pct" | "count" | "n" | "mean" | "median" | "stddev" | "stderr";
+  format?: AnalysisTableCardRowFormat | null;
   indent: number;
   isNet: boolean;
   values: AnalysisTableCardCell[];

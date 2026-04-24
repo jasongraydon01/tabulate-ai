@@ -10,6 +10,7 @@ import {
   normalizeGroundedTableCardGroups,
 } from "@/components/analysis/GroundedTableCard";
 import type { AnalysisTableCard } from "@/lib/analysis/types";
+import { getAnalysisCellAnchorId } from "@/components/analysis/AnalysisMessage";
 
 const groupedCard: AnalysisTableCard = {
   status: "available",
@@ -359,9 +360,7 @@ describe("GroundedTableCard helpers", () => {
     expect(expandedGroups.map((group) => group.groupName)).toEqual(["Total", "Gender", "Region"]);
   });
 
-  it("reorders non-Total groups so focused groups appear right after Total", () => {
-    // Focus is on Region — it should lead the full list even though it comes
-    // after Gender in the natural banner order.
+  it("preserves contract group order even when legacy focused cuts narrow the compact view", () => {
     const regionFocusedCard: AnalysisTableCard = {
       ...groupedCard,
       defaultScope: "matched_groups",
@@ -372,21 +371,21 @@ describe("GroundedTableCard helpers", () => {
 
     expect(normalizeGroundedTableCardGroups(regionFocusedCard).map((group) => group.groupName)).toEqual([
       "Total",
-      "Region",
       "Gender",
+      "Region",
     ]);
-    expect(getGroundedTableCardVisibleGroups(regionFocusedCard, true).map((group) => group.groupName)).toEqual([
+    expect(getGroundedTableCardVisibleGroups(regionFocusedCard, false).map((group) => group.groupName)).toEqual([
       "Total",
       "Region",
-      "Gender",
     ]);
   });
 
-  it("reorders visible rows and highlights them when render focus is present", () => {
+  it("keeps row order contract-faithful and only highlights focused rows", () => {
     const visibleRows = getGroundedTableCardVisibleRows(groupedCard, false, {
       focusedRowKeys: ["row_3"],
     });
-    expect(visibleRows[0]?.rowKey).toBe("row_3");
+    expect(visibleRows[0]?.rowKey).toBe("row_1");
+    expect(visibleRows[2]?.rowKey).toBe("row_3");
 
     const markup = renderToStaticMarkup(
       React.createElement(GroundedTableCard, {
@@ -396,6 +395,64 @@ describe("GroundedTableCard helpers", () => {
     );
 
     expect(markup).toContain("border-l-2");
+  });
+
+  it("renders cell values from row-level format semantics and keeps citation anchors on the rendered cell", () => {
+    const formattedCard: AnalysisTableCard = {
+      ...groupedCard,
+      rows: [
+        {
+          rowKey: "row_decimal",
+          label: "Decimal row",
+          rowKind: "value",
+          statType: null,
+          valueType: "stddev",
+          format: { kind: "number", decimals: 2 },
+          indent: 0,
+          isNet: false,
+          values: [
+            {
+              cutKey: "__total__::total",
+              cutName: "Total",
+              rawValue: 1.07,
+              displayValue: "stale",
+              count: null,
+              pct: null,
+              n: 120,
+              mean: null,
+              sigHigherThan: [],
+              sigVsTotal: null,
+            },
+          ],
+          cellsByCutKey: {
+            "__total__::total": {
+              cutKey: "__total__::total",
+              cutName: "Total",
+              rawValue: 1.07,
+              displayValue: "stale",
+              count: null,
+              pct: null,
+              n: 120,
+              mean: null,
+              sigHigherThan: [],
+              sigVsTotal: null,
+            },
+          },
+        },
+      ],
+      totalRows: 1,
+      truncatedRows: 0,
+      hiddenRowCount: 0,
+      initialVisibleRowCount: 1,
+    };
+
+    const markup = renderToStaticMarkup(
+      React.createElement(GroundedTableCard, { card: formattedCard }),
+    );
+
+    expect(markup).toContain(">1.07<");
+    expect(markup).not.toContain(">stale<");
+    expect(markup).toContain(`id="${getAnalysisCellAnchorId("q1|row_decimal|__total__%3A%3Atotal")}"`);
   });
 
   it("renders a reserved shell footprint when the card is in shell mode", () => {

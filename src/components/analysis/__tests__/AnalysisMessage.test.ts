@@ -18,7 +18,10 @@ import {
   splitAnalysisTextForReveal,
   getVisibleEvidenceItems,
 } from "@/components/analysis/AnalysisMessage";
-import { buildAnalysisRenderableBlocks } from "@/lib/analysis/renderAnchors";
+import {
+  buildAnalysisRenderMarker,
+  buildAnalysisRenderableBlocks,
+} from "@/lib/analysis/renderAnchors";
 import type { AnalysisTableCard } from "@/lib/analysis/types";
 
 function makeTablePart(toolCallId: string, tableId: string = "q1"): UIMessage["parts"][number] {
@@ -455,6 +458,159 @@ describe("AnalysisMessage trace presentation", () => {
     expect(markup).toContain(">Q1<");
     expect(markup).not.toContain(">¹<");
     expect(markup).not.toContain("**45%**");
+  });
+
+  it("renders cited table cells with the same contract-formatted value and anchor used by inline citations", () => {
+    const cellId = "q1|row_0_1|__total__%3A%3Atotal";
+    const assistantMessage: UIMessage = {
+      id: "assistant-cite-rendered-table",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-fetchTable",
+          toolCallId: "fetch-1",
+          state: "output-available",
+          input: { tableId: "q1", cutGroups: null, valueMode: "pct" },
+          output: {
+            status: "available",
+            tableId: "q1",
+            title: "q1 overall",
+            questionId: "Q1",
+            questionText: "How satisfied are you?",
+            tableType: "frequency",
+            surveySection: null,
+            baseText: "All respondents",
+            tableSubtitle: null,
+            userNote: null,
+            valueMode: "pct",
+            columns: [
+              {
+                cutKey: "__total__::total",
+                cutName: "Total",
+                groupName: "Total",
+                statLetter: "T",
+                baseN: 120,
+                isTotal: true,
+              },
+            ],
+            columnGroups: [
+              {
+                groupKey: "__total__",
+                groupName: "Total",
+                columns: [
+                  {
+                    cutKey: "__total__::total",
+                    cutName: "Total",
+                    groupName: "Total",
+                    statLetter: "T",
+                    baseN: 120,
+                    isTotal: true,
+                  },
+                ],
+              },
+            ],
+            rows: [
+              {
+                rowKey: "row_0_1",
+                label: "Very satisfied",
+                rowKind: "value",
+                statType: null,
+                valueType: "pct",
+                format: { kind: "percent", decimals: 0 },
+                indent: 0,
+                isNet: false,
+                values: [
+                  {
+                    cutKey: "__total__::total",
+                    cutName: "Total",
+                    rawValue: 45,
+                    displayValue: "stale",
+                    pct: 45,
+                    count: 54,
+                    n: 120,
+                    mean: null,
+                    sigHigherThan: [],
+                    sigVsTotal: null,
+                  },
+                ],
+                cellsByCutKey: {
+                  "__total__::total": {
+                    cutKey: "__total__::total",
+                    cutName: "Total",
+                    rawValue: 45,
+                    displayValue: "stale",
+                    pct: 45,
+                    count: 54,
+                    n: 120,
+                    mean: null,
+                    sigHigherThan: [],
+                    sigVsTotal: null,
+                  },
+                },
+              },
+            ],
+            totalRows: 1,
+            totalColumns: 1,
+            truncatedRows: 0,
+            truncatedColumns: 0,
+            defaultScope: "matched_groups",
+            initialVisibleRowCount: 1,
+            initialVisibleGroupCount: 0,
+            hiddenRowCount: 0,
+            hiddenGroupCount: 0,
+            focusedCutIds: null,
+            requestedCutGroups: null,
+            focusedRowKeys: null,
+            focusedGroupKeys: null,
+            significanceTest: null,
+            significanceLevel: null,
+            comparisonGroups: [],
+            sourceRefs: [],
+          },
+        } as UIMessage["parts"][number],
+        {
+          type: "tool-confirmCitation",
+          toolCallId: "cite-1",
+          state: "output-available",
+          input: { tableId: "q1", rowLabel: "Very satisfied", columnLabel: "Total" },
+          output: {
+            status: "confirmed",
+            cellId,
+            tableId: "q1",
+            tableTitle: "Q1 overall",
+            questionId: "Q1",
+            rowKey: "row_0_1",
+            rowLabel: "Very satisfied",
+            cutKey: "__total__::total",
+            cutName: "Total",
+            groupName: null,
+            valueMode: "pct",
+            displayValue: "45%",
+            pct: 45,
+            count: 54,
+            n: 120,
+            mean: null,
+            baseN: 120,
+            sigHigherThan: [],
+            sigVsTotal: null,
+            sourceRefs: [],
+          },
+        } as UIMessage["parts"][number],
+        {
+          type: "text",
+          text: `Overall satisfaction is **45%**.${buildAnalysisCiteMarker([cellId])}\n\n${buildAnalysisRenderMarker("q1")}`,
+        },
+      ],
+    };
+
+    const markup = renderToStaticMarkup(
+      React.createElement(AnalysisMessage, { message: assistantMessage, isStreaming: false }),
+    );
+
+    expect(markup).toContain("aria-label=\"Citation Q1\"");
+    expect(markup).toContain("analysis-cell-q1-row_0_1-__total__-3A-3Atotal");
+    expect(markup).toContain(">45%</span>");
+    expect(markup).not.toContain(">stale</span>");
   });
 
   it("falls back to the table id when citation metadata is unavailable", () => {

@@ -24,6 +24,7 @@ import type {
   AnalysisTableCardCell,
   AnalysisTableCardColumn,
   AnalysisTableCardColumnGroup,
+  AnalysisTableCardRowFormat,
   AnalysisTableCardRow,
 } from "@/lib/analysis/types";
 
@@ -140,40 +141,9 @@ function deriveLegacyCutKey(column: AnalysisTableCardColumn): string {
   return `${deriveLegacyGroupKey(column)}::${normalizeText(column.cutName) || column.cutName.toLowerCase()}`;
 }
 
-function reorderGroupsByFocus(
-  groups: AnalysisTableCardColumnGroup[],
-  focusedGroupKeys: string[] | null | undefined,
-  focusedCutIds: string[] | null | undefined,
-): AnalysisTableCardColumnGroup[] {
-  const focusedGroupsByKey = new Set(focusedGroupKeys ?? []);
-  const focusedCuts = new Set(focusedCutIds ?? []);
-  if (focusedGroupsByKey.size === 0 && focusedCuts.size === 0) return groups;
-  const totalGroups: AnalysisTableCardColumnGroup[] = [];
-  const focusedGroups: AnalysisTableCardColumnGroup[] = [];
-  const otherGroups: AnalysisTableCardColumnGroup[] = [];
-
-  for (const group of groups) {
-    if (group.groupKey === TOTAL_GROUP_KEY) {
-      totalGroups.push(group);
-      continue;
-    }
-
-    if (
-      focusedGroupsByKey.has(group.groupKey)
-      || group.columns.some((column) => column.cutKey && focusedCuts.has(column.cutKey))
-    ) {
-      focusedGroups.push(group);
-    } else {
-      otherGroups.push(group);
-    }
-  }
-
-  return [...totalGroups, ...focusedGroups, ...otherGroups];
-}
-
 export function normalizeGroundedTableCardGroups(card: AnalysisTableCard): AnalysisTableCardColumnGroup[] {
   if (card.columnGroups && card.columnGroups.length > 0) {
-    const mapped = card.columnGroups.map((group) => ({
+    return card.columnGroups.map((group) => ({
       ...group,
       columns: group.columns.map((column) => ({
         ...column,
@@ -181,7 +151,6 @@ export function normalizeGroundedTableCardGroups(card: AnalysisTableCard): Analy
         isTotal: column.isTotal ?? group.groupKey === TOTAL_GROUP_KEY,
       })),
     }));
-    return reorderGroupsByFocus(mapped, card.focusedGroupKeys, card.focusedCutIds);
   }
 
   const groups: AnalysisTableCardColumnGroup[] = [];
@@ -205,7 +174,7 @@ export function normalizeGroundedTableCardGroups(card: AnalysisTableCard): Analy
     });
   }
 
-  return reorderGroupsByFocus(groups, card.focusedGroupKeys, card.focusedCutIds);
+  return groups;
 }
 
 export function getGroundedTableCardVisibleGroups(
@@ -230,13 +199,21 @@ export function getGroundedTableCardVisibleGroups(
   const totalGroups = groups.filter((group) => group.groupKey === TOTAL_GROUP_KEY);
   const nonTotalGroups = groups.filter((group) => group.groupKey !== TOTAL_GROUP_KEY);
 
-  // Render focus can lead with specific groups in the compact view. Every
-  // other group stays on the payload so details/expand still show the full card.
-  const focusedGroupKeys = focus?.focusedGroupKeys ?? card.focusedGroupKeys ?? null;
-  if (focusedGroupKeys && focusedGroupKeys.length > 0) {
-    const focusedKeys = new Set(focusedGroupKeys);
+  // Render focus narrows the compact view only; it must not reshuffle the
+  // underlying contract order.
+  const focusedGroupKeys = new Set<string>(focus?.focusedGroupKeys ?? card.focusedGroupKeys ?? []);
+  if (focusedGroupKeys.size === 0 && card.focusedCutIds && card.focusedCutIds.length > 0) {
+    const focusedCuts = new Set(card.focusedCutIds);
+    for (const group of nonTotalGroups) {
+      if (group.columns.some((column) => column.cutKey && focusedCuts.has(column.cutKey))) {
+        focusedGroupKeys.add(group.groupKey);
+      }
+    }
+  }
+
+  if (focusedGroupKeys.size > 0) {
     const focusedGroups = nonTotalGroups.filter((group) =>
-      focusedKeys.has(group.groupKey),
+      focusedGroupKeys.has(group.groupKey),
     );
     if (focusedGroups.length > 0) {
       return [...totalGroups, ...focusedGroups];
@@ -257,32 +234,20 @@ export function getGroundedTableCardVisibleGroups(
 export function getGroundedTableCardVisibleRows(
   card: AnalysisTableCard,
   showAllRows: boolean,
-  focus?: {
+  _focus?: {
     focusedRowKeys?: string[] | null;
   },
 ): AnalysisTableCardRow[] {
-  const focusedRowKeys = new Set(focus?.focusedRowKeys ?? card.focusedRowKeys ?? []);
   const sourceRows = card.rows;
-  const previewEligibleRows = focusedRowKeys.size > 0
-    ? [
-      ...sourceRows.filter((row) => focusedRowKeys.has(row.rowKey)),
-      ...sourceRows.filter((row) => !focusedRowKeys.has(row.rowKey)),
-    ]
-    : sourceRows;
   const hasPreviewState = typeof card.initialVisibleRowCount === "number"
     || typeof card.hiddenRowCount === "number";
 
   if (showAllRows || !hasPreviewState) {
-    if (!showAllRows) return previewEligibleRows;
-    if (focusedRowKeys.size === 0) return card.rows;
-    return [
-      ...card.rows.filter((row) => focusedRowKeys.has(row.rowKey)),
-      ...card.rows.filter((row) => !focusedRowKeys.has(row.rowKey)),
-    ];
+    return sourceRows;
   }
 
-  const visibleCount = Math.max(card.initialVisibleRowCount ?? previewEligibleRows.length, 0);
-  return previewEligibleRows.slice(0, visibleCount);
+  const visibleCount = Math.max(card.initialVisibleRowCount ?? sourceRows.length, 0);
+  return sourceRows.slice(0, visibleCount);
 }
 
 export function getGroundedTableCardCell(
@@ -297,6 +262,34 @@ export function getGroundedTableCardCell(
   return row.values.find((value) =>
     (value.cutKey && value.cutKey === cutKey)
     || value.cutName === column.cutName) ?? null;
+}
+
+function formatNumber(value: number, digits: number): string {
+  return value.toFixed(digits).replace(/\.0+$|(\.\d*?)0+$/, "$1");
+}
+
+function formatDisplayValue(
+  value: number | null,
+  format: AnalysisTableCardRowFormat | null | undefined,
+): string {
+  if (value === null || !Number.isFinite(value)) return "—";
+
+  if (format?.kind === "percent") {
+    return `${formatNumber(value, format.decimals)}%`;
+  }
+
+  return formatNumber(value, format?.decimals ?? 0);
+}
+
+function getRenderedCellDisplayValue(
+  row: AnalysisTableCardRow,
+  cell: AnalysisTableCardCell,
+): string {
+  if (row.format) {
+    return formatDisplayValue(cell.rawValue, row.format);
+  }
+
+  return cell.displayValue;
 }
 
 export function getGroundedTableCardSignificanceMarkers(
@@ -556,7 +549,7 @@ export function GroundedTableCard({
                                 : "text-foreground",
                             )}
                           >
-                            <span>{cell.displayValue}</span>
+                            <span>{getRenderedCellDisplayValue(row, cell)}</span>
                             {markers.length > 0 ? (
                               <sup className={cn("font-mono leading-none text-tab-teal", isCompact ? "text-[9px]" : "text-[10px]")}>
                                 {markers.join("")}
