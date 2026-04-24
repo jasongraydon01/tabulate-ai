@@ -8,36 +8,36 @@ A custom AI-SDK chat surface is shipping against real users. The agent reads ver
 
 ## Remaining work
 
-Interface polish is largely done. What's left is real capability — pushing the surface from "grounded Q&A" toward "analysis partner."
+Interface polish is largely done. What's left is real capability — pushing the surface from "grounded Q&A" toward "analysis partner." The work below is one coupled redesign, not four independent tickets. Pressure-testing against real session traces surfaced a single thread running through transport, tool shape, and output format: the surface is doing too much custom work where the standard agent-harness shape would serve the model better.
 
-**Prompt workflow and intentionality.** *Next actionable design beat.* The alternative prompt codifies `search → fetch → mark` as the workflow; the next layer is request classification (exploration / synthesis / methodology / narrow lookup / follow-up on prior evidence), a one-line goal written before action, and an acknowledgment-before-work pattern so the user can stop a wrong-shaped turn early. Friction this targets:
+### The core insight
 
-- Agent refusing to synthesize grounded evidence already in-thread (root cause is the context-policy work below — prompt side teaches the agent to recognize the request shape).
-- Over-matching `cutFilter` when user phrasing and cut labels share a common word.
-- Rendering more cuts than the user's question justified.
+Three decisions that originally looked independent are actually one decision:
 
-Experiments land on `alternative.ts`; production stays frozen.
+1. **Transport.** `getSanitizedConversationMessagesForModel` in `messages.ts` strips every non-text part across turns — prior table cards, tool outputs, confirmCitation results. The UI rehydrates them; the model is blind to them. Cost was the original justification; cite/render validation were the imagined concerns. Both concerns dissolve on inspection: marker validation is already strictly per-turn (it keys off tool outputs from this `streamText` call only), and cost is really a prompt-cache argument. The standard agent-harness approach (Claude Code, every reference implementation) preserves the full `tool_use` / `tool_result` trail across turns. We should do the same — once cache is set up to absorb it.
 
-**Agent context policy (merged with Slice 6 — context compaction).** *Next actionable design beat, paired with prompt workflow.* Today `getSanitizedConversationMessagesForModel` in `messages.ts` strips every non-text part across turns — prior table cards, catalog searches, question-context lookups. The UI rehydrates them; the model is blind to them. Cost + determinism + cache-safety explain the current policy, but it directly causes the "I need a supporting card" refusal when synthesis across prior turns would be valid. Design options on the table:
+2. **Tool shape.** `fetchTable` today returns every USED cut on the table regardless of what the question was. A typical table is 10–20KB of JSON; a turn that fetches three for comparison can push 50KB of cells the model didn't ask for. `cutFilter` is a render hint only — it does not filter data for the model, which is its own source of confusion. The fix: `fetchTable(tableId)` returns Total only; the model opts into additional cut groups explicitly via a real `cutGroups` parameter. That maps to how analysts actually read tables (topline first, then drill) and makes "do I need this cut?" a deliberate choice per fetch. Same treatment likely fits `getQuestionContext`, which today dumps items + related tables + survey wording + scale labels in one payload.
 
-- Compact per-card summary (title, cuts, rows, a handful of key values) injected into conversation history.
-- System-level card inventory per turn listing `tableId`s + titles of earlier-rendered cards.
-- Full pass-through within a rolling window (last 3–5 turns) + summarization older.
-- Tool-call history summarization so the agent sees what it already tried.
-- Any combination, gated on session length.
+3. **Format.** The benchmarks are consistent: for tabular data, **markdown tables outperform JSON on both accuracy and token cost** (improvingagents.com: markdown-KV 60.7% vs HTML 53.6% on the same task; TOON and markdown both substantially cheaper than JSON on Claude). HTML is actually the worst of the three on accuracy. Once `fetchTable` payloads are narrowed by Total-default, swapping the model's view from JSON to markdown is a clean follow-on.
 
-Exit: long sessions (40+ turns) don't risk context exhaustion; policy documented even if rollout is staged.
+### The redesign
 
-**Analytical capability expansion.** *Deferred — gated on compute-lane checkpoint below.* Candidate tools: build new cuts on the fly, expand cuts the crosstab pipeline didn't emit, generate NETs, other Phase-10b-style derived tables. Can't ship without a compute lane, so design conversation is one conversation, not two.
+**(1) Anthropic prompt-cache audit.** *First actionable beat — prerequisite for everything downstream.* `src/lib/analysis/model.ts` creates the Anthropic client via `@ai-sdk/anthropic` with no `cacheControl` breakpoints anywhere. Default Anthropic behavior is no caching. OpenAI Responses caches automatically — confirm that too, briefly. On the Anthropic branch we're likely paying full rate on system prompt + tool definitions + conversation history every turn. Small, self-contained audit; fix is breakpoints after system, after tool defs, rolling on conversation. This unblocks (3) — without cache, keeping tool outputs across turns is too expensive to default on.
 
-**Harness robustness (backlog).** Tool-call deduplication within a turn, stuck-loop detection, Anthropic prompt-cache audit, `stopWhen: stepCountIs(12)` recalibration against real turn traces. Becomes load-bearing as the prompt workflow grows.
+**(2) Tool-shape redesign.** `fetchTable(tableId)` returns Total only. `cutGroups: ['age']` / `cutGroups: ['age', 'gender']` / `cutGroups: '*'` opts into more. Crucially, the persisted `AnalysisTableCard` artifact (the thing the `[[render]]` marker materializes into an inline card for the user) stays full — the card the user sees and can expand hasn't changed. What's changing is the *projection* the model gets back as tool-result content, which narrows to the cuts the model asked for. This decouples UI card payload from model view and removes the `cutFilter` split-brain entirely. `getQuestionContext` probably gets the same treatment (minimal profile by default, `include: ['survey' | 'items' | 'relatedTables']` to expand). Prompt simplification follows — several paragraphs of "don't over-match cutFilter, availability isn't a reason to feature" collapse into "ask for what you need." Blast radius: tool execute functions, `persistence.ts`, `alternative.ts`, the `grounding.fetchTable` tests — tractable but real.
 
-**Compute-lane design checkpoint (backlog).** Decision memo driven by real-usage signal: how often do users ask for unavailable cuts, how often do they want charts, do recuts justify a dedicated queue, which derived-table patterns show up conversationally often enough to pull into the assistant's toolkit.
+**(3) Transport: replace the custom sanitizer with standard pass-through.** Once cache is healthy, stop stripping non-text parts across turns. Preserve the `tool_use` / `tool_result` trail like the standard agent-harness shape. The two failure modes this fixes are documented in real traces: (a) the "I need a supporting card" refusal when the model has cards in the thread but can't see them (kx782 turn 3 → 4); (b) heavy duplicate re-fetching across turns when drilling in (kx736 turn 3 at 1.21M input tokens). Marker validation stays per-turn — it already is. Behind a feature flag, default off until cache is measured.
 
-## Cross-cutting: inline markers as the rendering primitive
+**(4) Format: markdown tables over JSON for the model's view.** After (2) narrows the payload, replace the JSON serialization of `fetchTable`'s model-facing output with a markdown table (one row per row, one column per cut, dominant value per cell, sig markers as superscript-ish notation, baseN in a subtitle line). The persisted `AnalysisTableCard` artifact remains structured — it powers the UI card. This is a pure optimization on top of (2); worth a benchmark turn once the narrowed payload is in place. Defer if post-(2) payloads are small enough that the savings aren't meaningful.
 
-Shipped. The marker pipeline is now the shared substrate for both rendering (tables) and citation (cells). `[[render tableId=<id>]]` places a card inline; `[[cite cellIds=<id>,...]]` pins prose numbers to their source cells at `tableId × rowKey × cutKey × valueMode` resolution — higher resolution than document-chunk citations because the artifact is structured. Both grammars live in disjoint modules (`renderAnchors.ts`, `citeAnchors.ts`) but share the validator → combined model repair → deterministic strip post-pass. The agent's discipline is enforced via `confirmCitation` (per-turn tool call that narrows model context to a single cell right before the quoted value). This composes naturally with the context-policy work below: "what survives across turns" becomes data indexed by stable IDs, not rendered UI, so cross-turn citation references are a future enhancement rather than a retrofit.
+### What's still deferred, unchanged
+
+**Prompt workflow and intentionality.** Request classification (exploration / synthesis / methodology / narrow lookup / follow-up), one-line goals, acknowledgment-before-work. Waits until (1)–(4) have landed — several of the frictions it targets (over-matching `cutFilter`, rendering more cuts than justified) become design-level non-issues once (2) lands. Revisit scope after.
+
+**Analytical capability expansion.** Still gated on compute-lane checkpoint. New cuts on the fly, NETs, derived tables. Not for now.
+
+**Compute-lane design checkpoint.** Still backlog, still driven by usage signal.
 
 ## Recommended next step
 
-Write the two design notes — prompt workflow and context policy — before any transport or prompt change lands. Pressure-test both against real session transcripts, especially cases where the assistant refused to synthesize already-grounded evidence, over-matched `cutFilter`, re-ran a tool it had already tried, or skipped a useful acknowledgment. Production prompt stays frozen; experiments land on `alternative.ts` first. Transport changes (what survives sanitization) and prompt changes are independent — each can trial behind a feature flag.
+Sequence the four pieces, not parallelize. (1) cache audit first, because it's the prerequisite. (2) tool-shape redesign next, because it has the largest behavioral impact and stands on its own value even without the transport flip. (3) transport pass-through after cache is measured as healthy, so we know the cost shape. (4) format benchmark last, once the narrowed payload exists to compare against. Production prompt stays frozen throughout; experiments land on `alternative.ts`. Each step is a focused PR, not an omnibus.
