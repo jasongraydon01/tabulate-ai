@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UIMessage } from "ai";
+import type { AnalysisTableCard } from "@/lib/analysis/types";
 
 import {
   buildAnalysisRenderableBlocks,
@@ -10,15 +11,26 @@ import {
   validateAnalysisRenderMarkers,
 } from "@/lib/analysis/renderAnchors";
 
-function makeTablePart(toolCallId: string, tableId: string = "q1"): UIMessage["parts"][number] {
+type FetchTablePartFixture = {
+  type: "tool-fetchTable";
+  toolCallId: string;
+  state: "output-available";
+  input: {
+    tableId: string;
+    cutGroups: string[] | "*" | null;
+    valueMode: "pct";
+  };
+  output: AnalysisTableCard;
+};
+
+function makeTablePart(toolCallId: string, tableId: string = "q1"): FetchTablePartFixture {
   return {
     type: "tool-fetchTable",
     toolCallId,
     state: "output-available",
     input: {
       tableId,
-      rowFilter: null,
-      cutFilter: null,
+      cutGroups: null,
       valueMode: "pct",
     },
     output: {
@@ -40,14 +52,15 @@ function makeTablePart(toolCallId: string, tableId: string = "q1"): UIMessage["p
       truncatedRows: 0,
       truncatedColumns: 0,
       focusedCutIds: null,
-      requestedRowFilter: null,
-      requestedCutFilter: null,
+      requestedCutGroups: null,
+      focusedRowKeys: null,
+      focusedGroupKeys: null,
       significanceTest: null,
       significanceLevel: null,
       comparisonGroups: [],
       sourceRefs: [],
     },
-  } as UIMessage["parts"][number];
+  };
 }
 
 describe("analysis render markers", () => {
@@ -134,6 +147,79 @@ describe("analysis render markers", () => {
     expect(extractAnalysisRenderMarkers(text)).toEqual([
       { tableId: "A3", raw: "[[render tableId=A3]]" },
       { tableId: "B4", raw: "[[render tableId=\"B4\"]]" },
+    ]);
+  });
+
+  it("resolves semantic rowLabels and fetched groupNames into render focus", () => {
+    const basePart = makeTablePart("tool-1", "A3");
+    const blocks = buildAnalysisRenderableBlocks({
+      id: "assistant-focus",
+      parts: [
+        {
+          ...basePart,
+          input: {
+            tableId: "A3",
+            cutGroups: ["Gender"],
+            valueMode: "pct",
+          },
+          output: {
+            ...basePart.output,
+            columnGroups: [
+              { groupKey: "__total__", groupName: "Total", columns: [] },
+              { groupKey: "group:gender", groupName: "Gender", columns: [] },
+              { groupKey: "group:region", groupName: "Region", columns: [] },
+            ],
+            rows: [
+              { rowKey: "row_aware", label: "Aware", indent: 0, isNet: false, values: [] },
+              { rowKey: "row_unaware", label: "Unaware", indent: 0, isNet: false, values: [] },
+            ],
+          },
+        } as UIMessage["parts"][number],
+        { type: "text", text: '[[render tableId=A3 rowLabels=["Aware"] groupNames=["Gender"]]]' },
+      ],
+    });
+
+    expect(blocks).toEqual([
+      expect.objectContaining({
+        kind: "table",
+        focus: {
+          focusedRowKeys: ["row_aware"],
+          focusedGroupKeys: ["group:gender"],
+        },
+      }),
+    ]);
+  });
+
+  it("drops group focus when the group was not fetched as evidence", () => {
+    const basePart = makeTablePart("tool-1", "A3");
+    const blocks = buildAnalysisRenderableBlocks({
+      id: "assistant-focus-miss",
+      parts: [
+        {
+          ...basePart,
+          output: {
+            ...basePart.output,
+            columnGroups: [
+              { groupKey: "__total__", groupName: "Total", columns: [] },
+              { groupKey: "group:gender", groupName: "Gender", columns: [] },
+            ],
+            rows: [
+              { rowKey: "row_aware", label: "Aware", indent: 0, isNet: false, values: [] },
+            ],
+          },
+        } as UIMessage["parts"][number],
+        { type: "text", text: '[[render tableId=A3 rowLabels=["Aware"] groupNames=["Gender"]]]' },
+      ],
+    });
+
+    expect(blocks).toEqual([
+      expect.objectContaining({
+        kind: "table",
+        focus: {
+          focusedRowKeys: ["row_aware"],
+          focusedGroupKeys: [],
+        },
+      }),
     ]);
   });
 

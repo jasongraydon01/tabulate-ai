@@ -12,8 +12,7 @@ describe("deterministic follow-up suggestions", () => {
         state: "output-available",
         input: {
           tableId: "q1_total",
-          rowFilter: null,
-          cutFilter: null,
+          cutGroups: null,
           valueMode: "pct",
         },
         output: {
@@ -44,8 +43,9 @@ describe("deterministic follow-up suggestions", () => {
           truncatedRows: 0,
           truncatedColumns: 0,
           focusedCutIds: null,
-          requestedRowFilter: null,
-          requestedCutFilter: null,
+          requestedCutGroups: null,
+          focusedRowKeys: null,
+          focusedGroupKeys: null,
           significanceTest: null,
           significanceLevel: null,
           comparisonGroups: [],

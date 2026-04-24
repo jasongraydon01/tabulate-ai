@@ -57,8 +57,7 @@ function makeTableCardPart() {
     state: "output-available" as const,
     input: {
       tableId: "q1",
-      rowFilter: null,
-      cutFilter: null,
+      cutGroups: null,
       valueMode: "pct" as const,
     },
     output: {
@@ -80,8 +79,9 @@ function makeTableCardPart() {
       truncatedRows: 0,
       truncatedColumns: 0,
       focusedCutIds: null,
-      requestedRowFilter: null,
-      requestedCutFilter: null,
+      requestedCutGroups: null,
+      focusedRowKeys: null,
+      focusedGroupKeys: null,
       significanceTest: null,
       significanceLevel: null,
       comparisonGroups: [],
@@ -163,8 +163,7 @@ describe("analysis trace helpers", () => {
         state: "output-available",
         inputPreview: {
           tableId: "q1",
-          rowFilter: null,
-          cutFilter: null,
+          cutGroups: null,
           valueMode: "pct",
         },
         outputPreview: {

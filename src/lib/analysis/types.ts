@@ -93,13 +93,23 @@ export interface AnalysisCatalogCutMatch {
 export interface AnalysisCatalogSearchResult {
   status: AnalysisAvailabilityStatus;
   query: string;
+  scope?: AnalysisCatalogSearchScope;
   questions: AnalysisCatalogQuestionMatch[];
   tables: AnalysisCatalogTableMatch[];
   cuts: AnalysisCatalogCutMatch[];
   message?: string;
 }
 
+export type AnalysisCatalogSearchScope = "all" | "questions" | "tables" | "cuts";
 export type AnalysisValueMode = "pct" | "count" | "n" | "mean";
+export type AnalysisFetchTableCutGroups = "*" | string[];
+export type AnalysisQuestionContextInclude =
+  | "items"
+  | "survey"
+  | "relatedTables"
+  | "loop"
+  | "linkage";
+export type AnalysisBannerCutsInclude = "expressions";
 
 export interface AnalysisTableCardColumn {
   cutKey?: string;
@@ -153,7 +163,7 @@ export interface AnalysisTableCard {
   userNote: string | null;
   valueMode: AnalysisValueMode;
   // `columns` / `columnGroups` always carry every USED cut on the source table.
-  // The agent's cutFilter is a render hint (see focusedCutIds), not a data filter.
+  // Render focus changes presentation, not the underlying evidence payload.
   columns: AnalysisTableCardColumn[];
   columnGroups?: AnalysisTableCardColumnGroup[];
   rows: AnalysisTableCardRow[];
@@ -166,12 +176,16 @@ export interface AnalysisTableCard {
   initialVisibleGroupCount?: number;
   hiddenRowCount?: number;
   hiddenGroupCount?: number;
-  // Cut ids matched by the agent's cutFilter — used by the UI to pick which
-  // non-Total groups lead the compact inline view. Null or empty = no focus;
-  // details disclosure and expand dialog always show every cut regardless.
-  focusedCutIds: string[] | null;
-  requestedRowFilter: string | null;
-  requestedCutFilter: string | null;
+  // Back-compat for older persisted cards. New render focus travels through
+  // render markers, not the artifact payload.
+  focusedCutIds?: string[] | null;
+  /** @deprecated legacy persisted field retained for replay compatibility */
+  requestedRowFilter?: string | null;
+  /** @deprecated legacy persisted field retained for replay compatibility */
+  requestedCutFilter?: string | null;
+  requestedCutGroups?: AnalysisFetchTableCutGroups | null;
+  focusedRowKeys?: string[] | null;
+  focusedGroupKeys?: string[] | null;
   significanceTest: string | null;
   significanceLevel: number | null;
   comparisonGroups: string[];
@@ -319,6 +333,7 @@ export interface AnalysisQuestionContextResult {
   analyticalSubtype: string | null;
   disposition: string | null;
   surveyMatch: string | null;
+  includedSections?: AnalysisQuestionContextInclude[];
   loop: {
     familyBase: string;
     iterationIndex: number;
@@ -358,7 +373,7 @@ export interface AnalysisQuestionContextResult {
 export interface AnalysisBannerCut {
   name: string;
   statLetter: string | null;
-  expression: string | null;
+  expression?: string | null;
 }
 
 export interface AnalysisBannerGroupResult {
@@ -369,6 +384,7 @@ export interface AnalysisBannerGroupResult {
 export interface AnalysisBannerCutsResult {
   status: AnalysisAvailabilityStatus;
   filter: string | null;
+  includedSections?: AnalysisBannerCutsInclude[];
   groups: AnalysisBannerGroupResult[];
   totalGroups: number;
   totalCuts: number;

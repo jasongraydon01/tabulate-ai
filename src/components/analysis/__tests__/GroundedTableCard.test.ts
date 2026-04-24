@@ -95,8 +95,9 @@ const groupedCard: AnalysisTableCard = {
   hiddenRowCount: 1,
   hiddenGroupCount: 2,
   focusedCutIds: null,
-  requestedRowFilter: null,
-  requestedCutFilter: null,
+  requestedCutGroups: null,
+  focusedRowKeys: null,
+  focusedGroupKeys: null,
   significanceTest: "z-test",
   significanceLevel: 0.1,
   comparisonGroups: ["A/B"],
@@ -326,16 +327,10 @@ describe("GroundedTableCard helpers", () => {
     expect(markup).toContain("Expand table for deeper analysis");
   });
 
-  it("leads the compact view with focused cuts when cutFilter matched groups", () => {
-    const focusedCard: AnalysisTableCard = {
-      ...groupedCard,
-      defaultScope: "matched_groups",
-      initialVisibleGroupCount: 1,
-      hiddenGroupCount: 1,
-      focusedCutIds: ["group:gender::female", "group:gender::male"],
-    };
-
-    const visibleGroups = getGroundedTableCardVisibleGroups(focusedCard, false);
+  it("leads the compact view with render-focused groups", () => {
+    const visibleGroups = getGroundedTableCardVisibleGroups(groupedCard, false, {
+      focusedGroupKeys: ["group:gender"],
+    });
     expect(visibleGroups.map((group) => group.groupName)).toEqual(["Total", "Gender"]);
   });
 
@@ -382,5 +377,21 @@ describe("GroundedTableCard helpers", () => {
       "Region",
       "Gender",
     ]);
+  });
+
+  it("reorders visible rows and highlights them when render focus is present", () => {
+    const visibleRows = getGroundedTableCardVisibleRows(groupedCard, false, {
+      focusedRowKeys: ["row_3"],
+    });
+    expect(visibleRows[0]?.rowKey).toBe("row_3");
+
+    const markup = renderToStaticMarkup(
+      React.createElement(GroundedTableCard, {
+        card: groupedCard,
+        focus: { focusedRowKeys: ["row_3"] },
+      }),
+    );
+
+    expect(markup).toContain("border-l-2");
   });
 });

@@ -159,8 +159,7 @@ function emitInjectedTableCards(
       toolName: "fetchTable",
       input: {
         tableId: injected.card.tableId,
-        rowFilter: injected.card.requestedRowFilter,
-        cutFilter: injected.card.requestedCutFilter,
+        cutGroups: injected.card.requestedCutGroups ?? null,
         valueMode: injected.card.valueMode,
       },
     });
@@ -289,8 +288,7 @@ function buildFinalAssistantParts(params: {
     state: "output-available",
     input: {
       tableId: entry.card.tableId,
-      rowFilter: entry.card.requestedRowFilter,
-      cutFilter: entry.card.requestedCutFilter,
+      cutGroups: entry.card.requestedCutGroups ?? null,
       valueMode: entry.card.valueMode,
     },
     output: entry.card,

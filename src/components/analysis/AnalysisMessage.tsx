@@ -632,6 +632,7 @@ export function AnalysisMessage({
                   >
                     <GroundedTableCard
                       card={block.part.output}
+                      focus={block.focus}
                     />
                   </div>
                 );

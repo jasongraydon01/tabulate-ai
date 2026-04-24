@@ -104,8 +104,7 @@ export function buildPersistedAnalysisParts(parts: UIMessage["parts"]): PendingA
             toolCallId: part.toolCallId,
             input: "input" in part ? sanitizeGroundingToolOutput(part.input) : {
               tableId: tableCard.tableId,
-              rowFilter: tableCard.requestedRowFilter,
-              cutFilter: tableCard.requestedCutFilter,
+              cutGroups: tableCard.requestedCutGroups ?? null,
               valueMode: tableCard.valueMode,
             },
           },

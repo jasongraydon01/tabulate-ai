@@ -145,8 +145,9 @@ describe("analysis message helpers", () => {
             hiddenRowCount: 0,
             hiddenGroupCount: 0,
             focusedCutIds: null,
-            requestedRowFilter: null,
-            requestedCutFilter: null,
+            requestedCutGroups: null,
+            focusedRowKeys: null,
+            focusedGroupKeys: null,
             significanceTest: null,
             significanceLevel: null,
             comparisonGroups: [],
@@ -164,8 +165,7 @@ describe("analysis message helpers", () => {
         state: "output-available",
         input: {
           tableId: "q1",
-          rowFilter: null,
-          cutFilter: null,
+          cutGroups: null,
           valueMode: "pct",
         },
         output: expect.objectContaining({
@@ -306,8 +306,7 @@ describe("analysis message helpers", () => {
             state: "output-available",
             input: {
               tableId: "q1",
-              rowFilter: null,
-              cutFilter: null,
+              cutGroups: null,
               valueMode: "pct",
             },
             output: {
@@ -335,8 +334,9 @@ describe("analysis message helpers", () => {
               hiddenRowCount: 0,
               hiddenGroupCount: 0,
               focusedCutIds: null,
-              requestedRowFilter: null,
-              requestedCutFilter: null,
+              requestedCutGroups: null,
+              focusedRowKeys: null,
+              focusedGroupKeys: null,
               significanceTest: null,
               significanceLevel: null,
               comparisonGroups: [],

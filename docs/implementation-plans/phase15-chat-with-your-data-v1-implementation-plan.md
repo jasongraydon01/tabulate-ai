@@ -20,7 +20,7 @@ Three decisions that originally looked independent are actually one decision:
 
 **(1) Anthropic prompt-cache audit.** Done. The analysis surface now uses structured system messages, Anthropic cache breakpoints, normalized cache usage capture, and cache-aware trace / metric plumbing. This was the prerequisite for transport work and for carrying richer grounded history without paying full prompt cost every turn. Treat this as completed foundation, not open design.
 
-**(2) Tool-shape redesign.** `fetchTable(tableId)` returns Total only. `cutGroups: ['age']` / `cutGroups: ['age', 'gender']` / `cutGroups: '*'` opts into more. Crucially, the persisted `AnalysisTableCard` artifact (the thing the `[[render]]` marker materializes into an inline card for the user) stays full — the card the user sees and can expand hasn't changed. What's changing is the *projection* the model gets back as tool-result content, which narrows to the cuts the model asked for. This decouples UI card payload from model view and removes the `cutFilter` split-brain entirely. `getQuestionContext` probably gets the same treatment (minimal profile by default, `include: ['survey' | 'items' | 'relatedTables']` to expand). Prompt simplification follows — several paragraphs of "don't over-match cutFilter, availability isn't a reason to feature" collapse into "ask for what you need." Blast radius: tool execute functions, `persistence.ts`, `alternative.ts`, the `grounding.fetchTable` tests — tractable but real.
+**(2) Tool-shape redesign.** Done for the current pass. The analysis tool layer now follows the intended "minimal useful default, explicit expansion when needed" contract. `fetchTable(tableId)` returns a Total-first model projection by default, with `cutGroups: ['age']` / `cutGroups: ['age', 'gender']` / `cutGroups: '*'` opting into more evidence explicitly. `getQuestionContext` now defaults to a compact question profile and expands through `include`, `listBannerCuts` defaults to compact cut metadata and moves expressions behind `include: ['expressions']`, and `searchRunCatalog` supports scoped search. Crucially, the persisted `AnalysisTableCard` artifact (the thing the `[[render]]` marker materializes into an inline card for the user) stays full — the card the user sees and can expand hasn't changed. What's changing is the *projection* the model gets back as tool-result content, which narrows to the information the model asked for. Historical `fetchTable` replay now uses that same compact projection, so later turns do not silently regress to full-card payloads. This completes the first tool-contract simplification pass and removes the `cutFilter` split-brain from the live prompt/tool path.
 
 **(3) Transport: replace the custom sanitizer with standard pass-through.** Done for the current pass. Prior analysis turns now preserve useful `tool-*` history in a much more standard AI SDK / agent-harness shape instead of aggressively flattening conversation state down to text. Persistence and rehydration were updated alongside the model transport path, so prior grounded `tool_use` / `tool_result` context survives both across turns and after session reloads. The trust contract did not loosen: historical `[[render]]` / `[[cite]]` markers are still stripped from prior-turn prose before replay, marker validation remains per-turn, inline citation still depends on same-turn `confirmCitation`, and artifact-backed `fetchTable` cards still persist via the existing artifact flow. This completes the transport redesign that addresses the two trace-backed failure modes: (a) the "I need a supporting card" refusal when the model had prior grounding in-thread but could not see it, and (b) unnecessary duplicate re-fetching while drilling into the same topic across turns.
 
@@ -28,7 +28,32 @@ Three decisions that originally looked independent are actually one decision:
 
 **(4b) Citation underpinning: move from machine-first references toward semantic references.** Done for the current pass. `confirmCitation` now supports a semantic-first input path (`tableId + rowLabel + columnLabel`) while still resolving to the same stable `cellId` the inline citation system already uses. When labels are ambiguous, the tool returns structured retry guidance and accepts `rowRef` / `columnRef` fallback tokens from the fetched markdown table. Legacy `rowKey` / `cutKey` inputs remain supported during the transition pass, so the backend identity model and UI-side cite rendering stay unchanged. This completes the first citation-contract simplification pass without changing the inline citation mechanism itself.
 
-**Prompt layer implication.** Items (2), (3), (4a), and (4b) were not only transport / tool-output changes; they required a prompt revision once the tool contracts settled. The live `alternative` prompt now documents how fetched markdown tables look, how to read significance and Base n without over-explaining them, and how `confirmCitation` should use semantic labels first with `rowRef` / `columnRef` only as ambiguity fallbacks. Continue to keep durable interpretation rules in the system prompt and keep repetitive scaffolding out of the tool payloads.
+**Prompt layer implication.** Items (2), (3), (4a), and (4b) were not only transport / tool-output changes; they required a prompt revision once the tool contracts settled. The live `alternative` prompt now documents how fetched markdown tables look, how to read significance and Base n without over-explaining them, how `fetchTable` works as a Total-first retrieval tool with explicit `cutGroups`, how semantic-first `[[render ...]]` markers control UI emphasis, and how `confirmCitation` should use semantic labels first with `rowRef` / `columnRef` only as ambiguity fallbacks. Continue to keep durable interpretation rules in the system prompt and keep repetitive scaffolding out of the tool payloads.
+
+**Prompt follow-up notes for the next pass.** The next prompt revision should be organized around a shared mental model rather than around isolated tool caveats.
+
+- The agent is doing multiple jobs in one surface: exploration, analysis, grounding, UI rendering, and answer/story composition.
+- The tool layer should support that directly:
+  - retrieval tools help the model explore and analyze
+  - `confirmCitation` handles strict grounding
+  - `[[render ...]]` handles presentation of already-grounded artifacts
+- Semantic-first language should be taught as a cross-tool norm, not as a one-off rule for one tool.
+- The prompt should be clearer about when to fetch, when to cite, when to render, and when to simply answer without extra UI artifacts.
+- Request understanding should happen before tool use. A lightweight acknowledgment / intent read can reduce erratic over-searching and make the model feel less "stressed" about choosing tables, rows, groups, and card count.
+- Request classification is likely useful: exploration vs synthesis vs methodology vs narrow lookup vs follow-up.
+- The prompt should help the model understand that render focus and citation are part of how it shares an answer with the user, not just part of artifact exploration.
+- We should keep asking what belongs in the system prompt by default versus what should stay behind tools. Examples:
+  - should cuts come from `listBannerCuts` instead of the prompt?
+  - should question details come from `getQuestionContext` instead of default run context in the prompt?
+- There is likely value in minimizing run-specific payload baked into the prompt and letting the model learn to use the tools early and intentionally instead of being handed too much context up front.
+- The goal of the next prompt pass should be clarity without redundancy: teach one mental model that covers retrieval, grounding, rendering, and response composition cleanly.
+
+**Pre-production cleanup note.** Before the analysis surface moves to production, remove the temporary backward-compatibility shims that were kept to land this redesign safely. In particular:
+
+- remove legacy `rowKey` / `cutKey` emphasis from the prompt once semantic-first citation/render paths are the only intended contract
+- remove `rowFilter` / `cutFilter` compatibility handling from replay / persistence paths once old history no longer needs to be rehydrated
+- simplify type/back-compat fields on persisted table-card artifacts after the migration window closes
+- audit prompt text and tests so the production-facing contract no longer teaches transitional paths
 
 ### What's still deferred, unchanged
 

@@ -1,25 +1,53 @@
 import { isTextUIPart, isToolUIPart, type UIMessage } from "ai";
 
-import { isAnalysisTableCard, type AnalysisTableCard } from "@/lib/analysis/types";
+import {
+  isAnalysisTableCard,
+  type AnalysisFetchTableCutGroups,
+  type AnalysisTableCard,
+} from "@/lib/analysis/types";
 
-// ID-addressable render marker. The model emits `[[render tableId=A3]]` (or
-// `[[render tableId="A3"]]`) in prose; the renderer resolves the id against
-// this-turn's fetchTable call cache.
-const RENDER_MARKER_BODY_SOURCE = `\\[\\[render\\s+tableId=(?:"([A-Za-z0-9_.-]{1,200})"|([A-Za-z0-9_.-]{1,200}))\\s*\\]\\]`;
-const RENDER_MARKER_GLOBAL_RE = new RegExp(RENDER_MARKER_BODY_SOURCE, "g");
+const RENDER_MARKER_PARAM_RE = /([a-zA-Z][a-zA-Z0-9]*)=((?:\[[^\]]*\])|"(?:[^"\\]|\\.)*"|[A-Za-z0-9_.:-]+)/g;
+const MAX_RENDER_ROW_FOCUS = 5;
+const MAX_RENDER_GROUP_FOCUS = 3;
+const TOTAL_GROUP_KEY = "__total__";
+const RENDER_MARKER_PREFIX = "[[render";
 
 type FetchTableUIPart = UIMessage["parts"][number] & {
   type: "tool-fetchTable";
   toolCallId: string;
   state: "output-available";
+  input?: {
+    tableId?: string;
+    cutGroups?: AnalysisFetchTableCutGroups | null;
+    valueMode?: string;
+  };
   output: AnalysisTableCard;
 };
+
+export interface AnalysisRenderFocus {
+  focusedRowKeys: string[];
+  focusedGroupKeys: string[];
+}
 
 export type AnalysisRenderableBlock =
   | { kind: "text"; key: string; text: string }
   | { kind: "placeholder"; key: string }
   | { kind: "missing"; key: string; tableId: string }
-  | { kind: "table"; key: string; part: FetchTableUIPart };
+  | { kind: "table"; key: string; part: FetchTableUIPart; focus: AnalysisRenderFocus };
+
+interface ParsedRenderMarker {
+  tableId: string;
+  rowLabels: string[];
+  rowRefs: string[];
+  groupNames: string[];
+  groupRefs: string[];
+  raw: string;
+}
+
+interface ParsedRenderMarkerOccurrence extends ParsedRenderMarker {
+  start: number;
+  end: number;
+}
 
 function normalizeRenderableText(text: string): string {
   return text
@@ -27,8 +55,152 @@ function normalizeRenderableText(text: string): string {
     .trim();
 }
 
-function matchedTableId(match: RegExpExecArray): string {
-  return (match[1] ?? match[2] ?? "").trim();
+function normalizeText(value: string | null | undefined): string {
+  return (value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseMarkerListValue(rawValue: string): string[] {
+  const value = rawValue.trim();
+  if (!value) return [];
+
+  if (value.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .filter((entry): entry is string => typeof entry === "string")
+        .map((entry) => entry.trim())
+        .filter((entry, index, values) => entry.length > 0 && values.indexOf(entry) === index);
+    } catch {
+      return [];
+    }
+  }
+
+  if (value.startsWith("\"") && value.endsWith("\"")) {
+    try {
+      const parsed = JSON.parse(value) as string;
+      return parsed.trim().length > 0 ? [parsed.trim()] : [];
+    } catch {
+      return [];
+    }
+  }
+
+  return value.trim().length > 0 ? [value.trim()] : [];
+}
+
+function parseRenderMarker(match: RegExpExecArray): ParsedRenderMarker | null {
+  const raw = match[0];
+  const body = (match[1] ?? "").trim();
+  if (!body) return null;
+
+  const params = new Map<string, string[]>();
+  let paramMatch: RegExpExecArray | null = RENDER_MARKER_PARAM_RE.exec(body);
+  while (paramMatch) {
+    const key = paramMatch[1]!;
+    const values = parseMarkerListValue(paramMatch[2] ?? "");
+    if (values.length > 0) {
+      const existing = params.get(key) ?? [];
+      params.set(
+        key,
+        [...existing, ...values].filter((value, index, all) => all.indexOf(value) === index),
+      );
+    }
+    paramMatch = RENDER_MARKER_PARAM_RE.exec(body);
+  }
+  RENDER_MARKER_PARAM_RE.lastIndex = 0;
+
+  const tableId = (params.get("tableId") ?? [])[0] ?? "";
+  if (!tableId) return null;
+
+  return {
+    tableId,
+    rowLabels: params.get("rowLabels") ?? [],
+    rowRefs: params.get("rowRefs") ?? [],
+    groupNames: params.get("groupNames") ?? [],
+    groupRefs: params.get("groupRefs") ?? [],
+    raw,
+  };
+}
+
+function extractParsedRenderMarkerOccurrences(text: string): ParsedRenderMarkerOccurrence[] {
+  const markers: ParsedRenderMarkerOccurrence[] = [];
+
+  for (let searchIndex = 0; searchIndex < text.length;) {
+    const markerStart = text.indexOf(RENDER_MARKER_PREFIX, searchIndex);
+    if (markerStart === -1) break;
+
+    const bodyStart = markerStart + RENDER_MARKER_PREFIX.length;
+    if (!/\s/.test(text[bodyStart] ?? "")) {
+      searchIndex = markerStart + RENDER_MARKER_PREFIX.length;
+      continue;
+    }
+
+    let inQuotes = false;
+    let arrayDepth = 0;
+    let isEscaped = false;
+    let markerEnd = -1;
+
+    for (let index = bodyStart; index < text.length - 1; index += 1) {
+      const char = text[index]!;
+      const next = text[index + 1]!;
+
+      if (isEscaped) {
+        isEscaped = false;
+        continue;
+      }
+
+      if (char === "\\") {
+        isEscaped = true;
+        continue;
+      }
+
+      if (char === "\"") {
+        inQuotes = !inQuotes;
+        continue;
+      }
+
+      if (inQuotes) continue;
+
+      if (char === "[") {
+        arrayDepth += 1;
+        continue;
+      }
+
+      if (char === "]" && arrayDepth > 0) {
+        arrayDepth -= 1;
+        continue;
+      }
+
+      if (char === "]" && next === "]" && arrayDepth === 0) {
+        markerEnd = index + 2;
+        break;
+      }
+    }
+
+    if (markerEnd === -1) {
+      searchIndex = markerStart + RENDER_MARKER_PREFIX.length;
+      continue;
+    }
+
+    const raw = text.slice(markerStart, markerEnd);
+    const body = text.slice(bodyStart, markerEnd - 2).trim();
+    const marker = parseRenderMarker([raw, body] as unknown as RegExpExecArray);
+    if (marker) {
+      markers.push({
+        ...marker,
+        start: markerStart,
+        end: markerEnd,
+      });
+    }
+
+    searchIndex = markerEnd;
+  }
+
+  return markers;
 }
 
 function getRenderableTableParts(parts: UIMessage["parts"]): FetchTableUIPart[] {
@@ -42,15 +214,10 @@ function getRenderableTableParts(parts: UIMessage["parts"]): FetchTableUIPart[] 
     );
   }
 
-  return parts.flatMap((part) => {
-    if (isFetchTableUIPart(part)) return [part];
-    return [];
-  });
+  return parts.flatMap((part) => (isFetchTableUIPart(part) ? [part] : []));
 }
 
 function buildTableIdMap(parts: FetchTableUIPart[]): Map<string, FetchTableUIPart> {
-  // When multiple fetches hit the same tableId, later-in-sequence wins — that
-  // is usually the intentional refetch (e.g., a refined cutFilter).
   const map = new Map<string, FetchTableUIPart>();
   for (const part of parts) {
     if (part.output.tableId) {
@@ -60,8 +227,92 @@ function buildTableIdMap(parts: FetchTableUIPart[]): Map<string, FetchTableUIPar
   return map;
 }
 
+function getFetchedGroupKeys(part: FetchTableUIPart): Set<string> {
+  const groups = (part.output.columnGroups ?? []).filter((group) => group.groupKey !== TOTAL_GROUP_KEY);
+  const requestedCutGroups = part.input?.cutGroups;
+  if (requestedCutGroups === "*") {
+    return new Set(groups.map((group) => group.groupKey));
+  }
+
+  const requested = new Set(
+    (Array.isArray(requestedCutGroups) ? requestedCutGroups : [])
+      .map((groupName) => normalizeText(groupName)),
+  );
+
+  return new Set(
+    groups
+      .filter((group) => requested.has(normalizeText(group.groupName)))
+      .map((group) => group.groupKey),
+  );
+}
+
+function resolveRenderFocus(part: FetchTableUIPart, marker: ParsedRenderMarker): AnalysisRenderFocus {
+  const focusedRowKeys: string[] = [];
+  const focusedGroupKeys: string[] = [];
+  const rows = part.output.rows;
+  const groups = (part.output.columnGroups ?? []).filter((group) => group.groupKey !== TOTAL_GROUP_KEY);
+  const fetchedGroupKeys = getFetchedGroupKeys(part);
+
+  for (const rowLabel of marker.rowLabels) {
+    if (focusedRowKeys.length >= MAX_RENDER_ROW_FOCUS) break;
+    const matches = rows.filter((row) => normalizeText(row.label) === normalizeText(rowLabel));
+    if (matches.length !== 1) continue;
+    const rowKey = matches[0]!.rowKey;
+    if (!focusedRowKeys.includes(rowKey)) {
+      focusedRowKeys.push(rowKey);
+    }
+  }
+
+  for (const rowRef of marker.rowRefs) {
+    if (focusedRowKeys.length >= MAX_RENDER_ROW_FOCUS) break;
+    if (!rows.some((row) => row.rowKey === rowRef)) continue;
+    if (!focusedRowKeys.includes(rowRef)) {
+      focusedRowKeys.push(rowRef);
+    }
+  }
+
+  for (const groupName of marker.groupNames) {
+    if (focusedGroupKeys.length >= MAX_RENDER_GROUP_FOCUS) break;
+    const matches = groups.filter((group) => normalizeText(group.groupName) === normalizeText(groupName));
+    if (matches.length !== 1) continue;
+    const groupKey = matches[0]!.groupKey;
+    if (!fetchedGroupKeys.has(groupKey) || focusedGroupKeys.includes(groupKey)) continue;
+    focusedGroupKeys.push(groupKey);
+  }
+
+  for (const groupRef of marker.groupRefs) {
+    if (focusedGroupKeys.length >= MAX_RENDER_GROUP_FOCUS) break;
+    if (!groups.some((group) => group.groupKey === groupRef)) continue;
+    if (!fetchedGroupKeys.has(groupRef) || focusedGroupKeys.includes(groupRef)) continue;
+    focusedGroupKeys.push(groupRef);
+  }
+
+  return {
+    focusedRowKeys,
+    focusedGroupKeys,
+  };
+}
+
+function extractParsedRenderMarkers(text: string): ParsedRenderMarker[] {
+  return extractParsedRenderMarkerOccurrences(text);
+}
+
 export function stripAnalysisRenderAnchors(text: string): string {
-  return normalizeRenderableText(text.replace(RENDER_MARKER_GLOBAL_RE, "\n\n"));
+  const markers = extractParsedRenderMarkerOccurrences(text);
+  if (markers.length === 0) {
+    return normalizeRenderableText(text);
+  }
+
+  let output = "";
+  let cursor = 0;
+  for (const marker of markers) {
+    output += text.slice(cursor, marker.start);
+    output += "\n\n";
+    cursor = marker.end;
+  }
+  output += text.slice(cursor);
+
+  return normalizeRenderableText(output);
 }
 
 export function buildAnalysisRenderableBlocks(
@@ -77,23 +328,10 @@ export function buildAnalysisRenderableBlocks(
   const tableParts = getRenderableTableParts(message.parts);
   const tableMap = buildTableIdMap(tableParts);
 
-  // Collect marker positions + referenced tableIds up-front.
-  const markers: Array<{ start: number; end: number; tableId: string }> = [];
-  const markerRe = new RegExp(RENDER_MARKER_BODY_SOURCE, "g");
-  let match: RegExpExecArray | null = markerRe.exec(text);
-  while (match) {
-    const tableId = matchedTableId(match);
-    if (tableId) {
-      markers.push({ start: match.index, end: markerRe.lastIndex, tableId });
-    }
-    match = markerRe.exec(text);
-  }
+  const markers = extractParsedRenderMarkerOccurrences(text);
 
-  const referencedTableIds = new Set(markers.map((m) => m.tableId));
+  const referencedTableIds = new Set(markers.map((marker) => marker.tableId));
 
-  // No markers → legacy append behavior: text first, then any table parts
-  // in the order the agent produced them. Keeps streaming UX forgiving when
-  // the agent fetched a table without citing it.
   if (markers.length === 0) {
     if (text.trim().length === 0 && options?.isStreaming && tableParts.length > 0) {
       return [];
@@ -109,13 +347,12 @@ export function buildAnalysisRenderableBlocks(
         kind: "table",
         key: `${message.id}-table-${part.toolCallId ?? index}`,
         part,
+        focus: { focusedRowKeys: [], focusedGroupKeys: [] },
       });
     });
     return blocks;
   }
 
-  // Walk the text, emitting text / table / placeholder / missing blocks in
-  // order dictated by marker positions.
   const blocks: AnalysisRenderableBlock[] = [];
   let cursor = 0;
   markers.forEach((marker, index) => {
@@ -135,15 +372,11 @@ export function buildAnalysisRenderableBlocks(
         kind: "table",
         key: `${message.id}-table-${part.toolCallId}-${index}`,
         part,
+        focus: resolveRenderFocus(part, marker),
       });
     } else if (options?.isStreaming) {
-      // fetchTable may still be in-flight this turn; render a placeholder and
-      // let the next streaming update resolve it.
       blocks.push({ kind: "placeholder", key: `${message.id}-placeholder-${index}` });
     } else {
-      // Stream has settled; the tableId was never fetched. Emit a missing
-      // block so the UI can render a minimal diagnostic; the model's claim-
-      // check post-pass will still strip unsupported specifics separately.
       blocks.push({
         kind: "missing",
         key: `${message.id}-missing-${index}-${marker.tableId}`,
@@ -164,24 +397,44 @@ export function buildAnalysisRenderableBlocks(
     });
   }
 
-  // Fallback append: any fetched table that was never cited by a marker still
-  // appears at the end of the message. Preserves forgiving UX if the model
-  // fetched but forgot to cite.
   tableParts.forEach((part, index) => {
     if (part.output.tableId && referencedTableIds.has(part.output.tableId)) return;
     blocks.push({
       kind: "table",
       key: `${message.id}-table-fallback-${part.toolCallId ?? index}`,
       part,
+      focus: { focusedRowKeys: [], focusedGroupKeys: [] },
     });
   });
 
   return blocks;
 }
 
-// Exported for prompt-time reference and for claim-check's marker-injection.
-export function buildAnalysisRenderMarker(tableId: string): string {
-  return `[[render tableId=${tableId}]]`;
+export function buildAnalysisRenderMarker(
+  tableId: string,
+  options?: {
+    rowLabels?: string[];
+    rowRefs?: string[];
+    groupNames?: string[];
+    groupRefs?: string[];
+  },
+): string {
+  const params = [`tableId=${tableId}`];
+
+  if (options?.rowLabels && options.rowLabels.length > 0) {
+    params.push(`rowLabels=${JSON.stringify(options.rowLabels.slice(0, MAX_RENDER_ROW_FOCUS))}`);
+  }
+  if (options?.rowRefs && options.rowRefs.length > 0) {
+    params.push(`rowRefs=${JSON.stringify(options.rowRefs.slice(0, MAX_RENDER_ROW_FOCUS))}`);
+  }
+  if (options?.groupNames && options.groupNames.length > 0) {
+    params.push(`groupNames=${JSON.stringify(options.groupNames.slice(0, MAX_RENDER_GROUP_FOCUS))}`);
+  }
+  if (options?.groupRefs && options.groupRefs.length > 0) {
+    params.push(`groupRefs=${JSON.stringify(options.groupRefs.slice(0, MAX_RENDER_GROUP_FOCUS))}`);
+  }
+
+  return `[[render ${params.join(" ")}]]`;
 }
 
 export interface AnalysisRenderMarkerOccurrence {
@@ -190,15 +443,10 @@ export interface AnalysisRenderMarkerOccurrence {
 }
 
 export function extractAnalysisRenderMarkers(text: string): AnalysisRenderMarkerOccurrence[] {
-  const markers: AnalysisRenderMarkerOccurrence[] = [];
-  const re = new RegExp(RENDER_MARKER_BODY_SOURCE, "g");
-  let match: RegExpExecArray | null = re.exec(text);
-  while (match) {
-    const tableId = matchedTableId(match);
-    if (tableId) markers.push({ tableId, raw: match[0] });
-    match = re.exec(text);
-  }
-  return markers;
+  return extractParsedRenderMarkers(text).map((marker) => ({
+    tableId: marker.tableId,
+    raw: marker.raw,
+  }));
 }
 
 export type AnalysisRenderMarkerInvalidReason =
@@ -211,11 +459,6 @@ export interface AnalysisRenderMarkerValidationIssue {
   reason: AnalysisRenderMarkerInvalidReason;
 }
 
-// Validate that every `[[render tableId=X]]` marker in the assistant text
-// points at a table that (a) exists in the run's catalog, and (b) was
-// fetched this turn via fetchTable. Unmet → the model emitted a marker
-// without grounding; callers can surface this as an error to the model
-// (for a repair pass) or strip the marker before rendering.
 export function validateAnalysisRenderMarkers(params: {
   text: string;
   fetchedTableIds: Iterable<string>;
@@ -244,13 +487,18 @@ export function stripInvalidAnalysisRenderMarkers(
 ): string {
   if (issues.length === 0) return text;
   const rawValues = new Set(issues.map((issue) => issue.raw));
+  const markers = extractParsedRenderMarkerOccurrences(text);
+  if (markers.length === 0) return text;
 
-  const stripped = text.replace(RENDER_MARKER_GLOBAL_RE, (match) => {
-    return rawValues.has(match) ? "" : match;
-  });
-  // Markers often sit on their own line surrounded by blank lines; removing
-  // the marker leaves extra blank lines. Collapse runs of 3+ newlines back
-  // to a clean paragraph break, then trim trailing whitespace on each line.
+  let stripped = "";
+  let cursor = 0;
+  for (const marker of markers) {
+    stripped += text.slice(cursor, marker.start);
+    stripped += rawValues.has(marker.raw) ? "" : marker.raw;
+    cursor = marker.end;
+  }
+  stripped += text.slice(cursor);
+
   return stripped
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")

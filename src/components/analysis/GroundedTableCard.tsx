@@ -142,11 +142,12 @@ function deriveLegacyCutKey(column: AnalysisTableCardColumn): string {
 
 function reorderGroupsByFocus(
   groups: AnalysisTableCardColumnGroup[],
+  focusedGroupKeys: string[] | null | undefined,
   focusedCutIds: string[] | null | undefined,
 ): AnalysisTableCardColumnGroup[] {
-  if (!focusedCutIds || focusedCutIds.length === 0) return groups;
-
-  const focused = new Set(focusedCutIds);
+  const focusedGroupsByKey = new Set(focusedGroupKeys ?? []);
+  const focusedCuts = new Set(focusedCutIds ?? []);
+  if (focusedGroupsByKey.size === 0 && focusedCuts.size === 0) return groups;
   const totalGroups: AnalysisTableCardColumnGroup[] = [];
   const focusedGroups: AnalysisTableCardColumnGroup[] = [];
   const otherGroups: AnalysisTableCardColumnGroup[] = [];
@@ -157,7 +158,10 @@ function reorderGroupsByFocus(
       continue;
     }
 
-    if (group.columns.some((column) => column.cutKey && focused.has(column.cutKey))) {
+    if (
+      focusedGroupsByKey.has(group.groupKey)
+      || group.columns.some((column) => column.cutKey && focusedCuts.has(column.cutKey))
+    ) {
       focusedGroups.push(group);
     } else {
       otherGroups.push(group);
@@ -177,7 +181,7 @@ export function normalizeGroundedTableCardGroups(card: AnalysisTableCard): Analy
         isTotal: column.isTotal ?? group.groupKey === TOTAL_GROUP_KEY,
       })),
     }));
-    return reorderGroupsByFocus(mapped, card.focusedCutIds);
+    return reorderGroupsByFocus(mapped, card.focusedGroupKeys, card.focusedCutIds);
   }
 
   const groups: AnalysisTableCardColumnGroup[] = [];
@@ -201,14 +205,20 @@ export function normalizeGroundedTableCardGroups(card: AnalysisTableCard): Analy
     });
   }
 
-  return reorderGroupsByFocus(groups, card.focusedCutIds);
+  return reorderGroupsByFocus(groups, card.focusedGroupKeys, card.focusedCutIds);
 }
 
 export function getGroundedTableCardVisibleGroups(
   card: AnalysisTableCard,
   showAllGroups: boolean,
+  focus?: {
+    focusedGroupKeys?: string[] | null;
+  },
 ): AnalysisTableCardColumnGroup[] {
-  const groups = normalizeGroundedTableCardGroups(card);
+  const groups = normalizeGroundedTableCardGroups({
+    ...card,
+    focusedGroupKeys: focus?.focusedGroupKeys ?? card.focusedGroupKeys ?? null,
+  });
   const hasPreviewState = typeof card.initialVisibleGroupCount === "number"
     || typeof card.hiddenGroupCount === "number"
     || typeof card.defaultScope === "string";
@@ -220,13 +230,13 @@ export function getGroundedTableCardVisibleGroups(
   const totalGroups = groups.filter((group) => group.groupKey === TOTAL_GROUP_KEY);
   const nonTotalGroups = groups.filter((group) => group.groupKey !== TOTAL_GROUP_KEY);
 
-  // When the agent passed a cutFilter, lead with the focused groups so the
-  // compact view highlights what the user asked about. Every other group
-  // stays on the payload — the expand dialog and details disclosure show all.
-  if (card.focusedCutIds && card.focusedCutIds.length > 0) {
-    const focusedKeys = new Set(card.focusedCutIds);
+  // Render focus can lead with specific groups in the compact view. Every
+  // other group stays on the payload so details/expand still show the full card.
+  const focusedGroupKeys = focus?.focusedGroupKeys ?? card.focusedGroupKeys ?? null;
+  if (focusedGroupKeys && focusedGroupKeys.length > 0) {
+    const focusedKeys = new Set(focusedGroupKeys);
     const focusedGroups = nonTotalGroups.filter((group) =>
-      group.columns.some((column) => column.cutKey && focusedKeys.has(column.cutKey)),
+      focusedKeys.has(group.groupKey),
     );
     if (focusedGroups.length > 0) {
       return [...totalGroups, ...focusedGroups];
@@ -247,15 +257,30 @@ export function getGroundedTableCardVisibleGroups(
 export function getGroundedTableCardVisibleRows(
   card: AnalysisTableCard,
   showAllRows: boolean,
+  focus?: {
+    focusedRowKeys?: string[] | null;
+  },
 ): AnalysisTableCardRow[] {
-  const previewEligibleRows = card.tableType === "frequency"
+  const focusedRowKeys = new Set(focus?.focusedRowKeys ?? card.focusedRowKeys ?? []);
+  const sourceRows = card.tableType === "frequency"
     ? card.rows.filter((row) => row.rowKind !== "stat")
     : card.rows;
+  const previewEligibleRows = focusedRowKeys.size > 0
+    ? [
+      ...sourceRows.filter((row) => focusedRowKeys.has(row.rowKey)),
+      ...sourceRows.filter((row) => !focusedRowKeys.has(row.rowKey)),
+    ]
+    : sourceRows;
   const hasPreviewState = typeof card.initialVisibleRowCount === "number"
     || typeof card.hiddenRowCount === "number";
 
   if (showAllRows || !hasPreviewState) {
-    return showAllRows ? card.rows : previewEligibleRows;
+    if (!showAllRows) return previewEligibleRows;
+    if (focusedRowKeys.size === 0) return card.rows;
+    return [
+      ...card.rows.filter((row) => focusedRowKeys.has(row.rowKey)),
+      ...card.rows.filter((row) => !focusedRowKeys.has(row.rowKey)),
+    ];
   }
 
   const visibleCount = Math.max(card.initialVisibleRowCount ?? previewEligibleRows.length, 0);
@@ -304,13 +329,26 @@ export function getGroundedTableCardSignificanceMarkers(
   return [...new Set(markers.filter((marker) => marker.trim().length > 0))];
 }
 
-export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
+export function GroundedTableCard({
+  card,
+  focus,
+}: {
+  card: AnalysisTableCard;
+  focus?: {
+    focusedRowKeys?: string[] | null;
+    focusedGroupKeys?: string[] | null;
+  };
+}) {
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isDiveDeeperOpen, setIsDiveDeeperOpen] = useState(false);
 
   const allGroups = normalizeGroundedTableCardGroups(card);
-  const visibleGroups = getGroundedTableCardVisibleGroups(card, false);
-  const visibleRows = getGroundedTableCardVisibleRows(card, false);
+  const visibleGroups = getGroundedTableCardVisibleGroups(card, false, {
+    focusedGroupKeys: focus?.focusedGroupKeys ?? card.focusedGroupKeys ?? null,
+  });
+  const visibleRows = getGroundedTableCardVisibleRows(card, false, {
+    focusedRowKeys: focus?.focusedRowKeys ?? card.focusedRowKeys ?? null,
+  });
   const hiddenRowCount = card.hiddenRowCount ?? card.truncatedRows;
   const previewHiddenRowCount = Math.max(card.rows.length - visibleRows.length, 0);
   const totalNonTotalCuts = allGroups
@@ -336,12 +374,12 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
     groups,
     rows,
     density = "comfortable",
-    rowFilter,
+    focusedRowKeys,
   }: {
     groups: AnalysisTableCardColumnGroup[];
     rows: AnalysisTableCardRow[];
     density?: "compact" | "comfortable";
-    rowFilter?: string | null;
+    focusedRowKeys?: string[] | null;
   }) {
     const columns = groups.flatMap((group) => group.columns);
     const showGroupHeaderInTable = groups.some((group) => group.groupKey !== TOTAL_GROUP_KEY);
@@ -443,7 +481,7 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
               ))}
             </tr>
             {rows.map((row) => {
-              const isHighlighted = rowFilter && normalizeText(row.label).includes(normalizeText(rowFilter));
+              const isHighlighted = Boolean(focusedRowKeys?.includes(row.rowKey));
 
               return (
                 <tr key={row.rowKey} className={cn("border-b border-border/40 last:border-b-0", isHighlighted && "bg-emerald-500/5")}>
@@ -600,7 +638,7 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
             groups: visibleGroups,
             rows: visibleRows,
             density: "compact",
-            rowFilter: card.requestedRowFilter,
+            focusedRowKeys: focus?.focusedRowKeys ?? card.focusedRowKeys ?? null,
           })}
 
           <div className="border-t border-border/40 px-2 py-1">
@@ -641,9 +679,11 @@ export function GroundedTableCard({ card }: { card: AnalysisTableCard }) {
             <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-border/60">
               {renderTableContent({
                 groups: allGroups,
-                rows: card.rows,
+                rows: getGroundedTableCardVisibleRows(card, true, {
+                  focusedRowKeys: focus?.focusedRowKeys ?? card.focusedRowKeys ?? null,
+                }),
                 density: "comfortable",
-                rowFilter: card.requestedRowFilter,
+                focusedRowKeys: focus?.focusedRowKeys ?? card.focusedRowKeys ?? null,
               })}
             </div>
           </div>

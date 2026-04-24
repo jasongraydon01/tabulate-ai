@@ -6,11 +6,13 @@ import {
 } from "ai";
 
 import { stripAnalysisCiteAnchors } from "@/lib/analysis/citeAnchors";
+import { buildFetchTableModelMarkdown } from "@/lib/analysis/grounding";
 import { stripAnalysisRenderAnchors } from "@/lib/analysis/renderAnchors";
 import {
   CONFIRM_CITATION_TOOL_TYPE,
   FETCH_TABLE_TOOL_TYPE,
 } from "@/lib/analysis/toolLabels";
+import type { AnalysisFetchTableCutGroups } from "@/lib/analysis/types";
 import {
   isAnalysisCellSummary,
   isAnalysisTableCard,
@@ -199,6 +201,22 @@ export function getAnalysisUIMessageText(message: Pick<UIMessage, "parts">): str
     .trim();
 }
 
+function getRequestedCutGroupsFromToolInput(
+  input: unknown,
+): AnalysisFetchTableCutGroups | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const record = input as { cutGroups?: unknown };
+  if (record.cutGroups === "*") return "*";
+  if (!Array.isArray(record.cutGroups)) return null;
+
+  const normalized = record.cutGroups
+    .filter((group): group is string => typeof group === "string")
+    .map((group) => group.trim())
+    .filter((group, index, values) => group.length > 0 && values.indexOf(group) === index);
+
+  return normalized.length > 0 ? normalized : null;
+}
+
 function persistedTableCardPart(
   params: {
     artifactId: string;
@@ -214,8 +232,7 @@ function persistedTableCardPart(
     state: (params.state ?? "output-available") as "output-available",
     input: (params.input ?? {
       tableId: payload.tableId,
-      rowFilter: payload.requestedRowFilter,
-      cutFilter: payload.requestedCutFilter,
+      cutGroups: payload.requestedCutGroups ?? null,
       valueMode: payload.valueMode,
     }) as Record<string, unknown>,
     output: payload,
@@ -370,6 +387,19 @@ export function getSanitizedConversationMessagesForModel(
       }
 
       if (isToolUIPart(part)) {
+        if (
+          part.type === FETCH_TABLE_TOOL_TYPE
+          && part.state === "output-available"
+          && isAnalysisTableCard(part.output)
+        ) {
+          acc.push({
+            ...part,
+            output: buildFetchTableModelMarkdown(part.output, {
+              requestedCutGroups: getRequestedCutGroupsFromToolInput("input" in part ? part.input : null),
+            }),
+          } as UIMessage["parts"][number]);
+          return acc;
+        }
         acc.push(part);
       }
       return acc;

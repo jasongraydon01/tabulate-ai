@@ -124,55 +124,61 @@ export async function streamAnalysisResponse({
             description: "Search the current run's catalog of questions, tables, and banner cuts from grounded artifacts. Use this first when the user refers to a topic or concept rather than a specific ID.",
             inputSchema: z.object({
               query: z.string().min(1).max(200),
+              scope: z.enum(["all", "questions", "tables", "cuts"]).optional(),
             }),
-            execute: async ({ query }, options) => executeGroundedTool(
+            execute: async ({ query, scope }, options) => executeGroundedTool(
               "searchRunCatalog",
-              () => searchRunCatalog(groundingContext, query),
+              () => searchRunCatalog(groundingContext, query, scope),
               { toolCallId: options.toolCallId },
             ),
           }),
           fetchTable: tool({
-            description: "Fetch a grounded table's data. This does NOT render a card on its own — to show the table inline in your reply, emit a render marker `[[render tableId=<id>]]` in your prose. Fetched tables that are not referenced by a marker stay invisible (used for context only).",
+            description: "Fetch a grounded table's data for analysis. By default this returns all rows with Total only. Ask for additional banner groups explicitly via cutGroups when you need subgroup evidence. This does NOT render a card on its own — to show the table inline in your reply, emit a render marker `[[render tableId=<id>]]` in your prose.",
             inputSchema: z.object({
               tableId: z.string().min(1).max(200),
-              rowFilter: z.string().min(1).max(200).nullable().optional(),
-              cutFilter: z.string().min(1).max(200).nullable().optional(),
+              cutGroups: z.union([
+                z.literal("*"),
+                z.array(z.string().min(1).max(100)).min(1).max(20),
+              ]).optional(),
               valueMode: z.enum(["pct", "count", "n", "mean"]).optional(),
             }),
-            toModelOutput: ({ output }) => ({
+            toModelOutput: ({ input, output }) => ({
               type: "text",
-              value: buildFetchTableModelMarkdown(output),
+              value: buildFetchTableModelMarkdown(output, {
+                requestedCutGroups: input.cutGroups,
+              }),
             }),
-            execute: async ({ tableId, rowFilter, cutFilter, valueMode }, options) => executeGroundedTool(
+            execute: async ({ tableId, cutGroups, valueMode }, options) => executeGroundedTool(
               "fetchTable",
               () => getTableCard(groundingContext, {
                 tableId,
-                rowFilter,
-                cutFilter,
+                cutGroups,
                 valueMode,
               }),
               { toolCallId: options.toolCallId },
             ),
           }),
           getQuestionContext: tool({
-            description: "Return grounded metadata for a specific question: type, items, base summary, related tables, plus survey wording / answer options / scale labels / questionnaire snippet when a matching survey entry exists.",
+            description: "Return grounded metadata for a specific question. Default output is compact; ask for more detail with include sections such as items, survey, relatedTables, loop, or linkage.",
             inputSchema: z.object({
               questionId: z.string().min(1).max(200),
+              include: z.array(z.enum(["items", "survey", "relatedTables", "loop", "linkage"])).max(5).optional(),
             }),
-            execute: async ({ questionId }, options) => executeGroundedTool(
+            execute: async ({ questionId, include }, options) => executeGroundedTool(
               "getQuestionContext",
-              () => getQuestionContext(groundingContext, questionId),
+              () => getQuestionContext(groundingContext, questionId, include),
               { toolCallId: options.toolCallId },
             ),
           }),
           listBannerCuts: tool({
-            description: "List available banner groups and the concrete cuts (with stat letters) available for each group. Use when the user asks what demographics or subgroups are available.",
+            description: "List available banner groups and the concrete cuts (with stat letters) available for each group. Default output omits raw expressions; ask for include=['expressions'] only when needed.",
             inputSchema: z.object({
               filter: z.string().min(1).max(200).nullable().optional(),
+              include: z.array(z.enum(["expressions"])).max(1).optional(),
             }),
-            execute: async ({ filter }, options) => executeGroundedTool(
+            execute: async ({ filter, include }, options) => executeGroundedTool(
               "listBannerCuts",
-              () => listBannerCuts(groundingContext, filter),
+              () => listBannerCuts(groundingContext, filter, include),
               { toolCallId: options.toolCallId },
             ),
           }),

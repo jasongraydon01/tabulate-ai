@@ -306,6 +306,15 @@ describe("analysis grounding helpers", () => {
     expect(result.cuts[0]).toEqual(expect.objectContaining({ cutName: "Female" }));
   });
 
+  it("supports scoped catalog search", () => {
+    const result = searchRunCatalog(context, "female satisfaction", "tables");
+
+    expect(result.scope).toBe("tables");
+    expect(result.questions).toEqual([]);
+    expect(result.tables[0]?.tableId).toBe("q1_overall");
+    expect(result.cuts).toEqual([]);
+  });
+
   it("defaults to total-first preview while keeping grouped payload data available", () => {
     const card = getTableCard(context, {
       tableId: "q1_overall",
@@ -326,10 +335,10 @@ describe("analysis grounding helpers", () => {
     expect(card.rows[0]?.cellsByCutKey?.["__total__::total"]?.displayValue).toBe("45%");
   });
 
-  it("carries the full USED cut set on every card and only narrows focus via cutFilter", () => {
+  it("carries the full USED cut set on every card and records explicit cut-group requests", () => {
     const card = getTableCard(context, {
       tableId: "q1_overall",
-      cutFilter: "female",
+      cutGroups: ["Gender"],
       valueMode: "pct",
     });
 
@@ -338,8 +347,10 @@ describe("analysis grounding helpers", () => {
       throw new Error("expected table card");
     }
 
-    expect(card.defaultScope).toBe("matched_groups");
-    // Payload always carries every USED group + cut, regardless of cutFilter.
+    expect(card.defaultScope).toBe("total_only");
+    expect(card.requestedCutGroups).toEqual(["Gender"]);
+    // Payload always carries every USED group + cut; cutGroups only changes
+    // the model-facing projection and render-time eligibility.
     expect(card.columnGroups?.map((group) => group.groupName)).toEqual(["Total", "Gender", "Region"]);
     expect(card.columns.map((column) => column.cutName)).toEqual([
       "Total",
@@ -357,33 +368,13 @@ describe("analysis grounding helpers", () => {
       "group:region::east",
       "group:region::west",
     ]);
-    // focusedCutIds names the cuts the UI should lead with in the compact view.
-    expect(card.focusedCutIds).toEqual(["group:gender::female", "group:gender::male"]);
+    expect(card.focusedCutIds).toBeNull();
     expect(card.rows[0]?.values.find((value) => value.cutName === "Female")).toEqual(
       expect.objectContaining({
         displayValue: "54%",
         sigHigherThan: ["B"],
       }),
     );
-  });
-
-  it("prioritizes matched rows without dropping the rest of the table", () => {
-    const card = getTableCard(context, {
-      tableId: "q1_overall",
-      rowFilter: "somewhat",
-      valueMode: "pct",
-    });
-
-    expect(card.status).toBe("available");
-    if (card.status !== "available") {
-      throw new Error("expected table card");
-    }
-
-    expect(card.rows.map((row) => row.label)).toEqual([
-      "Somewhat satisfied",
-      "Very satisfied",
-    ]);
-    expect(card.totalRows).toBe(2);
   });
 
   it("reports preview metadata for long tables", () => {
@@ -442,7 +433,7 @@ describe("analysis grounding helpers", () => {
     ]);
   });
 
-  it("projects fetchTable results to markdown for the model while keeping rowKey and cutKey references", () => {
+  it("projects fetchTable results to markdown with total only by default", () => {
     const card = getTableCard(context, {
       tableId: "q1_overall",
       valueMode: "pct",
@@ -459,23 +450,50 @@ describe("analysis grounding helpers", () => {
     expect(markdown).toContain("- tableId: q1_overall");
     expect(markdown).toContain("- subtitle: Overall");
     expect(markdown).toContain("- base: All respondents");
-    expect(markdown).toContain("Female (A){group:gender::female}");
-    expect(markdown).toContain("| Base n | 120 | 70 | 50 | 60 | 60 |");
-    expect(markdown).toContain("| Very satisfied {row_0_1} | **45%B** | **54%B** | **32%** | **51%** | **39%** |");
+    expect(markdown).toContain("Total (T){__total__::total}");
+    expect(markdown).toContain("| Base n | 120 |");
+    expect(markdown).toContain("| Very satisfied {row_0_1} | **45%** |");
+    expect(markdown).not.toContain("Female (A){group:gender::female}");
   });
 
-  it("returns grounded question context with related tables", () => {
+  it("projects explicitly requested cut groups to markdown for the model", () => {
+    const card = getTableCard(context, {
+      tableId: "q1_overall",
+      cutGroups: ["Gender"],
+      valueMode: "pct",
+    });
+
+    expect(card.status).toBe("available");
+    if (card.status !== "available") {
+      throw new Error("expected table card");
+    }
+
+    const markdown = buildFetchTableModelMarkdown(card, {
+      requestedCutGroups: ["Gender"],
+    });
+
+    expect(markdown).toContain("Female (A){group:gender::female}");
+    expect(markdown).toContain("Male (B){group:gender::male}");
+    expect(markdown).toContain("| Base n | 120 | 70 | 50 |");
+    expect(markdown).not.toContain("East (C)");
+  });
+
+  it("returns grounded question context with compact defaults", () => {
     const result = getQuestionContext(context, "Q1");
+
+    expect(result.status).toBe("available");
+    expect(result.relatedTableIds).toEqual([]);
+    expect(result.items).toEqual([]);
+    expect(result.loop).toBeNull();
+    expect(result.hiddenLink).toBeNull();
+  });
+
+  it("enriches getQuestionContext when include sections are requested", () => {
+    const result = getQuestionContext(context, "Q1", ["items", "relatedTables", "survey"]);
 
     expect(result.status).toBe("available");
     expect(result.relatedTableIds).toEqual(["q1_overall"]);
     expect(result.items[0]?.valueLabels).toHaveLength(2);
-  });
-
-  it("enriches getQuestionContext with survey wording when the question exists in the survey document", () => {
-    const result = getQuestionContext(context, "Q1");
-
-    expect(result.status).toBe("available");
     expect(result.sectionHeader).toBe("SECTION A");
     expect(result.sequenceNumber).toBe(1);
     expect(result.answerOptions).toHaveLength(2);
@@ -485,12 +503,19 @@ describe("analysis grounding helpers", () => {
     expect(result.sourceRefs.some((ref) => ref.refType === "survey_document")).toBe(true);
   });
 
-  it("lists banner cuts with expression details", () => {
-    const result = listBannerCuts(context, "female");
+  it("lists banner cuts without expressions by default and includes them on demand", () => {
+    const compact = listBannerCuts(context, "female");
+    const expanded = listBannerCuts(context, "female", ["expressions"]);
 
-    expect(result.status).toBe("available");
-    expect(result.totalGroups).toBe(1);
-    expect(result.groups[0]?.cuts).toEqual([
+    expect(compact.status).toBe("available");
+    expect(compact.totalGroups).toBe(1);
+    expect(compact.groups[0]?.cuts).toEqual([
+      {
+        name: "Female",
+        statLetter: "A",
+      },
+    ]);
+    expect(expanded.groups[0]?.cuts).toEqual([
       {
         name: "Female",
         statLetter: "A",
