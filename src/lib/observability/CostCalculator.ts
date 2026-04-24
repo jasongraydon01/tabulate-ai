@@ -16,6 +16,9 @@
 export interface TokenUsage {
   input: number;
   output: number;
+  inputNoCache?: number;
+  inputCacheRead?: number;
+  inputCacheWrite?: number;
 }
 
 export interface CostBreakdown {
@@ -29,6 +32,8 @@ export interface CostBreakdown {
 interface ModelPricing {
   input_cost_per_token?: number;
   output_cost_per_token?: number;
+  cache_read_input_token_cost?: number;
+  cache_creation_input_token_cost?: number;
   litellm_provider?: string;
   max_input_tokens?: number;
   max_output_tokens?: number;
@@ -89,10 +94,12 @@ async function fetchPricing(): Promise<Record<string, ModelPricing>> {
 const FALLBACK_PRICING: Record<string, ModelPricing> = {
   'gpt-4o': {
     input_cost_per_token: 2.5e-6,
+    cache_read_input_token_cost: 1.25e-6,
     output_cost_per_token: 10e-6,
   },
   'gpt-4o-mini': {
     input_cost_per_token: 0.15e-6,
+    cache_read_input_token_cost: 0.075e-6,
     output_cost_per_token: 0.6e-6,
   },
   'o1': {
@@ -105,18 +112,27 @@ const FALLBACK_PRICING: Record<string, ModelPricing> = {
   },
   'gpt-4.1': {
     input_cost_per_token: 2e-6,
+    cache_read_input_token_cost: 0.5e-6,
     output_cost_per_token: 8e-6,
   },
   'gpt-4.1-mini': {
     input_cost_per_token: 0.4e-6,
+    cache_read_input_token_cost: 0.1e-6,
     output_cost_per_token: 1.6e-6,
   },
   'gpt-4.1-nano': {
     input_cost_per_token: 0.1e-6,
+    cache_read_input_token_cost: 0.025e-6,
     output_cost_per_token: 0.4e-6,
   },
+  'gpt-5': {
+    input_cost_per_token: 1.25e-6,
+    cache_read_input_token_cost: 0.125e-6,
+    output_cost_per_token: 10e-6,
+  },
   'gpt-5-mini': {
-    input_cost_per_token: 0.5e-6,
+    input_cost_per_token: 0.25e-6,
+    cache_read_input_token_cost: 0.025e-6,
     output_cost_per_token: 2e-6,
   },
   'gpt-5.4': {
@@ -130,6 +146,30 @@ const FALLBACK_PRICING: Record<string, ModelPricing> = {
   'gpt-5.4-nano': {
     input_cost_per_token: 0.2e-6,
     output_cost_per_token: 1.25e-6,
+  },
+  'claude-sonnet-4-5': {
+    input_cost_per_token: 3e-6,
+    cache_read_input_token_cost: 0.3e-6,
+    cache_creation_input_token_cost: 3.75e-6,
+    output_cost_per_token: 15e-6,
+  },
+  'claude-sonnet-4-6': {
+    input_cost_per_token: 3e-6,
+    cache_read_input_token_cost: 0.3e-6,
+    cache_creation_input_token_cost: 3.75e-6,
+    output_cost_per_token: 15e-6,
+  },
+  'anthropic/claude-sonnet-4-5': {
+    input_cost_per_token: 3e-6,
+    cache_read_input_token_cost: 0.3e-6,
+    cache_creation_input_token_cost: 3.75e-6,
+    output_cost_per_token: 15e-6,
+  },
+  'anthropic/claude-sonnet-4-6': {
+    input_cost_per_token: 3e-6,
+    cache_read_input_token_cost: 0.3e-6,
+    cache_creation_input_token_cost: 3.75e-6,
+    output_cost_per_token: 15e-6,
   },
 };
 
@@ -155,6 +195,7 @@ function normalizeModelName(model: string): string[] {
     normalized,
     `azure/${normalized}`,
     `openai/${normalized}`,
+    `anthropic/${normalized}`,
   ];
 
   // Handle deployment name patterns (e.g., "my-gpt4o-deployment" → "gpt-4o")
@@ -192,7 +233,75 @@ function normalizeModelName(model: string): string[] {
     variations.push('gpt-5', 'azure/gpt-5');
   }
 
+  if (normalized.includes('claude-sonnet-4-6')) {
+    variations.push('claude-sonnet-4-6', 'anthropic/claude-sonnet-4-6');
+  } else if (normalized.includes('claude-sonnet-4-5')) {
+    variations.push('claude-sonnet-4-5', 'anthropic/claude-sonnet-4-5');
+  }
+
   return [...new Set(variations)]; // Dedupe
+}
+
+function inferProvider(model: string, pricing: ModelPricing | null): string | null {
+  if (pricing?.litellm_provider) {
+    return pricing.litellm_provider;
+  }
+
+  const normalized = model.toLowerCase();
+  if (normalized.includes('anthropic') || normalized.includes('claude')) return 'anthropic';
+  if (normalized.includes('openai') || normalized.includes('gpt') || normalized.includes('o1') || normalized.includes('o3')) {
+    return 'openai';
+  }
+
+  return null;
+}
+
+function getCacheReadInputTokenCost(model: string, pricing: ModelPricing): number | undefined {
+  if (pricing.cache_read_input_token_cost != null) {
+    return pricing.cache_read_input_token_cost;
+  }
+
+  if (inferProvider(model, pricing) === 'anthropic' && pricing.input_cost_per_token != null) {
+    return pricing.input_cost_per_token * 0.1;
+  }
+
+  return undefined;
+}
+
+function getCacheWriteInputTokenCost(model: string, pricing: ModelPricing): number | undefined {
+  if (pricing.cache_creation_input_token_cost != null) {
+    return pricing.cache_creation_input_token_cost;
+  }
+
+  if (inferProvider(model, pricing) === 'anthropic' && pricing.input_cost_per_token != null) {
+    return pricing.input_cost_per_token * 1.25;
+  }
+
+  return undefined;
+}
+
+function getDetailedInputUsage(usage: TokenUsage): {
+  noCache: number;
+  cacheRead: number;
+  cacheWrite: number;
+} {
+  const hasDetail = usage.inputNoCache != null
+    || usage.inputCacheRead != null
+    || usage.inputCacheWrite != null;
+
+  if (!hasDetail) {
+    return {
+      noCache: usage.input,
+      cacheRead: 0,
+      cacheWrite: 0,
+    };
+  }
+
+  return {
+    noCache: usage.inputNoCache ?? 0,
+    cacheRead: usage.inputCacheRead ?? 0,
+    cacheWrite: usage.inputCacheWrite ?? 0,
+  };
 }
 
 /**
@@ -247,7 +356,14 @@ export async function calculateCost(
     };
   }
 
-  const inputCost = usage.input * pricing.input_cost_per_token;
+  const detailedInputUsage = getDetailedInputUsage(usage);
+  const cacheReadInputTokenCost = getCacheReadInputTokenCost(model, pricing);
+  const cacheWriteInputTokenCost = getCacheWriteInputTokenCost(model, pricing);
+  const inputCost = (
+    detailedInputUsage.noCache * pricing.input_cost_per_token
+    + detailedInputUsage.cacheRead * (cacheReadInputTokenCost ?? 0)
+    + detailedInputUsage.cacheWrite * (cacheWriteInputTokenCost ?? 0)
+  );
   const outputCost = usage.output * pricing.output_cost_per_token;
 
   return {
@@ -288,7 +404,14 @@ export function calculateCostSync(
     };
   }
 
-  const inputCost = usage.input * modelPricing.input_cost_per_token;
+  const detailedInputUsage = getDetailedInputUsage(usage);
+  const cacheReadInputTokenCost = getCacheReadInputTokenCost(model, modelPricing);
+  const cacheWriteInputTokenCost = getCacheWriteInputTokenCost(model, modelPricing);
+  const inputCost = (
+    detailedInputUsage.noCache * modelPricing.input_cost_per_token
+    + detailedInputUsage.cacheRead * (cacheReadInputTokenCost ?? 0)
+    + detailedInputUsage.cacheWrite * (cacheWriteInputTokenCost ?? 0)
+  );
   const outputCost = usage.output * modelPricing.output_cost_per_token;
 
   return {

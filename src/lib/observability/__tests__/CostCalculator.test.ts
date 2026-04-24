@@ -35,4 +35,31 @@ describe("CostCalculator GPT-5.4 fallback pricing", () => {
     expect(cost.outputCost).toBeCloseTo(1.25);
     expect(cost.totalCost).toBeCloseTo(1.45);
   });
+
+  it("prices OpenAI cached input tokens with the cached-input rate when available", () => {
+    const cost = calculateCostSync("openai/gpt-4.1", {
+      input: 1_000_000,
+      output: 100_000,
+      inputNoCache: 400_000,
+      inputCacheRead: 600_000,
+    });
+
+    expect(cost.inputCost).toBeCloseTo(1.1);
+    expect(cost.outputCost).toBeCloseTo(0.8);
+    expect(cost.totalCost).toBeCloseTo(1.9);
+  });
+
+  it("prices Anthropic cache reads and writes with explicit or fallback cache rates", () => {
+    const cost = calculateCostSync("anthropic/claude-sonnet-4-6", {
+      input: 1_000_000,
+      output: 100_000,
+      inputNoCache: 300_000,
+      inputCacheRead: 500_000,
+      inputCacheWrite: 200_000,
+    });
+
+    expect(cost.inputCost).toBeCloseTo(1.8);
+    expect(cost.outputCost).toBeCloseTo(1.5);
+    expect(cost.totalCost).toBeCloseTo(3.3);
+  });
 });

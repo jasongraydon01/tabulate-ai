@@ -79,7 +79,7 @@ describe("buildPersistedAnalysisParts", () => {
     expect(buildPersistedAnalysisParts(parts)).toEqual([]);
   });
 
-  it("persists allowlisted tool parts with type, state, and toolCallId only", () => {
+  it("persists allowlisted tool parts with model-facing input and output", () => {
     const parts: UIMessage["parts"] = [
       {
         type: "tool-searchRunCatalog",
@@ -106,6 +106,8 @@ describe("buildPersistedAnalysisParts", () => {
           type: "tool-searchRunCatalog",
           state: "output-available",
           toolCallId: "call-1",
+          input: { query: "satisfaction" },
+          output: { matches: [] },
         },
       },
       {
@@ -114,6 +116,8 @@ describe("buildPersistedAnalysisParts", () => {
           type: "tool-listBannerCuts",
           state: "output-available",
           toolCallId: "call-2",
+          input: { filter: "age" },
+          output: { groups: [] },
         },
       },
     ]);
@@ -232,6 +236,8 @@ describe("buildPersistedAnalysisParts", () => {
         toolCallId: "call-cite",
         label: "CSB / Total",
         cellSummary,
+        input: { tableId: "q1", rowKey: "row_1_csb", cutKey: "__total__::total" },
+        output: { status: "confirmed", ...cellSummary },
       },
     });
   });

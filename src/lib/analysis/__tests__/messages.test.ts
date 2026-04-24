@@ -201,7 +201,13 @@ describe("analysis message helpers", () => {
         role: "assistant",
         content: "",
         parts: [
-          { type: "tool-searchRunCatalog", toolCallId: "call-abc", state: "output-available" },
+          {
+            type: "tool-searchRunCatalog",
+            toolCallId: "call-abc",
+            state: "output-available",
+            input: { query: "awareness" },
+            output: { matches: ["Q1"] },
+          },
           { type: "text", text: "Found the table." },
         ],
       },
@@ -212,8 +218,8 @@ describe("analysis message helpers", () => {
         type: "tool-searchRunCatalog",
         toolCallId: "call-abc",
         state: "output-available",
-        input: {},
-        output: undefined,
+        input: { query: "awareness" },
+        output: { matches: ["Q1"] },
       },
       { type: "text", text: "Found the table." },
     ]);
@@ -273,7 +279,7 @@ describe("analysis message helpers", () => {
     ]);
   });
 
-  it("strips tool parts from sanitized model messages to avoid tool_use/tool_result pairing issues", () => {
+  it("keeps allowlisted tool parts in sanitized model messages", () => {
     const sanitized = getSanitizedConversationMessagesForModel([
       {
         id: "assistant-1",
@@ -294,6 +300,33 @@ describe("analysis message helpers", () => {
               status: "available",
               tableId: "q1",
               title: "Q1 overall",
+              questionId: "Q1",
+              questionText: "How satisfied are you?",
+              tableType: "frequency",
+              surveySection: null,
+              baseText: "All respondents",
+              tableSubtitle: null,
+              userNote: null,
+              valueMode: "pct",
+              columns: [],
+              columnGroups: [{ groupKey: "__total__", groupName: "Total", columns: [] }],
+              rows: [],
+              totalRows: 0,
+              totalColumns: 0,
+              truncatedRows: 0,
+              truncatedColumns: 0,
+              defaultScope: "total_only",
+              initialVisibleRowCount: 0,
+              initialVisibleGroupCount: 0,
+              hiddenRowCount: 0,
+              hiddenGroupCount: 0,
+              focusedCutIds: null,
+              requestedRowFilter: null,
+              requestedCutFilter: null,
+              significanceTest: null,
+              significanceLevel: null,
+              comparisonGroups: [],
+              sourceRefs: [],
             },
           },
         ],
@@ -302,6 +335,60 @@ describe("analysis message helpers", () => {
 
     expect(sanitized[0].parts).toEqual([
       { type: "text", text: "bSummary/b" },
+      expect.objectContaining({
+        type: "tool-fetchTable",
+        toolCallId: "artifact-1",
+        state: "output-available",
+      }),
+    ]);
+  });
+
+  it("keeps reasoning and confirmCitation parts in sanitized model history", () => {
+    const sanitized = getSanitizedConversationMessagesForModel([
+      {
+        id: "assistant-1",
+        role: "assistant",
+        parts: [
+          { type: "reasoning", text: "Thinking through base sizes." },
+          {
+            type: "tool-confirmCitation",
+            toolCallId: "cite-1",
+            state: "output-available",
+            input: { tableId: "q1", rowKey: "row_1", cutKey: "__total__::total" },
+            output: {
+              status: "confirmed",
+              cellId: "q1|row_1|__total__%3A%3Atotal|pct",
+              tableId: "q1",
+              tableTitle: "Q1 overall",
+              questionId: "Q1",
+              rowKey: "row_1",
+              rowLabel: "Aware",
+              cutKey: "__total__::total",
+              cutName: "Total",
+              groupName: null,
+              valueMode: "pct",
+              displayValue: "58%",
+              pct: 58,
+              count: 236,
+              n: null,
+              mean: null,
+              baseN: 405,
+              sigHigherThan: [],
+              sigVsTotal: null,
+              sourceRefs: [],
+            },
+          },
+        ],
+      },
+    ]);
+
+    expect(sanitized[0].parts).toEqual([
+      { type: "reasoning", text: "Thinking through base sizes.", state: "done" },
+      expect.objectContaining({
+        type: "tool-confirmCitation",
+        toolCallId: "cite-1",
+        state: "output-available",
+      }),
     ]);
   });
 

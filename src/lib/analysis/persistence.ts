@@ -1,5 +1,6 @@
 import { isReasoningUIPart, isTextUIPart, isToolUIPart, type UIMessage } from "ai";
 
+import { sanitizeGroundingToolOutput } from "@/lib/analysis/grounding";
 import { sanitizeAnalysisAssistantMessageContent } from "@/lib/analysis/messages";
 import {
   CONFIRM_CITATION_TOOL_TYPE,
@@ -20,6 +21,8 @@ export interface PersistedAnalysisPart {
   label?: string;
   toolCallId?: string;
   cellSummary?: AnalysisCellSummary;
+  input?: unknown;
+  output?: unknown;
 }
 
 export interface PendingTableCardArtifact {
@@ -121,6 +124,8 @@ export function buildPersistedAnalysisParts(parts: UIMessage["parts"]): PendingA
             toolCallId: part.toolCallId,
             label: `${cellSummary.rowLabel} / ${cellSummary.cutName}`,
             cellSummary,
+            input: "input" in part ? sanitizeGroundingToolOutput(part.input) : {},
+            output: { status: "confirmed", ...cellSummary },
           },
         });
       }
@@ -135,6 +140,8 @@ export function buildPersistedAnalysisParts(parts: UIMessage["parts"]): PendingA
         type: part.type,
         state: part.state,
         toolCallId: part.toolCallId,
+        input: "input" in part ? sanitizeGroundingToolOutput(part.input) : {},
+        output: "output" in part ? sanitizeGroundingToolOutput(part.output) : undefined,
       },
     });
   }

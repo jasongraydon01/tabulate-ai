@@ -36,6 +36,9 @@ export interface AnalysisTraceUsage {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  nonCachedInputTokens?: number;
+  cachedInputTokens?: number;
+  cacheWriteInputTokens?: number;
   durationMs: number;
   estimatedCostUsd: number;
 }

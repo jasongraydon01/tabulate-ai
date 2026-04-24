@@ -21,7 +21,11 @@ const agentMetricsValidator = v.object({
   model: v.string(),
   inputTokens: v.number(),
   outputTokens: v.number(),
+  nonCachedInputTokens: v.optional(v.number()),
+  cachedInputTokens: v.optional(v.number()),
+  cacheWriteInputTokens: v.optional(v.number()),
   durationMs: v.number(),
+  estimatedCostUsd: v.optional(v.number()),
 });
 
 const messagePartValidator = v.object({
@@ -31,6 +35,8 @@ const messagePartValidator = v.object({
   artifactId: v.optional(v.id("analysisArtifacts")),
   label: v.optional(v.string()),
   toolCallId: v.optional(v.string()),
+  input: v.optional(v.any()),
+  output: v.optional(v.any()),
   // Inline cell summary for tool-confirmCitation parts. Kept loose
   // (`v.any`) to mirror how other polymorphic tool payloads stay additive
   // here — the TypeScript surface in @/lib/analysis/types enforces shape.

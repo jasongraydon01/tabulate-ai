@@ -2,14 +2,18 @@ import { convertToModelMessages, stepCountIs, streamText, tool, type UIMessage }
 import { z } from "zod";
 
 import {
-  getAnalysisUIMessageText,
   getSanitizedConversationMessagesForModel,
+  getAnalysisUIMessageText,
 } from "@/lib/analysis/messages";
 import {
   getAnalysisModel,
   getAnalysisModelName,
   getAnalysisProviderOptions,
 } from "@/lib/analysis/model";
+import {
+  ANALYSIS_ANTHROPIC_EPHEMERAL_CACHE_CONTROL_PROVIDER_OPTIONS,
+  buildAnalysisSystemMessage,
+} from "@/lib/analysis/promptPrefix";
 import {
   attachRetrievedContextXml,
   confirmCitation,
@@ -28,7 +32,6 @@ import {
   type AnalysisSourceRef,
   type AnalysisTableCard,
 } from "@/lib/analysis/types";
-import { buildAnalysisInstructions, buildAnalysisQuestionCatalog } from "@/prompts/analysis";
 import { calculateCostSync, recordAgentMetrics } from "@/lib/observability";
 import { retryWithPolicyHandling } from "@/lib/retryWithPolicyHandling";
 
@@ -48,6 +51,9 @@ export async function streamAnalysisResponse({
   let usage = {
     inputTokens: 0,
     outputTokens: 0,
+    nonCachedInputTokens: 0,
+    cachedInputTokens: 0,
+    cacheWriteInputTokens: 0,
   };
 
   function captureGroundingEvent(params: {
@@ -103,41 +109,11 @@ export async function streamAnalysisResponse({
     return result;
   }
 
-  const questionCatalog = buildAnalysisQuestionCatalog(
-    groundingContext.questions.map((question) => ({
-      questionId: question.questionId,
-      questionText: question.questionText,
-      normalizedType: question.normalizedType,
-      analyticalSubtype: question.analyticalSubtype ?? null,
-    })),
-  );
-
   const retryResult = await retryWithPolicyHandling(
     async () =>
       streamText({
         model: getAnalysisModel(),
-        system: buildAnalysisInstructions({
-          availability: groundingContext.availability,
-          missingArtifacts: groundingContext.missingArtifacts,
-          runContext: {
-            projectName: groundingContext.projectContext.projectName,
-            runStatus: groundingContext.projectContext.runStatus,
-            studyMethodology: groundingContext.projectContext.studyMethodology,
-            analysisMethod: groundingContext.projectContext.analysisMethod,
-            tableCount: groundingContext.projectContext.tableCount,
-            bannerGroupCount: groundingContext.projectContext.bannerGroupCount,
-            totalCuts: groundingContext.projectContext.totalCuts,
-            bannerGroupNames: groundingContext.projectContext.bannerGroupNames,
-            bannerSource: groundingContext.projectContext.bannerSource,
-            bannerMode: groundingContext.projectContext.bannerMode,
-            researchObjectives: groundingContext.projectContext.researchObjectives,
-            bannerHints: groundingContext.projectContext.bannerHints,
-            intakeFiles: groundingContext.projectContext.intakeFiles,
-            surveyAvailable: groundingContext.surveyQuestions.length > 0 || Boolean(groundingContext.surveyMarkdown),
-            bannerPlanAvailable: groundingContext.bannerPlanGroups.length > 0,
-          },
-          questionCatalog,
-        }),
+        system: buildAnalysisSystemMessage(groundingContext),
         messages: await convertToModelMessages(sanitizedMessages),
         stopWhen: stepCountIs(12),
         abortSignal,
@@ -197,6 +173,7 @@ export async function streamAnalysisResponse({
           }),
           confirmCitation: tool({
             description: "Confirm a specific cell before citing its number in prose. Returns the cell summary (displayValue, pct/count/n/mean, baseN, sig markers) plus a stable cellId. Required before emitting any `[[cite cellIds=...]]` marker for that cell IN THIS TURN. Hierarchy: fetch → (optionally) render → confirm → cite.",
+            providerOptions: ANALYSIS_ANTHROPIC_EPHEMERAL_CACHE_CONTROL_PROVIDER_OPTIONS,
             inputSchema: z.object({
               tableId: z.string().min(1).max(200),
               rowKey: z.string().min(1).max(200),
@@ -219,6 +196,9 @@ export async function streamAnalysisResponse({
           usage = {
             inputTokens: totalUsage.inputTokens ?? 0,
             outputTokens: totalUsage.outputTokens ?? 0,
+            nonCachedInputTokens: totalUsage.inputTokenDetails?.noCacheTokens ?? 0,
+            cachedInputTokens: totalUsage.inputTokenDetails?.cacheReadTokens ?? 0,
+            cacheWriteInputTokens: totalUsage.inputTokenDetails?.cacheWriteTokens ?? 0,
           };
           recordAgentMetrics(
             "AnalysisAgent",
@@ -226,6 +206,9 @@ export async function streamAnalysisResponse({
             {
               input: usage.inputTokens,
               output: usage.outputTokens,
+              inputNoCache: usage.nonCachedInputTokens,
+              inputCacheRead: usage.cachedInputTokens,
+              inputCacheWrite: usage.cacheWriteInputTokens,
             },
             Date.now() - startTime,
           );
@@ -262,10 +245,16 @@ export async function streamAnalysisResponse({
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
         totalTokens: usage.inputTokens + usage.outputTokens,
+        nonCachedInputTokens: usage.nonCachedInputTokens,
+        cachedInputTokens: usage.cachedInputTokens,
+        cacheWriteInputTokens: usage.cacheWriteInputTokens,
         durationMs: Date.now() - startTime,
         estimatedCostUsd: calculateCostSync(getAnalysisModelName(), {
           input: usage.inputTokens,
           output: usage.outputTokens,
+          inputNoCache: usage.nonCachedInputTokens,
+          inputCacheRead: usage.cachedInputTokens,
+          inputCacheWrite: usage.cacheWriteInputTokens,
         }).totalCost,
       },
       retryEvents: retryEvents.map((event) => ({ ...event })),

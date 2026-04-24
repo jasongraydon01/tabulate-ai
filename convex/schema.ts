@@ -120,7 +120,11 @@ const analysisAgentMetricsValidator = v.object({
   model: v.string(),
   inputTokens: v.number(),
   outputTokens: v.number(),
+  nonCachedInputTokens: v.optional(v.number()),
+  cachedInputTokens: v.optional(v.number()),
+  cacheWriteInputTokens: v.optional(v.number()),
   durationMs: v.number(),
+  estimatedCostUsd: v.optional(v.number()),
 });
 
 const analysisMessagePartValidator = v.object({
@@ -130,6 +134,8 @@ const analysisMessagePartValidator = v.object({
   artifactId: v.optional(v.id("analysisArtifacts")),
   label: v.optional(v.string()),
   toolCallId: v.optional(v.string()),
+  input: v.optional(v.any()),
+  output: v.optional(v.any()),
   // Inline cell summary for tool-confirmCitation parts. Loose shape mirrors the
   // polymorphic payload policy elsewhere in the table; the TypeScript surface
   // in @/lib/analysis/types enforces the shape on read.

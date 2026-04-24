@@ -91,7 +91,7 @@ describe("analysis agent production prompt", () => {
         tableCount: 24,
         bannerGroupCount: 3,
         totalCuts: 9,
-        bannerGroupNames: ["Gender", "Age", "Region"],
+        bannerGroupNames: ["Region", "Age", "Gender"],
         studyMethodology: null,
         analysisMethod: null,
         bannerSource: "auto_generated",
@@ -105,6 +105,7 @@ describe("analysis agent production prompt", () => {
 
     expect(result).toContain("<run_context>");
     expect(result).toContain("Project name: TabulateAI Study.");
+    expect(result).toContain("Banner groups: Age, Gender, Region.");
     expect(result).toContain("<grounding_status>");
     expect(result).toContain("All grounding artifacts are available.");
   });
@@ -192,21 +193,23 @@ describe("analysis agent production prompt", () => {
     it("renders one line per question with type and truncated text", () => {
       const catalog = buildAnalysisQuestionCatalog([
         {
-          questionId: "Q7",
-          questionText: "How satisfied are you with your overall experience?",
-          normalizedType: "scale",
-          analyticalSubtype: "scale",
-        },
-        {
           questionId: "Q12",
           questionText: "Which of the following brands have you purchased in the past year?",
           normalizedType: "multi_response",
           analyticalSubtype: "standard",
         },
+        {
+          questionId: "Q7",
+          questionText: "How satisfied are you with your overall experience?",
+          normalizedType: "scale",
+          analyticalSubtype: "scale",
+        },
       ]);
 
-      expect(catalog).toContain("- Q7 (scale): How satisfied are you with your overall experience?");
-      expect(catalog).toContain("- Q12 (multi_response/standard): Which of the following brands");
+      expect(catalog).toEqual([
+        "- Q12 (multi_response/standard): Which of the following brands have you purchased in the past year?",
+        "- Q7 (scale): How satisfied are you with your overall experience?",
+      ].join("\n"));
     });
 
     it("skips entries without a question id", () => {

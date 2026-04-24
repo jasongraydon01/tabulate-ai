@@ -36,7 +36,6 @@ import {
   validateAnalysisRenderMarkers,
 } from "@/lib/analysis/renderAnchors";
 import { attemptAnalysisMarkerRepair } from "@/lib/analysis/markerRepair";
-import { buildAnalysisInstructions, buildAnalysisQuestionCatalog } from "@/prompts/analysis";
 import {
   buildPersistedAnalysisParts,
   type PersistedAnalysisPart,
@@ -439,6 +438,9 @@ export async function POST(
           artifactId: part.artifactId ? String(part.artifactId) : undefined,
           label: part.label,
           toolCallId: part.toolCallId,
+          input: part.input,
+          output: part.output,
+          cellSummary: part.cellSummary,
         })),
       })),
       persistedArtifacts.map((artifact) => ({
@@ -608,35 +610,7 @@ export async function POST(
 
           if (initialRenderIssues.length > 0 || initialCiteIssues.length > 0) {
             const repairedText = await attemptAnalysisMarkerRepair({
-              systemPrompt: buildAnalysisInstructions({
-                availability: groundingContext.availability,
-                missingArtifacts: groundingContext.missingArtifacts,
-                runContext: {
-                  projectName: groundingContext.projectContext.projectName,
-                  runStatus: groundingContext.projectContext.runStatus,
-                  studyMethodology: groundingContext.projectContext.studyMethodology,
-                  analysisMethod: groundingContext.projectContext.analysisMethod,
-                  tableCount: groundingContext.projectContext.tableCount,
-                  bannerGroupCount: groundingContext.projectContext.bannerGroupCount,
-                  totalCuts: groundingContext.projectContext.totalCuts,
-                  bannerGroupNames: groundingContext.projectContext.bannerGroupNames,
-                  bannerSource: groundingContext.projectContext.bannerSource,
-                  bannerMode: groundingContext.projectContext.bannerMode,
-                  researchObjectives: groundingContext.projectContext.researchObjectives,
-                  bannerHints: groundingContext.projectContext.bannerHints,
-                  intakeFiles: groundingContext.projectContext.intakeFiles,
-                  surveyAvailable: groundingContext.surveyQuestions.length > 0 || Boolean(groundingContext.surveyMarkdown),
-                  bannerPlanAvailable: groundingContext.bannerPlanGroups.length > 0,
-                },
-                questionCatalog: buildAnalysisQuestionCatalog(
-                  groundingContext.questions.map((question) => ({
-                    questionId: question.questionId,
-                    questionText: question.questionText,
-                    normalizedType: question.normalizedType,
-                    analyticalSubtype: question.analyticalSubtype ?? null,
-                  })),
-                ),
-              }),
+              groundingContext,
               conversationMessages,
               failedAssistantText: initialAssistantText,
               renderIssues: initialRenderIssues,
@@ -758,7 +732,11 @@ export async function POST(
               model: traceCapture.usage.model,
               inputTokens: traceCapture.usage.inputTokens,
               outputTokens: traceCapture.usage.outputTokens,
+              nonCachedInputTokens: traceCapture.usage.nonCachedInputTokens,
+              cachedInputTokens: traceCapture.usage.cachedInputTokens,
+              cacheWriteInputTokens: traceCapture.usage.cacheWriteInputTokens,
               durationMs: traceCapture.usage.durationMs,
+              estimatedCostUsd: traceCapture.usage.estimatedCostUsd,
             },
           });
 

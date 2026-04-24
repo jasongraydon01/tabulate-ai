@@ -45,7 +45,13 @@ export function buildAnalysisQuestionCatalog(
   questions: AnalysisQuestionCatalogEntry[],
 ): string {
   const lines: string[] = [];
-  for (const question of questions) {
+  const sortedQuestions = [...questions].sort((left, right) => {
+    const leftId = left.questionId.trim().toLowerCase();
+    const rightId = right.questionId.trim().toLowerCase();
+    return leftId.localeCompare(rightId);
+  });
+
+  for (const question of sortedQuestions) {
     const questionId = question.questionId?.trim();
     if (!questionId) continue;
 
@@ -120,7 +126,7 @@ export function buildAnalysisInstructions(context: {
       ? `Banner mode: ${context.runContext.bannerMode}.`
       : null,
     context.runContext.bannerGroupNames.length > 0
-      ? `Banner groups: ${context.runContext.bannerGroupNames.join(", ")}.`
+      ? `Banner groups: ${[...context.runContext.bannerGroupNames].sort((left, right) => left.localeCompare(right)).join(", ")}.`
       : "Banner groups: unavailable.",
     context.runContext.researchObjectives
       ? `Research objectives: ${context.runContext.researchObjectives}.`

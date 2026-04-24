@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   streamText: vi.fn(),
   retryWithPolicyHandling: vi.fn(),
   recordAgentMetrics: vi.fn(),
+  buildAnalysisSystemMessage: vi.fn(() => ({ role: "system", content: "system prompt" })),
 }));
 
 vi.mock("ai", async (importOriginal) => {
@@ -32,9 +33,13 @@ vi.mock("@/lib/analysis/grounding", () => ({
   attachRetrievedContextXml: vi.fn((_toolName, value) => value),
 }));
 
-vi.mock("@/prompts/analysis", () => ({
-  buildAnalysisInstructions: vi.fn(() => "system prompt"),
-  buildAnalysisQuestionCatalog: vi.fn(() => ""),
+vi.mock("@/lib/analysis/promptPrefix", () => ({
+  buildAnalysisSystemMessage: mocks.buildAnalysisSystemMessage,
+  ANALYSIS_ANTHROPIC_EPHEMERAL_CACHE_CONTROL_PROVIDER_OPTIONS: {
+    anthropic: {
+      cacheControl: { type: "ephemeral" },
+    },
+  },
 }));
 
 vi.mock("@/lib/observability", async () => {
@@ -65,6 +70,11 @@ describe("streamAnalysisResponse", () => {
         totalUsage: {
           inputTokens: 120,
           outputTokens: 45,
+          inputTokenDetails: {
+            noCacheTokens: 70,
+            cacheReadTokens: 40,
+            cacheWriteTokens: 10,
+          },
         },
       });
       return {
@@ -174,15 +184,103 @@ describe("streamAnalysisResponse", () => {
       inputTokens: 120,
       outputTokens: 45,
       totalTokens: 165,
+      nonCachedInputTokens: 70,
+      cachedInputTokens: 40,
+      cacheWriteInputTokens: 10,
       durationMs: expect.any(Number),
       estimatedCostUsd: expect.any(Number),
     });
     expect(mocks.recordAgentMetrics).toHaveBeenCalledWith(
       "AnalysisAgent",
       "gpt-analysis",
-      { input: 120, output: 45 },
+      {
+        input: 120,
+        output: 45,
+        inputNoCache: 70,
+        inputCacheRead: 40,
+        inputCacheWrite: 10,
+      },
       expect.any(Number),
     );
     expect(groundingCapture).toEqual([]);
+  });
+
+  it("uses a structured system message and keeps cache control on the terminal tool only", async () => {
+    mocks.streamText.mockImplementationOnce(({ onFinish, system, tools }) => {
+      expect(system).toEqual({ role: "system", content: "system prompt" });
+      expect(Object.keys(tools ?? {})).toEqual([
+        "searchRunCatalog",
+        "fetchTable",
+        "getQuestionContext",
+        "listBannerCuts",
+        "confirmCitation",
+      ]);
+      expect(tools?.confirmCitation.providerOptions).toEqual({
+        anthropic: {
+          cacheControl: { type: "ephemeral" },
+        },
+      });
+      expect(tools?.listBannerCuts.providerOptions).toBeUndefined();
+
+      onFinish?.({
+        totalUsage: {
+          inputTokens: 12,
+          outputTokens: 4,
+        },
+      });
+      return {
+        toUIMessageStreamResponse: vi.fn(() => new Response("ok")),
+      };
+    });
+
+    mocks.retryWithPolicyHandling.mockImplementationOnce(async (fn: () => Promise<unknown>) => ({
+      success: true,
+      result: await fn(),
+      attempts: 1,
+      wasPolicyError: false,
+      finalClassification: null,
+    }));
+
+    await streamAnalysisResponse({
+      messages: [{ id: "u1", role: "user", parts: [{ type: "text", text: "Show me awareness" }] }],
+      groundingContext: {
+        availability: "available",
+        missingArtifacts: [],
+        tables: {},
+        questions: [],
+        bannerGroups: [],
+        bannerRouteMetadata: null,
+        surveyMarkdown: null,
+        surveyQuestions: [],
+        bannerPlanGroups: [],
+        projectContext: {
+          projectName: "TabulateAI Study",
+          runStatus: "success",
+          studyMethodology: null,
+          analysisMethod: null,
+          bannerSource: null,
+          bannerMode: null,
+          tableCount: null,
+          bannerGroupCount: null,
+          totalCuts: null,
+          bannerGroupNames: [],
+          researchObjectives: null,
+          bannerHints: null,
+          intakeFiles: {
+            dataFile: null,
+            survey: null,
+            bannerPlan: null,
+            messageList: null,
+          },
+        },
+        tablesMetadata: {
+          significanceTest: null,
+          significanceLevel: null,
+          comparisonGroups: [],
+        },
+      },
+    });
+
+    expect(mocks.buildAnalysisSystemMessage).toHaveBeenCalledTimes(1);
   });
 });

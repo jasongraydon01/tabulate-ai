@@ -1,8 +1,10 @@
 import { convertToModelMessages, generateText, type ModelMessage, type UIMessage } from "ai";
 
 import type { AnalysisCiteMarkerValidationIssue } from "@/lib/analysis/citeAnchors";
+import type { AnalysisGroundingContext } from "@/lib/analysis/grounding";
 import { getSanitizedConversationMessagesForModel } from "@/lib/analysis/messages";
 import { getAnalysisModel, getAnalysisProviderOptions } from "@/lib/analysis/model";
+import { buildAnalysisSystemMessage } from "@/lib/analysis/promptPrefix";
 import type { AnalysisRenderMarkerValidationIssue } from "@/lib/analysis/renderAnchors";
 
 // One-shot model repair when the assistant response carries invalid markers.
@@ -11,7 +13,16 @@ import type { AnalysisRenderMarkerValidationIssue } from "@/lib/analysis/renderA
 // attempt — if the repair still has invalid markers the caller strips them
 // deterministically.
 export async function attemptAnalysisMarkerRepair(params: {
-  systemPrompt: string;
+  groundingContext: Pick<
+    AnalysisGroundingContext,
+    | "availability"
+    | "missingArtifacts"
+    | "questions"
+    | "surveyQuestions"
+    | "surveyMarkdown"
+    | "bannerPlanGroups"
+    | "projectContext"
+  >;
   conversationMessages: UIMessage[];
   failedAssistantText: string;
   renderIssues: AnalysisRenderMarkerValidationIssue[];
@@ -83,7 +94,9 @@ export async function attemptAnalysisMarkerRepair(params: {
   try {
     const result = await generateText({
       model: getAnalysisModel(),
-      system: params.systemPrompt,
+      system: buildAnalysisSystemMessage(params.groundingContext, {
+        cacheControl: "ephemeral",
+      }),
       messages: attemptMessages,
       abortSignal: params.abortSignal,
       ...(getAnalysisProviderOptions() ? { providerOptions: getAnalysisProviderOptions() } : {}),

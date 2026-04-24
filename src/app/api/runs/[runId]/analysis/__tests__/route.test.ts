@@ -97,6 +97,9 @@ function makeTraceCapture(overrides: Partial<{
     inputTokens: number;
     outputTokens: number;
     totalTokens: number;
+    nonCachedInputTokens?: number;
+    cachedInputTokens?: number;
+    cacheWriteInputTokens?: number;
     durationMs: number;
     estimatedCostUsd: number;
   };
@@ -112,6 +115,9 @@ function makeTraceCapture(overrides: Partial<{
       inputTokens: 120,
       outputTokens: 45,
       totalTokens: 165,
+      nonCachedInputTokens: 70,
+      cachedInputTokens: 40,
+      cacheWriteInputTokens: 10,
       durationMs: 850,
       estimatedCostUsd: 0.0123,
       ...(overrides.usage ?? {}),
@@ -287,7 +293,11 @@ describe("analysis chat route", () => {
         model: "gpt-analysis",
         inputTokens: 120,
         outputTokens: 45,
+        nonCachedInputTokens: 70,
+        cachedInputTokens: 40,
+        cacheWriteInputTokens: 10,
         durationMs: 850,
+        estimatedCostUsd: 0.0123,
       },
     });
     expect(mocks.writeAnalysisTurnTrace).toHaveBeenCalledWith(expect.objectContaining({
@@ -424,7 +434,11 @@ describe("analysis chat route", () => {
         model: "gpt-analysis",
         inputTokens: 120,
         outputTokens: 45,
+        nonCachedInputTokens: 70,
+        cachedInputTokens: 40,
+        cacheWriteInputTokens: 10,
         durationMs: 850,
+        estimatedCostUsd: 0.0123,
       },
     });
   });

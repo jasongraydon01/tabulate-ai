@@ -1,4 +1,9 @@
-import { isTextUIPart, type UIMessage } from "ai";
+import {
+  isReasoningUIPart,
+  isTextUIPart,
+  isToolUIPart,
+  type UIMessage,
+} from "ai";
 
 import { stripAnalysisCiteAnchors } from "@/lib/analysis/citeAnchors";
 import { stripAnalysisRenderAnchors } from "@/lib/analysis/renderAnchors";
@@ -32,6 +37,8 @@ interface PersistedAnalysisMessageRecord {
     label?: string;
     toolCallId?: string;
     cellSummary?: unknown;
+    input?: unknown;
+    output?: unknown;
   }>;
   groundingRefs?: AnalysisGroundingRef[];
   followUpSuggestions?: string[];
@@ -211,6 +218,26 @@ function persistedTableCardPart(
   };
 }
 
+function extractCellSummary(
+  value: unknown,
+): AnalysisCellSummary | null {
+  if (isAnalysisCellSummary(value)) {
+    return value as AnalysisCellSummary;
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  if (record.status !== "confirmed") {
+    return null;
+  }
+
+  const { status: _status, ...cellSummary } = record;
+  return isAnalysisCellSummary(cellSummary) ? (cellSummary as AnalysisCellSummary) : null;
+}
+
 export function persistedAnalysisMessagesToUIMessages(
   messages: PersistedAnalysisMessageRecord[],
   artifacts: PersistedAnalysisArtifactRecord[] = [],
@@ -268,17 +295,18 @@ export function persistedAnalysisMessagesToUIMessages(
         }
 
         if (part.type === CONFIRM_CITATION_TOOL_TYPE && part.toolCallId) {
-          const cellSummary = isAnalysisCellSummary(part.cellSummary)
-            ? (part.cellSummary as AnalysisCellSummary)
-            : null;
+          const cellSummary = extractCellSummary(part.output)
+            ?? (isAnalysisCellSummary(part.cellSummary)
+              ? (part.cellSummary as AnalysisCellSummary)
+              : null);
           parts.push({
             type: part.type,
             toolCallId: part.toolCallId,
             state: "output-available",
-            input: {},
+            input: (part.input ?? {}) as Record<string, unknown>,
             output: cellSummary
               ? { status: "confirmed", ...cellSummary }
-              : undefined,
+              : part.output,
           } as UIMessage["parts"][number]);
           continue;
         }
@@ -292,8 +320,8 @@ export function persistedAnalysisMessagesToUIMessages(
             type: part.type,
             toolCallId: part.toolCallId,
             state: "output-available",
-            input: {},
-            output: undefined,
+            input: (part.input ?? {}) as Record<string, unknown>,
+            output: part.output,
           } as UIMessage["parts"][number]);
         }
       }
@@ -330,6 +358,72 @@ export function getSanitizedConversationMessagesForModel(
         return acc;
       }
 
+      if (isReasoningUIPart(part)) {
+        const text = sanitizeAnalysisMessageContent(part.text ?? "");
+        if (text.length > 0) {
+          acc.push({
+            type: "reasoning",
+            text,
+            state: part.state ?? "done",
+          });
+        }
+        return acc;
+      }
+
+      if (!isToolUIPart(part) || !isRenderableAnalysisToolType(part.type) || !part.toolCallId) {
+        return acc;
+      }
+
+      if (part.state !== "output-available") {
+        return acc;
+      }
+
+      if (part.type === FETCH_TABLE_TOOL_TYPE) {
+        if (!isAnalysisTableCard(part.output)) {
+          return acc;
+        }
+
+        const tableCard = part.output;
+        acc.push({
+          type: part.type,
+          toolCallId: part.toolCallId,
+          state: part.state,
+          input: "input" in part
+            ? part.input
+            : {
+                tableId: tableCard.tableId,
+                rowFilter: tableCard.requestedRowFilter,
+                cutFilter: tableCard.requestedCutFilter,
+                valueMode: tableCard.valueMode,
+              },
+          output: tableCard,
+        } as UIMessage["parts"][number]);
+        return acc;
+      }
+
+      if (part.type === CONFIRM_CITATION_TOOL_TYPE) {
+        const cellSummary = extractCellSummary("output" in part ? part.output : undefined);
+        if (!cellSummary) {
+          return acc;
+        }
+
+        acc.push({
+          type: part.type,
+          toolCallId: part.toolCallId,
+          state: part.state,
+          input: "input" in part ? part.input : {},
+          output: cellSummary,
+        } as UIMessage["parts"][number]);
+        return acc;
+      }
+
+      acc.push({
+        type: part.type,
+        toolCallId: part.toolCallId,
+        state: part.state,
+        input: "input" in part ? part.input : {},
+        output: "output" in part ? part.output : undefined,
+      } as UIMessage["parts"][number]);
       return acc;
     }, []);
 
