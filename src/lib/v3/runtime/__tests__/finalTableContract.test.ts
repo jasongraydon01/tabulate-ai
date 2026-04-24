@@ -144,6 +144,100 @@ describe("buildFinalTablesContract", () => {
     ]);
   });
 
+  it("uses compute cut ordering and preserves numeric mean_rows display semantics", () => {
+    const result = buildFinalTablesContract(
+      {
+        metadata: {
+          generatedAt: "2026-04-24T00:00:00.000Z",
+          tableCount: 1,
+          cutCount: 3,
+          bannerGroups: [
+            {
+              groupName: "Segments",
+              columns: [
+                { name: "Segment B", statLetter: "B" },
+                { name: "Segment A", statLetter: "A" },
+              ],
+            },
+          ],
+        },
+        tables: {
+          q5_mean_rows: {
+            tableId: "q5_mean_rows",
+            questionId: "Q5",
+            questionText: "Mean score by item",
+            tableType: "mean_rows",
+            data: {
+              "Segment B": {
+                stat_letter: "B",
+                Q5_1: { label: "Item A", groupName: "Segments", n: 40, mean: 3.1, median: 3.0, sd: 1.2, std_err: 0.19 },
+                Q5_2: { label: "Item B", groupName: "Segments", n: 40, mean: 4.4, median: 4.0, sd: 1.1, std_err: 0.17 },
+              },
+              Total: {
+                stat_letter: "T",
+                Q5_1: { label: "Item A", groupName: "Total", n: 100, mean: 3.7, median: 4.0, sd: 1.0, std_err: 0.1 },
+                Q5_2: { label: "Item B", groupName: "Total", n: 100, mean: 4.1, median: 4.0, sd: 0.9, std_err: 0.09 },
+              },
+              "Segment A": {
+                stat_letter: "A",
+                Q5_1: { label: "Item A", groupName: "Segments", n: 60, mean: 4.0, median: 4.0, sd: 0.8, std_err: 0.1 },
+                Q5_2: { label: "Item B", groupName: "Segments", n: 60, mean: 3.9, median: 4.0, sd: 0.7, std_err: 0.09 },
+              },
+            },
+          },
+        },
+      },
+      {
+        rScriptInput: {
+          cuts: [
+            { name: "Total", statLetter: "T", groupName: "Total" },
+            { name: "Segment A", statLetter: "A", groupName: "Segments" },
+            { name: "Segment B", statLetter: "B", groupName: "Segments" },
+          ],
+          tables: [
+            {
+              tableId: "q5_mean_rows",
+              tableType: "mean_rows",
+              rows: [
+                { label: "Item A", rowKind: "value", isNet: false, indent: 0 },
+                { label: "Item B", rowKind: "value", isNet: false, indent: 0 },
+              ],
+            },
+          ],
+        },
+      },
+    );
+
+    const table = result.tables.q5_mean_rows;
+    expect(table.columns.map((column) => column.cutName)).toEqual([
+      "Total",
+      "Segment A",
+      "Segment B",
+    ]);
+    expect(table.rows).toEqual([
+      {
+        rowKey: "Q5_1",
+        label: "Item A",
+        rowKind: "value",
+        statType: null,
+        indent: 0,
+        isNet: false,
+        valueType: "mean",
+        format: { kind: "number", decimals: 1 },
+      },
+      {
+        rowKey: "Q5_2",
+        label: "Item B",
+        rowKind: "value",
+        statType: null,
+        indent: 0,
+        isNet: false,
+        valueType: "mean",
+        format: { kind: "number", decimals: 1 },
+      },
+    ]);
+  });
+
   it("hydrates the derived demo banner table from compute cuts when compute rows are absent", () => {
     const result = buildFinalTablesContract(
       {

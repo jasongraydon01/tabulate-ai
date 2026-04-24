@@ -200,7 +200,24 @@ function inferRowKind(row: ComputeRow | undefined, resultRow: ResultsRowValue | 
   return "value";
 }
 
-function deriveValueType(rowKind: string, statType: string | null): FinalTableRow["valueType"] {
+function inferValueTypeFromResultRow(resultRow: ResultsRowValue | undefined): FinalTableRow["valueType"] | null {
+  if (!resultRow) return null;
+  if (typeof resultRow.pct === "number" && Number.isFinite(resultRow.pct)) return "pct";
+  if (typeof resultRow.count === "number" && Number.isFinite(resultRow.count)) return "count";
+  if (typeof resultRow.n === "number" && Number.isFinite(resultRow.n)) return "n";
+  if (typeof resultRow.mean === "number" && Number.isFinite(resultRow.mean)) return "mean";
+  if (typeof resultRow.median === "number" && Number.isFinite(resultRow.median)) return "median";
+  if (typeof resultRow.sd === "number" && Number.isFinite(resultRow.sd)) return "stddev";
+  if (typeof resultRow.std_err === "number" && Number.isFinite(resultRow.std_err)) return "stderr";
+  return null;
+}
+
+function deriveValueType(
+  tableType: string | undefined,
+  rowKind: string,
+  statType: string | null,
+  resultRow: ResultsRowValue | undefined,
+): FinalTableRow["valueType"] {
   if (rowKind === "stat") {
     switch (statType) {
       case "median":
@@ -215,7 +232,11 @@ function deriveValueType(rowKind: string, statType: string | null): FinalTableRo
     }
   }
 
-  return "pct";
+  if (tableType === "mean_rows") {
+    return "mean";
+  }
+
+  return inferValueTypeFromResultRow(resultRow) ?? "pct";
 }
 
 function deriveRowFormat(valueType: FinalTableRow["valueType"]): FinalTableRowFormat {
@@ -237,6 +258,7 @@ function buildFinalRow(
   rowKey: string,
   row: ComputeRow | undefined,
   resultRow: ResultsRowValue | undefined,
+  tableType: string | undefined,
 ): FinalTableRow {
   const label = row?.label ?? resultRow?.label ?? rowKey;
   const rowKind = inferRowKind(row, resultRow);
@@ -246,7 +268,7 @@ function buildFinalRow(
       ? resultRow.statType
       : inferStatType(label);
   const statType = rawStatType ?? null;
-  const valueType = deriveValueType(rowKind, statType);
+  const valueType = deriveValueType(tableType, rowKind, statType, resultRow);
 
   return {
     rowKey,
@@ -280,19 +302,44 @@ function buildBannerColumnLookup(metadata: ResultsMetadata | undefined): Map<str
   return lookup;
 }
 
-function buildFinalTableColumns(table: ResultsTableEntry, metadata: ResultsMetadata | undefined): FinalTableColumn[] {
+function buildComputeCutLookup(
+  computePackage: ComputePackageArtifact,
+): Map<string, { groupName: string; statLetter: string | null; order: number }> {
+  const lookup = new Map<string, { groupName: string; statLetter: string | null; order: number }>();
+  let order = 0;
+
+  for (const cut of computePackage.rScriptInput?.cuts ?? []) {
+    if (typeof cut.name !== "string" || cut.name.trim().length === 0) continue;
+    lookup.set(normalizeText(cut.name), {
+      groupName: typeof cut.groupName === "string" ? cut.groupName : "",
+      statLetter: typeof cut.statLetter === "string" ? cut.statLetter : null,
+      order,
+    });
+    order += 1;
+  }
+
+  return lookup;
+}
+
+function buildFinalTableColumns(
+  table: ResultsTableEntry,
+  metadata: ResultsMetadata | undefined,
+  computePackage: ComputePackageArtifact,
+): FinalTableColumn[] {
   const columnsByNormalizedCut = new Map<string, FinalTableColumn>();
   const bannerLookup = buildBannerColumnLookup(metadata);
+  const computeLookup = buildComputeCutLookup(computePackage);
   const dataEntries = Object.entries(table.data ?? {});
 
   for (const [cutName, cut] of dataEntries) {
     const normalizedCut = normalizeText(cutName);
+    const computeCut = computeLookup.get(normalizedCut);
     const bannerColumn = bannerLookup.get(normalizedCut);
     const isTotal = isTotalCut(cutName, cut);
     const firstRow = Object.values(cut).find(isResultsRowValue);
     const groupName = isTotal
       ? "Total"
-      : (bannerColumn?.groupName || firstRow?.groupName || null);
+      : (computeCut?.groupName || bannerColumn?.groupName || firstRow?.groupName || null);
     const groupKey = deriveCutGroupKey(groupName, cutName, isTotal);
 
     columnsByNormalizedCut.set(normalizedCut, {
@@ -300,10 +347,10 @@ function buildFinalTableColumns(table: ResultsTableEntry, metadata: ResultsMetad
       cutName,
       groupKey,
       groupName,
-      statLetter: bannerColumn?.statLetter ?? (typeof cut.stat_letter === "string" ? cut.stat_letter : null),
+      statLetter: computeCut?.statLetter ?? bannerColumn?.statLetter ?? (typeof cut.stat_letter === "string" ? cut.stat_letter : null),
       baseN: resolveCutBaseN(cut),
       isTotal,
-      order: bannerColumn?.order ?? Number.MAX_SAFE_INTEGER,
+      order: computeCut?.order ?? bannerColumn?.order ?? Number.MAX_SAFE_INTEGER,
     });
   }
 
@@ -323,6 +370,7 @@ function buildDemoBannerRows(
   rowKeys: string[],
   totalCut: ResultsCutData | undefined,
   computePackage: ComputePackageArtifact,
+  tableType: string | undefined,
 ): FinalTableRow[] {
   const cuts = (computePackage.rScriptInput?.cuts ?? []).filter(
     (cut): cut is ComputeCut & { name: string } =>
@@ -341,7 +389,7 @@ function buildDemoBannerRows(
     const row = index === 0
       ? { label: "Total", rowKind: "value", statType: null, indent: 0, isNet: false }
       : { label: cuts[index - 1]?.name, rowKind: "value", statType: null, indent: 0, isNet: false };
-    return buildFinalRow(rowKey, row, resultRow);
+    return buildFinalRow(rowKey, row, resultRow, tableType);
   });
 }
 
@@ -356,6 +404,9 @@ function buildFinalTableRows(
   const totalCut = totalEntry?.[1];
   const rowKeys = collectOrderedRowKeys(totalCut);
   const computeRows = computeTable?.rows ?? [];
+  const tableType = typeof computeTable?.tableType === "string" && computeTable.tableType.trim().length > 0
+    ? computeTable.tableType
+    : table.tableType;
 
   if (rowKeys.length === 0) {
     return [];
@@ -365,12 +416,12 @@ function buildFinalTableRows(
     return computeRows.map((row, index) => {
       const rowKey = rowKeys[index]!;
       const resultRow = totalCut && isResultsRowValue(totalCut[rowKey]) ? totalCut[rowKey] : undefined;
-      return buildFinalRow(rowKey, row, resultRow);
+      return buildFinalRow(rowKey, row, resultRow, tableType);
     });
   }
 
   if (tableId === DEMO_BANNER_TABLE_ID && computeRows.length === 0) {
-    return buildDemoBannerRows(tableId, rowKeys, totalCut, computePackage);
+    return buildDemoBannerRows(tableId, rowKeys, totalCut, computePackage, tableType);
   }
 
   if (computeRows.length !== rowKeys.length) {
@@ -396,7 +447,7 @@ export function buildFinalTableContractEntry(
 
   return {
     ...table,
-    columns: buildFinalTableColumns(table, metadata),
+    columns: buildFinalTableColumns(table, metadata, computePackage),
     rows: buildFinalTableRows(tableId, table, computeTable, computePackage),
   };
 }

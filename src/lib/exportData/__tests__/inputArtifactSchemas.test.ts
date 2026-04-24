@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CrosstabRawArtifactSchema,
   LoopSummaryArtifactSchema,
+  ResultsTablesFinalContractSchema,
   ResultsTablesArtifactSchema,
   SortedFinalArtifactSchema,
 } from '@/lib/exportData';
@@ -153,8 +154,8 @@ describe('required input artifact schemas', () => {
     `);
   });
 
-  it('parses the final-table contract shape for results/tables and snapshots key shape', () => {
-    const parsed = ResultsTablesArtifactSchema.parse({
+  it('parses the strict final-table contract shape for results/tables and snapshots key shape', () => {
+    const parsed = ResultsTablesFinalContractSchema.parse({
       metadata: {
         generatedAt: '2026-04-24T00:00:00.000Z',
         tableCount: 1,
@@ -272,6 +273,22 @@ describe('required input artifact schemas', () => {
         },
       }),
     ).not.toThrow();
+  });
+
+  it('rejects final-contract validation when ordered columns and rows are missing', () => {
+    expect(() =>
+      ResultsTablesFinalContractSchema.parse({
+        metadata: {},
+        tables: {
+          q1_overall: {
+            tableId: 'q1_overall',
+            questionId: 'Q1',
+            tableType: 'frequency',
+            data: {},
+          },
+        },
+      }),
+    ).toThrow();
   });
 
   it('parses crosstab-output-raw fixture and snapshots key shape', async () => {

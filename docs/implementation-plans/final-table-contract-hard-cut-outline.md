@@ -2,7 +2,7 @@
 
 **Purpose:** define the end-state contract for final computed tables so the analysis surface, citations, markdown projection, and other downstream consumers all read the same ordered, display-semantic-aware artifact.
 
-**Status:** active hard-cut implementation outline. Slice B is substantially implemented; Slice C is partially implemented; Slice D is partially implemented; Slice A and Slice E remain open.
+**Status:** active hard-cut implementation outline. Slice B is complete for the current post-R shaping scope; Slice C is partially implemented; Slice D is partially implemented; Slice A and Slice E remain open.
 
 ## Current implementation snapshot (April 24, 2026)
 
@@ -13,10 +13,11 @@ This outline started as a design/alignment document. It now also needs to reflec
 - **Slice group A — final contract definition:** partially resolved, not complete
   - We have a working direction for ordered `rows` / `columns` and row-aware display semantics.
   - We do **not** yet have the final hard-cut decisions on cell structure and stable cell identity.
-- **Slice group B — finalization builder:** substantially implemented
+- **Slice group B — finalization builder:** complete for current scope
   - `src/lib/v3/runtime/finalTableContract.ts` exists as the contract builder.
-  - `src/lib/v3/runtime/postV3Processing.ts` enriches `results/tables.json` after R execution.
-  - The special derived demo banner table (`_demo_banner_x_banner`) now has a deterministic contract path instead of relying on analysis-time inference.
+  - `src/lib/v3/runtime/postV3Processing.ts` now hard-validates the finalized contract after R execution and applies the same shaping path to `tables.json`, `tables-weighted.json`, and `tables-unweighted.json`.
+  - Column ordering now prefers compute-package cut order, and `mean_rows` tables preserve numeric display semantics in the final contract.
+  - The special derived demo banner table (`_demo_banner_x_banner`) remains on a deterministic contract path instead of relying on analysis-time inference.
 - **Slice group C — analysis grounding and model projection:** partially implemented
   - `src/lib/analysis/grounding.ts` now reads ordered row/column metadata from the final contract.
   - `fetchTable` / `getTableCard`, `confirmCitation`, and markdown projection have been moved closer to contract-driven behavior.
@@ -35,6 +36,7 @@ The following should be treated as real progress, not just exploration:
 - final-table contract builder introduced
 - post-R enrichment path introduced
 - typed `rows` / `columns` contract added to `results/tables.json`
+- strict final-contract schema added for finalized results artifacts
 - analysis grounding moved toward contract-driven row order and row semantics
 - mixed numeric / percent row handling now has deterministic regression coverage
 

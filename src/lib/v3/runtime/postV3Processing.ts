@@ -19,6 +19,7 @@ import type { RScriptV2Input, ValidationReport } from '@/lib/r/RScriptGeneratorV
 import { ExcelFormatter } from '@/lib/excel/ExcelFormatter';
 import type { ExcelFormat, DisplayMode } from '@/lib/excel/ExcelFormatter';
 import { extractStreamlinedData } from '@/lib/data/extractStreamlinedData';
+import { ResultsTablesFinalContractSchema } from '@/lib/exportData/inputArtifactSchemas';
 import { fixRHexEscapes } from '@/lib/r/fixRHexEscapes';
 import { persistSystemError } from '@/lib/errors/ErrorPersistence';
 import { buildFinalTablesContract } from './finalTableContract';
@@ -201,6 +202,18 @@ async function saveRLog(
   return rLogPath;
 }
 
+async function finalizeResultsTablesArtifact(
+  jsonPath: string,
+  computePackage: ComputePackageOutput,
+) {
+  const jsonContent = fixRHexEscapes(await fs.readFile(jsonPath, 'utf-8'));
+  const rawResultsTables = JSON.parse(jsonContent);
+  const finalized = buildFinalTablesContract(rawResultsTables, computePackage);
+  const validated = ResultsTablesFinalContractSchema.parse(finalized);
+  await fs.writeFile(jsonPath, JSON.stringify(validated, null, 2), 'utf-8');
+  return validated;
+}
+
 // =============================================================================
 // Main Entry Point
 // =============================================================================
@@ -308,6 +321,10 @@ export async function runPostV3Processing(
 
     // Process R output files
     const resultFiles = await fs.readdir(resultsDir);
+    const computePackagePath = path.join(computeDir, '22-compute-package.json');
+    const computePackage = JSON.parse(
+      await fs.readFile(computePackagePath, 'utf-8'),
+    ) as ComputePackageOutput;
 
     if (weightVariable) {
       // Dual output mode: weighted + unweighted
@@ -315,19 +332,16 @@ export async function runPostV3Processing(
       const hasUnweighted = resultFiles.includes('tables-unweighted.json');
 
       if (hasWeighted && hasUnweighted) {
-        const weightedContent = fixRHexEscapes(
-          await fs.readFile(path.join(resultsDir, 'tables-weighted.json'), 'utf-8'),
+        const weightedData = await finalizeResultsTablesArtifact(
+          path.join(resultsDir, 'tables-weighted.json'),
+          computePackage,
         );
-        const weightedData = JSON.parse(weightedContent);
+        await finalizeResultsTablesArtifact(
+          path.join(resultsDir, 'tables-unweighted.json'),
+          computePackage,
+        );
         rOutputTableCount = Object.keys(weightedData.tables || {}).length;
         log(`[PostV3] R output: tables-weighted.json + tables-unweighted.json (${rOutputTableCount} tables each)`);
-
-        // Fix hex escapes in unweighted too
-        const unweightedContent = fixRHexEscapes(
-          await fs.readFile(path.join(resultsDir, 'tables-unweighted.json'), 'utf-8'),
-        );
-        await fs.writeFile(path.join(resultsDir, 'tables-unweighted.json'), unweightedContent, 'utf-8');
-        await fs.writeFile(path.join(resultsDir, 'tables-weighted.json'), weightedContent, 'utf-8');
 
         // Streamlined data from weighted
         const streamlinedData = extractStreamlinedData(weightedData);
@@ -342,14 +356,11 @@ export async function runPostV3Processing(
     } else {
       // Standard single output
       if (resultFiles.includes('tables.json')) {
-        const jsonPath = path.join(resultsDir, 'tables.json');
-        const jsonContent = fixRHexEscapes(await fs.readFile(jsonPath, 'utf-8'));
-        const rawResultsTables = JSON.parse(jsonContent);
-        const computePackagePath = path.join(computeDir, '22-compute-package.json');
-        const computePackage = JSON.parse(await fs.readFile(computePackagePath, 'utf-8'));
-        const jsonData = buildFinalTablesContract(rawResultsTables, computePackage);
+        const jsonData = await finalizeResultsTablesArtifact(
+          path.join(resultsDir, 'tables.json'),
+          computePackage,
+        );
         rOutputTableCount = Object.keys(jsonData.tables || {}).length;
-        await fs.writeFile(jsonPath, JSON.stringify(jsonData, null, 2), 'utf-8');
 
         log(`[PostV3] R output: tables.json (${rOutputTableCount} tables)`);
 

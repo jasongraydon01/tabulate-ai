@@ -31,7 +31,7 @@ export const SortedFinalArtifactSchema = z.object({
   tables: z.array(SortedFinalTableSchema),
 });
 
-const ResultsTableColumnSchema = z.object({
+export const ResultsTableColumnSchema = z.object({
   cutKey: z.string(),
   cutName: z.string(),
   groupKey: z.string(),
@@ -42,12 +42,12 @@ const ResultsTableColumnSchema = z.object({
   order: z.number().int(),
 });
 
-const ResultsTableRowFormatSchema = z.object({
+export const ResultsTableRowFormatSchema = z.object({
   kind: z.union([z.literal('percent'), z.literal('number')]),
   decimals: z.number().int(),
 });
 
-const ResultsTableRowSchema = z.object({
+export const ResultsTableRowSchema = z.object({
   rowKey: z.string(),
   label: z.string(),
   rowKind: z.string(),
@@ -66,11 +66,35 @@ const ResultsTableRowSchema = z.object({
   format: ResultsTableRowFormatSchema,
 });
 
-const ResultsTableEntrySchema = z.object({
+const ResultsTableValueSchema = z.object({
+  label: z.string().optional(),
+  groupName: z.string().optional(),
+  rowKind: z.string().optional(),
+  statType: z.string().nullable().optional(),
+  n: z.number().nullable().optional(),
+  count: z.number().nullable().optional(),
+  pct: z.number().nullable().optional(),
+  mean: z.number().nullable().optional(),
+  median: z.number().nullable().optional(),
+  sd: z.number().nullable().optional(),
+  std_err: z.number().nullable().optional(),
+  sig_higher_than: z.union([z.array(z.string()), z.string(), z.null()]).optional(),
+  sig_vs_total: z.string().nullable().optional(),
+  isNet: z.boolean().optional(),
+  indent: z.number().optional(),
+  isStat: z.boolean().optional(),
+}).passthrough();
+
+const ResultsTableCutSchema = z.object({
+  stat_letter: z.string().optional(),
+  table_base_n: z.number().nullable().optional(),
+}).catchall(z.union([ResultsTableValueSchema, z.string(), z.number(), z.null()]));
+
+export const ResultsTableEntrySchema = z.object({
   tableId: z.string().optional(),
   questionId: z.string().optional(),
   tableType: z.string().optional(),
-  data: z.record(z.unknown()).optional(),
+  data: z.record(ResultsTableCutSchema).optional(),
   columns: z.array(ResultsTableColumnSchema).optional(),
   rows: z.array(ResultsTableRowSchema).optional(),
 }).passthrough();
@@ -82,6 +106,19 @@ export const ResultsTablesArtifactSchema = z.object({
     cutCount: z.number().optional(),
   }).passthrough(),
   tables: z.record(ResultsTableEntrySchema),
+});
+
+export const FinalResultsTableEntrySchema = ResultsTableEntrySchema.extend({
+  tableId: z.string(),
+  questionId: z.string(),
+  tableType: z.string(),
+  data: z.record(ResultsTableCutSchema),
+  columns: z.array(ResultsTableColumnSchema),
+  rows: z.array(ResultsTableRowSchema),
+});
+
+export const ResultsTablesFinalContractSchema = ResultsTablesArtifactSchema.extend({
+  tables: z.record(FinalResultsTableEntrySchema),
 });
 
 const CrosstabColumnSchema = z.object({
