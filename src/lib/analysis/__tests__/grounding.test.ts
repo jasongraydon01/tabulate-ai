@@ -455,11 +455,13 @@ describe("analysis grounding helpers", () => {
 
     const markdown = buildFetchTableModelMarkdown(card);
 
+    expect(markdown).toContain("### Q1. Overall satisfaction with TabulateAI");
     expect(markdown).toContain("- tableId: q1_overall");
-    expect(markdown).toContain("- value mode: percent");
-    expect(markdown).toContain("- use the rowKey and cutKey exactly as shown below when calling confirmCitation.");
-    expect(markdown).toContain("Female [group:gender::female]");
-    expect(markdown).toContain("| row_0_1 | Very satisfied | 45% | 54% ^B | 32% ^vs-total:lower | 51% | 39% |");
+    expect(markdown).toContain("- subtitle: Overall");
+    expect(markdown).toContain("- base: All respondents");
+    expect(markdown).toContain("Female (A){group:gender::female}");
+    expect(markdown).toContain("| Base n | 120 | 70 | 50 | 60 | 60 |");
+    expect(markdown).toContain("| Very satisfied {row_0_1} | **45%B** | **54%B** | **32%** | **51%** | **39%** |");
   });
 
   it("returns grounded question context with related tables", () => {

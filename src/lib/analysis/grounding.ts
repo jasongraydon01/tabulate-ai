@@ -18,6 +18,7 @@ import type {
   AnalysisCellSummary,
   AnalysisQuestionContextResult,
   AnalysisSourceRef,
+  AnalysisTableCard,
   AnalysisTableCardCell,
   AnalysisTableCardColumn,
   AnalysisTableCardColumnGroup,
@@ -1426,53 +1427,83 @@ function markdownEscapeCell(value: string | null | undefined): string {
     .replace(/\n/g, "<br />");
 }
 
-function formatModelTableValueMode(valueMode: AnalysisValueMode): string {
-  switch (valueMode) {
-    case "pct":
-      return "percent";
-    case "count":
-      return "count";
-    case "n":
-      return "base n";
-    case "mean":
-      return "mean";
-    default:
-      return valueMode;
+function formatAnalysisTableQuestionHeading(result: AnalysisTableCard): string {
+  if (result.questionId && result.questionText) {
+    const questionId = result.questionId.replace(/[.:]\s*$/, "").trim();
+    return `${questionId}. ${result.questionText}`;
   }
+
+  return result.questionText ?? result.title;
 }
 
 function formatAnalysisTableRowLabel(row: AnalysisTableCardRow): string {
-  const indentPrefix = row.indent > 0 ? `${"  ".repeat(row.indent)}` : "";
-  const netPrefix = row.isNet ? "NET: " : "";
-  const statSuffix = row.statType ? ` [${row.statType}]` : "";
-  return `${indentPrefix}${netPrefix}${row.label}${statSuffix}`;
+  return `${row.label}${row.rowKey ? ` {${row.rowKey}}` : ""}`;
 }
 
-function formatAnalysisTableColumnGuide(column: AnalysisTableCardColumn): string {
-  const details = [
-    column.groupName ? `group: ${column.groupName}` : null,
-    column.statLetter ? `stat: ${column.statLetter}` : null,
-    typeof column.baseN === "number" ? `base n: ${column.baseN}` : null,
-    column.isTotal ? "total column" : null,
-  ].filter((value): value is string => Boolean(value));
-
-  return details.length > 0
-    ? `${column.cutName} (${details.join(", ")})`
+function formatAnalysisTableColumnHeader(column: AnalysisTableCardColumn): string {
+  const statLetter = column.statLetter?.trim();
+  const label = statLetter
+    ? `${column.cutName} (${statLetter})`
     : column.cutName;
+  return `${label}${column.cutKey ? `{${column.cutKey}}` : ""}`;
 }
 
-function formatAnalysisTableCellForMarkdown(cell: AnalysisTableCardCell): string {
-  const significanceNotes: string[] = [];
-  if (cell.sigHigherThan.length > 0) {
-    significanceNotes.push(cell.sigHigherThan.join(""));
-  }
-  if (cell.sigVsTotal) {
-    significanceNotes.push(`vs-total:${cell.sigVsTotal}`);
+function getModelMarkdownSignificanceMarkers(
+  row: AnalysisTableCardRow,
+  column: AnalysisTableCardColumn,
+  columns: AnalysisTableCardColumn[],
+): string[] {
+  const resolvedCutKey = column.cutKey ?? column.cutName;
+  const cell = row.cellsByCutKey?.[resolvedCutKey]
+    ?? row.values.find((value) =>
+      (value.cutKey && value.cutKey === resolvedCutKey)
+      || value.cutName === column.cutName)
+    ?? null;
+
+  if (!cell) return [];
+
+  const markers = [...cell.sigHigherThan];
+
+  if (column.isTotal) {
+    for (const comparisonColumn of columns) {
+      const comparisonCutKey = comparisonColumn.cutKey ?? comparisonColumn.cutName;
+      if (comparisonCutKey === resolvedCutKey) continue;
+
+      const comparisonCell = row.cellsByCutKey?.[comparisonCutKey]
+        ?? row.values.find((value) =>
+          (value.cutKey && value.cutKey === comparisonCutKey)
+          || value.cutName === comparisonColumn.cutName)
+        ?? null;
+
+      if (comparisonCell?.sigVsTotal === "lower" && comparisonColumn.statLetter) {
+        markers.push(comparisonColumn.statLetter);
+      }
+    }
+  } else if (cell.sigVsTotal === "higher") {
+    markers.push("T");
   }
 
-  return significanceNotes.length > 0
-    ? `${cell.displayValue} ^${significanceNotes.join(";")}`
-    : cell.displayValue;
+  return [...new Set(markers.filter((marker) => marker.trim().length > 0))];
+}
+
+function formatAnalysisTableCellForMarkdown(
+  row: AnalysisTableCardRow,
+  column: AnalysisTableCardColumn,
+  columns: AnalysisTableCardColumn[],
+): string {
+  const resolvedCutKey = column.cutKey ?? column.cutName;
+  const cell = row.cellsByCutKey?.[resolvedCutKey]
+    ?? row.values.find((value) =>
+      (value.cutKey && value.cutKey === resolvedCutKey)
+      || value.cutName === column.cutName)
+    ?? null;
+
+  if (!cell) {
+    return "—";
+  }
+
+  const markers = getModelMarkdownSignificanceMarkers(row, column, columns);
+  return `**${cell.displayValue}${markers.join("")}**`;
 }
 
 export function buildFetchTableModelMarkdown(result: AnalysisTableCardResult): string {
@@ -1485,39 +1516,16 @@ export function buildFetchTableModelMarkdown(result: AnalysisTableCardResult): s
   }
 
   const lines: string[] = [
-    `### ${result.title}`,
+    `### ${formatAnalysisTableQuestionHeading(result)}`,
     "",
     `- tableId: ${result.tableId}`,
-    `- question: ${compactText([result.questionId, result.questionText]) || result.title}`,
-    `- value mode: ${formatModelTableValueMode(result.valueMode)}`,
-    `- rows: ${result.totalRows}`,
-    `- cuts: ${result.totalColumns}`,
   ];
 
-  if (result.baseText) {
-    lines.push(`- base: ${result.baseText}`);
-  }
   if (result.tableSubtitle) {
     lines.push(`- subtitle: ${result.tableSubtitle}`);
   }
-  if (result.requestedRowFilter) {
-    lines.push(`- requested row filter: ${result.requestedRowFilter}`);
-  }
-  if (result.requestedCutFilter) {
-    lines.push(`- requested cut filter: ${result.requestedCutFilter}`);
-  }
-  if (result.significanceTest) {
-    const significanceSuffix = typeof result.significanceLevel === "number"
-      ? ` (level ${result.significanceLevel})`
-      : "";
-    lines.push(`- significance: ${result.significanceTest}${significanceSuffix}`);
-  }
-
-  lines.push("- use the rowKey and cutKey exactly as shown below when calling confirmCitation.");
-  lines.push("");
-  lines.push("Column guide:");
-  for (const column of result.columns) {
-    lines.push(`- ${column.cutKey ?? column.cutName}: ${formatAnalysisTableColumnGuide(column)}`);
+  if (result.baseText) {
+    lines.push(`- base: ${result.baseText}`);
   }
   lines.push("");
 
@@ -1527,17 +1535,21 @@ export function buildFetchTableModelMarkdown(result: AnalysisTableCardResult): s
   }
 
   const headerCells = [
-    "rowKey",
-    "Row label",
-    ...result.columns.map((column) => `${column.cutName} [${column.cutKey ?? column.cutName}]`),
+    "Response",
+    ...result.columns.map((column) => formatAnalysisTableColumnHeader(column)),
   ];
   lines.push(`| ${headerCells.map(markdownEscapeCell).join(" | ")} |`);
   lines.push(`| ${headerCells.map(() => "---").join(" | ")} |`);
+  lines.push(`| ${[
+    "Base n",
+    ...result.columns.map((column) => column.baseN !== null ? String(column.baseN) : "—"),
+  ].map(markdownEscapeCell).join(" | ")} |`);
 
   for (const row of result.rows) {
-    const valueCells = row.values.map((cell) => markdownEscapeCell(formatAnalysisTableCellForMarkdown(cell)));
+    const valueCells = result.columns.map((column) =>
+      markdownEscapeCell(formatAnalysisTableCellForMarkdown(row, column, result.columns))
+    );
     lines.push(`| ${[
-      markdownEscapeCell(row.rowKey),
       markdownEscapeCell(formatAnalysisTableRowLabel(row)),
       ...valueCells,
     ].join(" | ")} |`);

@@ -121,13 +121,17 @@ searchRunCatalog(query)
   or table once you already know a concept is present.
 
 fetchTable(tableId, rowFilter?, cutFilter?, valueMode?)
-- Returns a grounded table's full data (rows, values, significance markers,
-  base sizes, every USED cut). Use this to read a table before reasoning
+- Returns a grounded table view with the rows, cuts, values, and significance
+  markers you need for analysis. Use this to read a table before reasoning
   about it.
 - Fetching does NOT render a card on its own. To show the table inline in
   your reply, emit a render marker in your prose (see below). A fetched table
   that is not referenced by a marker stays invisible — fetched for context,
   not displayed.
+- The fetched result is a compact markdown table. Column headers include stat
+  letters, significance letters appear inline beside bolded values, and the
+  stable row / cut identifiers needed for confirmCitation appear inline in
+  braces. Copy those identifiers exactly if you need to confirm a citation.
 - Multiple fetches per turn are fine and common. Fetch candidates, decide
   which ones answer the user's question, and mark only those for render.
 - cutFilter is a render hint for the compact inline view, not a data filter.

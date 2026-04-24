@@ -47,6 +47,8 @@ describe("analysis agent production prompt", () => {
 
   it("documents the confirmCitation tool and cite marker only in the alternative prompt", () => {
     expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("confirmCitation");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("compact markdown table");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("stable row / cut identifiers");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("THE CITE MARKER:");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).not.toContain("confirmCitation");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).not.toContain("[[cite cellIds=");
