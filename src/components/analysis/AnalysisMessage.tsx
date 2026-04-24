@@ -1183,7 +1183,7 @@ export function AnalysisMessage({
                     hasTouchedThinkingRef.current = true;
                     setIsThinkingExpanded((open) => !open);
                   }}
-                  className="flex w-full items-center justify-between gap-3 text-[11px] text-muted-foreground hover:text-foreground/70"
+                  className="inline-flex max-w-full items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground/70"
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     {showThinkingLoader ? <GridLoader size="sm" /> : null}
@@ -1193,7 +1193,7 @@ export function AnalysisMessage({
                   </span>
                   <ChevronDown
                     className={cn(
-                      "h-3 w-3 shrink-0 transition-transform",
+                      "mt-px h-3 w-3 shrink-0 transition-transform",
                       !isThinkingExpanded && "-rotate-90",
                     )}
                   />
