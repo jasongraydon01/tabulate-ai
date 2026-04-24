@@ -332,12 +332,14 @@ export function getGroundedTableCardSignificanceMarkers(
 export function GroundedTableCard({
   card,
   focus,
+  displayState = "ready",
 }: {
   card: AnalysisTableCard;
   focus?: {
     focusedRowKeys?: string[] | null;
     focusedGroupKeys?: string[] | null;
   };
+  displayState?: "ready" | "shell";
 }) {
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isDiveDeeperOpen, setIsDiveDeeperOpen] = useState(false);
@@ -369,6 +371,40 @@ export function GroundedTableCard({
     || card.comparisonGroups.length > 0
     || nonTotalColumnGroups.length > 0,
   );
+
+  if (displayState === "shell") {
+    return (
+      <Card
+        data-analysis-table-shell="true"
+        className="mt-3 max-w-full overflow-hidden border-border/70 bg-background/70"
+      >
+        <CardHeader className="gap-2 px-5 pb-2 pt-3">
+          <div className="space-y-2">
+            <div className="h-5 w-48 rounded-full bg-muted/50" />
+            <div className="h-4 w-64 rounded-full bg-muted/35" />
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3 px-5 pb-5 pt-2">
+          <div className="grid gap-2 sm:grid-cols-4">
+            <div className="h-8 rounded-lg bg-muted/40 sm:col-span-1" />
+            <div className="h-8 rounded-lg bg-muted/30" />
+            <div className="h-8 rounded-lg bg-muted/30" />
+            <div className="h-8 rounded-lg bg-muted/30" />
+          </div>
+          <div className="space-y-2">
+            {Array.from({ length: 4 }, (_, index) => (
+              <div key={`shell-row-${index}`} className="grid gap-2 sm:grid-cols-4">
+                <div className="h-7 rounded-md bg-muted/35 sm:col-span-1" />
+                <div className="h-7 rounded-md bg-muted/20" />
+                <div className="h-7 rounded-md bg-muted/20" />
+                <div className="h-7 rounded-md bg-muted/20" />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   function renderTableContent({
     groups,

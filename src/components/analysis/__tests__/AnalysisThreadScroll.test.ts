@@ -4,6 +4,7 @@ import {
   getAnalysisThreadBottomDistance,
   getAnalysisThreadMessageScrollTop,
   isAnalysisThreadNearBottom,
+  scrollAnalysisThreadForRevealEvent,
   scrollAnalysisThreadToBottom,
   scrollAnalysisThreadToMessageStart,
   type AnalysisThreadScrollTarget,
@@ -90,5 +91,27 @@ describe("analysis thread scroll helpers", () => {
 
     expect(isAnalysisThreadNearBottom(nearBottomViewport)).toBe(true);
     expect(isAnalysisThreadNearBottom(awayFromBottomViewport)).toBe(false);
+  });
+
+  it("scrolls to the message start when the answer reveal begins", () => {
+    const viewport = createViewport({ top: 120, scrollTop: 300 });
+    const target = createTarget(420);
+
+    scrollAnalysisThreadForRevealEvent(viewport, target, "answer-start");
+
+    expect(viewport.scrollTo).toHaveBeenCalledWith({ top: 600, behavior: "smooth" });
+  });
+
+  it("pins reveal-step scrolling to the bottom for prose and table progression", () => {
+    const viewport = createViewport({ top: 0, scrollTop: 0, scrollHeight: 1600 });
+    const target = createTarget(260);
+
+    scrollAnalysisThreadForRevealEvent(viewport, target, "text-step");
+    scrollAnalysisThreadForRevealEvent(viewport, target, "table-shell");
+    scrollAnalysisThreadForRevealEvent(viewport, target, "table-ready");
+
+    expect(viewport.scrollTo).toHaveBeenNthCalledWith(1, { top: 1600, behavior: "smooth" });
+    expect(viewport.scrollTo).toHaveBeenNthCalledWith(2, { top: 1600, behavior: "smooth" });
+    expect(viewport.scrollTo).toHaveBeenNthCalledWith(3, { top: 1600, behavior: "smooth" });
   });
 });

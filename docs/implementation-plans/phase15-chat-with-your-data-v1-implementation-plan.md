@@ -32,33 +32,65 @@ The important architectural outcome is that the three layers are now much cleane
 
 The live `alternative` prompt has already been updated to match the new contracts: fetched markdown tables, Total-first retrieval via `cutGroups`, semantic-first render focus, semantic-first citation confirmation, and inline cite markers that stay attached to the sentence rather than behaving like detached footnotes.
 
-**Prompt follow-up notes for the next pass.** The next prompt revision should be organized around a shared mental model rather than around isolated tool caveats.
+The next prompt revision should be organized around a shared mental model rather than around isolated tool caveats.
 
-- The agent is doing multiple jobs in one surface: exploration, analysis, grounding, UI rendering, and answer/story composition.
+### Shared mental model
+
+- The agent is doing multiple jobs in one surface: exploration, analysis, grounding, UI rendering, and answer/story composition. The prompt should name those jobs explicitly.
 - The tool layer should support that directly:
   - retrieval tools help the model explore and analyze
   - `confirmCitation` handles strict grounding
   - `[[render ...]]` handles presentation of already-grounded artifacts
-- Semantic-first language should be taught as a cross-tool norm, not as a one-off rule for one tool.
-- The prompt should be clearer about when to fetch, when to cite, when to render, and when to simply answer without extra UI artifacts.
-- Request understanding should happen before tool use. A lightweight acknowledgment / intent read can reduce erratic over-searching and make the model feel less "stressed" about choosing tables, rows, groups, and card count.
+- Semantic-first language should be taught as a cross-tool norm, not a one-off rule for one tool.
+- Be clearer about when to fetch, when to cite, when to render, and when to simply answer without extra UI artifacts.
+- Render focus and citation are part of how the model shares an answer with the user, not just part of artifact exploration.
+
+### Turn flow: understand → explore → organize → confirm → respond
+
+- A lightweight acknowledgment / intent read before tool use reduces erratic over-searching and makes the model feel less "stressed" about choosing tables, rows, groups, and card count.
 - Request classification is likely useful: exploration vs synthesis vs methodology vs narrow lookup vs follow-up.
-- The prompt should help the model understand that render focus and citation are part of how it shares an answer with the user, not just part of artifact exploration.
-- We should keep asking what belongs in the system prompt by default versus what should stay behind tools. Examples:
+- Confirm citations *late*, not early. The model should explore, organize its answer, and only then call `confirmCitation` on the cells it's actually about to cite. Early confirmation pollutes the confirmed set with cells that don't end up in the final response and encourages the model to cite widely instead of precisely.
+
+### Answer-shape heuristics
+
+- "Key findings" / "what stands out" questions are asking for what's *unique* or *different*, not what's common. Only flip to commonality framing when the user explicitly asks what's the same.
+- Teach default heuristics for the common question shapes so the model doesn't re-derive them every turn.
+
+### Render policy
+
+- Not every turn needs a table, and many turns need fewer tables than the model instinctively reaches for. The prompt should balance "render something useful" against "don't flood the thread."
+- Total is the default model-facing view — if a card is already rendering Total, don't render a second Total-only copy of the same `tableId`. Subgroup renders are for genuinely different cuts, not reprints of the same evidence.
+- If a NET roll-up table is being rendered, the non-NET version of the same question is redundant — the NET card already carries all the answer rows. Pick one.
+- Charts count as rendering: when the topic is naturally visual (e.g., demographics like age), the model should consider a chart render, not just inline prose.
+- If a cited number isn't surfaced as a full card, the cite chip itself should still be enough to reach the source — see the citation-as-evidence item in the analytical layer.
+
+### Tool input clarity
+
+- Some tool fields are not obviously derivable from prior tool output (`rowKey` is the live example from a recent reasoning trace). For every non-obvious input, the prompt should give a clear path — which prior tool call produces it, or which semantic alternative to reach for first.
+- Tools with many fields are fine, but defaults and "when to bother" guidance should be explicit so the model isn't guessing.
+
+### Prompt scope
+
+- Keep asking what belongs in the system prompt by default versus what should stay behind tools:
   - should cuts come from `listBannerCuts` instead of the prompt?
   - should question details come from `getQuestionContext` instead of default run context in the prompt?
-- There is likely value in minimizing run-specific payload baked into the prompt and letting the model learn to use the tools early and intentionally instead of being handed too much context up front.
-- The goal of the next prompt pass should be clarity without redundancy: teach one mental model that covers retrieval, grounding, rendering, and response composition cleanly.
+- Favor minimizing run-specific payload baked into the prompt; let the model learn to use the tools early and intentionally.
+- Goal of the next prompt pass: clarity without redundancy. Teach one mental model that covers retrieval, grounding, rendering, and response composition cleanly.
 
-**Pre-production cleanup note.** Before the analysis surface moves to production, remove the temporary backward-compatibility shims that were kept to land this redesign safely. In particular:
+## Analytical layer
 
-- remove legacy `rowKey` / `cutKey` emphasis from the prompt once semantic-first citation/render paths are the only intended contract
-- remove `rowFilter` / `cutFilter` compatibility handling from replay / persistence paths once old history no longer needs to be rehydrated
-- simplify type/back-compat fields on persisted table-card artifacts after the migration window closes
-- audit prompt text and tests so the production-facing contract no longer teaches transitional paths
+Work that changes what the agent can compute, or how rendered evidence behaves structurally — not just how it's prompted.
 
-### What's still deferred, unchanged
+- **Row-order parity with persisted artifacts.** Rendered tables should preserve the persisted artifact's row order, especially when NETs are involved. Answer rows under a NET should appear in the same sequence as the underlying artifact. First verify this is already happening end-to-end; if it isn't, fix the render path so the card's row order is always authoritative from the artifact, not re-derived.
+- **Citation-as-evidence for unrendered tables.** When a cited number's source table isn't rendered as a card, the cite chip should still be able to surface the relevant source — popover, side panel, or inline table preview — so the user can see the exact cell without us having to render a full card every time the model cites. This lets the render policy lean lighter without losing provenance.
+- **New cuts on the fly, NETs, derived tables.** Expand the analytical surface so the agent can propose cuts, NETs, or derived views that weren't in the original tab spec. Real capability, real v1 scope; the design bar is the compute-lane checkpoint below.
+- **Compute-lane design checkpoint.** The design bar for a dedicated compute lane (separate from the pipeline) that lets the analysis surface run new computations safely. Driven by real usage signal — what numbers are users asking for that the pipeline didn't pre-compute? Treat this as active design work, not a parked item.
 
-**Analytical capability expansion.** Still gated on compute-lane checkpoint. New cuts on the fly, NETs, derived tables. Not for now.
+## Cleanup layer
 
-**Compute-lane design checkpoint.** Still backlog, still driven by usage signal.
+Before the analysis surface moves to production, remove the temporary backward-compatibility shims kept to land this redesign safely.
+
+- Remove legacy `rowKey` / `cutKey` emphasis from the prompt once semantic-first citation/render paths are the only intended contract.
+- Remove `rowFilter` / `cutFilter` compatibility handling from replay / persistence paths once old history no longer needs to be rehydrated.
+- Simplify type/back-compat fields on persisted table-card artifacts after the migration window closes.
+- Audit prompt text and tests so the production-facing contract no longer teaches transitional paths.

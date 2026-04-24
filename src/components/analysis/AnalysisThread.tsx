@@ -8,6 +8,7 @@ import { AlertCircle, ChevronDown } from "lucide-react";
 import { AnalysisMessage } from "@/components/analysis/AnalysisMessage";
 import {
   isAnalysisThreadNearBottom,
+  scrollAnalysisThreadForRevealEvent,
   scrollAnalysisThreadToBottom,
   scrollAnalysisThreadToMessageStart,
 } from "@/components/analysis/analysisThreadScroll";
@@ -210,13 +211,13 @@ export function AnalysisThread({
         return;
       }
 
-      if (status === "streaming" && shouldStickToBottomRef.current) {
+      if (status === "streaming" && shouldStickToBottomRef.current && shouldShowPendingState) {
         scrollAnalysisThreadToBottom(viewport, "auto");
       }
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [messages, status]);
+  }, [messages, shouldShowPendingState, status]);
 
   async function handleSubmit() {
     const nextInput = input.trim();
@@ -267,6 +268,18 @@ export function AnalysisThread({
     );
   }
 
+  function handleAssistantRevealProgress(event: "answer-start" | "text-step" | "table-shell" | "table-ready") {
+    const viewport = viewportRef.current;
+    const lastMessage = lastMessageRef.current;
+    if (!viewport || !lastMessage || !shouldStickToBottomRef.current) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      scrollAnalysisThreadForRevealEvent(viewport, lastMessage, event);
+    });
+  }
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div className="border-b border-border/60 px-5 py-3">
@@ -311,6 +324,9 @@ export function AnalysisThread({
                   <AnalysisMessage
                     message={message}
                     isStreaming={isLastMessage && isBusy}
+                    onRevealProgress={isLastMessage && message.role === "assistant"
+                      ? handleAssistantRevealProgress
+                      : undefined}
                     onSelectFollowUpSuggestion={showFollowUps ? handleFollowUpSuggestion : undefined}
                     feedback={shouldShowMessageActions && persistedAssistantMessageIdSet.has(message.id)
                       ? (messageFeedbackById[message.id] ?? null)

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { Streamdown } from "streamdown";
 import { toast } from "sonner";
@@ -24,8 +24,14 @@ import {
   getAnalysisMessageMetadata,
   getAnalysisUIMessageText,
 } from "@/lib/analysis/messages";
-import { buildAnalysisCiteSegments } from "@/lib/analysis/citeAnchors";
-import { buildAnalysisRenderableBlocks } from "@/lib/analysis/renderAnchors";
+import {
+  buildAnalysisCiteSegments,
+  extractAnalysisCiteMarkers,
+} from "@/lib/analysis/citeAnchors";
+import {
+  buildAnalysisRenderableBlocks,
+  type AnalysisRenderableBlock,
+} from "@/lib/analysis/renderAnchors";
 import { getAnalysisToolActivityLabel } from "@/lib/analysis/toolLabels";
 import {
   buildAnalysisCellId,
@@ -82,6 +88,300 @@ function useAnimationFrameThrottle<T>(value: T, enabled: boolean): T {
 function StreamingMarkdown({ text, isStreaming }: { text: string; isStreaming: boolean }) {
   const throttledText = useAnimationFrameThrottle(text, isStreaming);
   return <Streamdown>{throttledText}</Streamdown>;
+}
+
+export type AnalysisAnswerRevealPhase = "thinking" | "handoff" | "composing" | "settled";
+export type AnalysisRevealProgressEvent = "answer-start" | "text-step" | "table-shell" | "table-ready";
+
+interface AnalysisStableTextWindow {
+  stableText: string;
+  unstableTail: string;
+}
+
+type AnalysisRevealEntry =
+  | { kind: "text"; blockIndex: number; textDelta: string }
+  | { kind: "table"; blockIndex: number }
+  | { kind: "missing"; blockIndex: number }
+  | { kind: "placeholder"; blockIndex: number };
+
+type AnalysisDisplayBlock =
+  | { kind: "text"; key: string; text: string }
+  | (Extract<AnalysisRenderableBlock, { kind: "table" }> & { displayState: "ready" | "shell" })
+  | Extract<AnalysisRenderableBlock, { kind: "missing" | "placeholder" }>;
+
+const ANALYSIS_REVEAL_INITIAL_DELAY_MS = 260;
+const ANALYSIS_REVEAL_TEXT_DELAY_MS = 145;
+const ANALYSIS_REVEAL_PARAGRAPH_DELAY_MS = 220;
+const ANALYSIS_REVEAL_TABLE_HOLD_DELAY_MS = 240;
+const ANALYSIS_REVEAL_POST_TABLE_DELAY_MS = 160;
+const INCOMPLETE_MARKER_PREFIXES = ["[[render", "[[cite"] as const;
+
+function getLastIncompleteMarkerStart(text: string): number {
+  let lastStart = -1;
+
+  for (const prefix of INCOMPLETE_MARKER_PREFIXES) {
+    const index = text.lastIndexOf(prefix);
+    if (index > lastStart) {
+      lastStart = index;
+    }
+  }
+
+  if (lastStart === -1) {
+    return -1;
+  }
+
+  const trailingCandidate = text.slice(lastStart);
+  return trailingCandidate.includes("]]") ? -1 : lastStart;
+}
+
+export function splitAnalysisStableTextWindow(
+  text: string,
+  isStreaming: boolean,
+): AnalysisStableTextWindow {
+  if (!isStreaming || text.length === 0) {
+    return {
+      stableText: text,
+      unstableTail: "",
+    };
+  }
+
+  const incompleteMarkerStart = getLastIncompleteMarkerStart(text);
+  if (incompleteMarkerStart === -1) {
+    return {
+      stableText: text,
+      unstableTail: "",
+    };
+  }
+
+  return {
+    stableText: text.slice(0, incompleteMarkerStart),
+    unstableTail: text.slice(incompleteMarkerStart),
+  };
+}
+
+function appendOrPushTextChunk(chunks: string[], chunk: string) {
+  if (chunk.length === 0) return;
+
+  if (/^\s*\[\[cite\s/i.test(chunk) && chunks.length > 0) {
+    chunks[chunks.length - 1] = `${chunks[chunks.length - 1]}${chunk}`;
+    return;
+  }
+
+  chunks.push(chunk);
+}
+
+function splitParagraphForReveal(paragraph: string): string[] {
+  if (!paragraph) return [];
+  const chunks: string[] = [];
+  const citeMarkers = extractAnalysisCiteMarkers(paragraph);
+  let citeMarkerIndex = 0;
+  let sentenceStart = 0;
+  let cursor = 0;
+
+  while (cursor < paragraph.length) {
+    const activeMarker = citeMarkers[citeMarkerIndex];
+    if (activeMarker && cursor >= activeMarker.start && cursor < activeMarker.end) {
+      cursor = activeMarker.end;
+      citeMarkerIndex += 1;
+      continue;
+    }
+
+    const char = paragraph[cursor];
+    if (!char || !/[.!?]/.test(char)) {
+      cursor += 1;
+      continue;
+    }
+
+    let sentenceEnd = cursor + 1;
+
+    while (sentenceEnd < paragraph.length && /["')\]]/.test(paragraph[sentenceEnd] ?? "")) {
+      sentenceEnd += 1;
+    }
+
+    while (citeMarkers[citeMarkerIndex]?.start === sentenceEnd) {
+      sentenceEnd = citeMarkers[citeMarkerIndex]!.end;
+      citeMarkerIndex += 1;
+    }
+
+    while (sentenceEnd < paragraph.length && /\s/.test(paragraph[sentenceEnd] ?? "")) {
+      sentenceEnd += 1;
+    }
+
+    appendOrPushTextChunk(chunks, paragraph.slice(sentenceStart, sentenceEnd));
+    sentenceStart = sentenceEnd;
+    cursor = sentenceEnd;
+  }
+
+  if (sentenceStart < paragraph.length) {
+    appendOrPushTextChunk(chunks, paragraph.slice(sentenceStart));
+  }
+
+  return chunks.length > 0 ? chunks : [paragraph];
+}
+
+export function splitAnalysisTextForReveal(text: string): string[] {
+  if (text.length === 0) return [];
+
+  const chunks: string[] = [];
+  const segments = text.split(/(\n{2,})/);
+
+  for (const segment of segments) {
+    if (segment.length === 0) continue;
+
+    if (/^\n{2,}$/.test(segment)) {
+      if (chunks.length === 0) {
+        chunks.push(segment);
+      } else {
+        chunks[chunks.length - 1] = `${chunks[chunks.length - 1]}${segment}`;
+      }
+      continue;
+    }
+
+    for (const paragraphChunk of splitParagraphForReveal(segment)) {
+      appendOrPushTextChunk(chunks, paragraphChunk);
+    }
+  }
+
+  return chunks;
+}
+
+export function buildAnalysisRevealEntries(
+  blocks: AnalysisRenderableBlock[],
+): AnalysisRevealEntry[] {
+  return blocks.flatMap((block, blockIndex): AnalysisRevealEntry[] => {
+    if (block.kind === "text") {
+      const chunks = splitAnalysisTextForReveal(block.text);
+      return chunks.map((textDelta) => ({
+        kind: "text",
+        blockIndex,
+        textDelta,
+      }));
+    }
+
+    return [{
+      kind: block.kind,
+      blockIndex,
+    }];
+  });
+}
+
+export function buildAnalysisDisplayBlocks(
+  blocks: AnalysisRenderableBlock[],
+  entries: AnalysisRevealEntry[],
+  releasedEntryCount: number,
+): AnalysisDisplayBlock[] {
+  const releasedTextByBlockIndex = new Map<number, string>();
+  const readyBlockIndexes = new Set<number>();
+  const nextEntry = entries[Math.min(releasedEntryCount, entries.length)];
+  const nextTableShellBlockIndex = nextEntry?.kind === "table" ? nextEntry.blockIndex : null;
+
+  for (const entry of entries.slice(0, Math.min(releasedEntryCount, entries.length))) {
+    if (entry.kind === "text") {
+      releasedTextByBlockIndex.set(
+        entry.blockIndex,
+        `${releasedTextByBlockIndex.get(entry.blockIndex) ?? ""}${entry.textDelta}`,
+      );
+      continue;
+    }
+
+    readyBlockIndexes.add(entry.blockIndex);
+  }
+
+  const displayBlocks: AnalysisDisplayBlock[] = [];
+
+  blocks.forEach((block, blockIndex) => {
+    if (block.kind === "text") {
+      const text = releasedTextByBlockIndex.get(blockIndex);
+      if (text && text.length > 0) {
+        displayBlocks.push({
+          kind: "text",
+          key: block.key,
+          text,
+        });
+      }
+      return;
+    }
+
+    if (block.kind === "table") {
+      if (readyBlockIndexes.has(blockIndex)) {
+        displayBlocks.push({
+          ...block,
+          displayState: "ready",
+        });
+        return;
+      }
+
+      if (nextTableShellBlockIndex === blockIndex) {
+        displayBlocks.push({
+          ...block,
+          displayState: "shell",
+        });
+      }
+      return;
+    }
+
+    if (readyBlockIndexes.has(blockIndex)) {
+      displayBlocks.push(block);
+    }
+  });
+
+  return displayBlocks;
+}
+
+export function getAnalysisAnswerRevealPhase(params: {
+  isStreaming: boolean;
+  hasEverStreamed: boolean;
+  releasedEntryCount: number;
+  totalEntryCount: number;
+  unstableTail: string;
+}): AnalysisAnswerRevealPhase {
+  if (!params.hasEverStreamed) {
+    return "settled";
+  }
+
+  if (params.totalEntryCount === 0 && params.releasedEntryCount === 0) {
+    return "thinking";
+  }
+
+  if (params.releasedEntryCount === 0) {
+    return "handoff";
+  }
+
+  if (
+    params.releasedEntryCount < params.totalEntryCount
+    || params.isStreaming
+    || params.unstableTail.length > 0
+  ) {
+    return "composing";
+  }
+
+  return "settled";
+}
+
+export function getNextAnalysisRevealDelayMs(params: {
+  releasedEntryCount: number;
+  entries: AnalysisRevealEntry[];
+}): number {
+  if (params.releasedEntryCount === 0) {
+    return ANALYSIS_REVEAL_INITIAL_DELAY_MS;
+  }
+
+  const previousEntry = params.entries[params.releasedEntryCount - 1];
+  const nextEntry = params.entries[params.releasedEntryCount];
+
+  if (previousEntry?.kind === "table") {
+    return ANALYSIS_REVEAL_POST_TABLE_DELAY_MS;
+  }
+
+  if (previousEntry?.kind === "text" && previousEntry.textDelta.includes("\n\n")) {
+    return ANALYSIS_REVEAL_PARAGRAPH_DELAY_MS;
+  }
+
+  if (nextEntry?.kind === "table") {
+    return ANALYSIS_REVEAL_TABLE_HOLD_DELAY_MS;
+  }
+
+  return ANALYSIS_REVEAL_TEXT_DELAY_MS;
 }
 
 interface CitationChipMeta {
@@ -500,6 +800,7 @@ export function AnalysisMessage({
   onSelectFollowUpSuggestion,
   feedback = null,
   onSubmitFeedback,
+  onRevealProgress,
   onEditUserMessage,
 }: {
   message: UIMessage;
@@ -513,6 +814,7 @@ export function AnalysisMessage({
     vote: AnalysisMessageFeedbackVote;
     correctionText?: string | null;
   }) => Promise<void>;
+  onRevealProgress?: (event: AnalysisRevealProgressEvent) => void;
   // Passed on persisted user messages when editing is available. Called with
   // the new text — the thread owns the stop / truncate / resend choreography
   // so this can be invoked at any time, including during streaming.
@@ -530,6 +832,12 @@ export function AnalysisMessage({
   const [isEditing, setIsEditing] = useState(false);
   const [draftEditText, setDraftEditText] = useState("");
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const hasEverStreamedRef = useRef(isStreaming);
+  const hasTouchedThinkingRef = useRef(false);
+  const hasAutoCollapsedThinkingRef = useRef(false);
+  const previousReleasedEntryCountRef = useRef(0);
+  const previousShellVisibleRef = useRef(false);
+  const previousAnswerRevealBeginsRef = useRef(false);
 
   const traceEntries = getAnalysisTraceEntries(message);
   const evidenceItems = getAnalysisMessageEvidenceItems(message);
@@ -537,16 +845,180 @@ export function AnalysisMessage({
   const followUpSuggestions = getAnalysisMessageFollowUpItems(message);
   const effectiveFeedback = optimisticFeedback ?? feedback ?? null;
   const isDownvoteOpen = effectiveFeedback?.vote === "down";
-  const renderableBlocks = buildAnalysisRenderableBlocks(message, { isStreaming });
   const citeLookup = buildCitationChipLookup(message);
   const shouldShowEvidence = visibleEvidenceItems.length > 0;
-
   const hasTrace = traceEntries.length > 0;
+  const rawAssistantText = isUser ? "" : getAnalysisUIMessageText(message);
+
+  if (isStreaming) {
+    hasEverStreamedRef.current = true;
+  }
+
+  const shouldUseRevealController = !isUser && hasEverStreamedRef.current;
+  const { stableText, unstableTail } = useMemo(
+    () => splitAnalysisStableTextWindow(rawAssistantText, shouldUseRevealController && isStreaming),
+    [isStreaming, rawAssistantText, shouldUseRevealController],
+  );
+
+  const stableRenderableMessage = useMemo<Pick<UIMessage, "id" | "parts">>(() => {
+    if (!shouldUseRevealController) {
+      return message;
+    }
+
+    const parts = message.parts.filter((part) => !isTextUIPart(part)) as UIMessage["parts"];
+    if (stableText.length > 0) {
+      parts.push({
+        type: "text",
+        text: stableText,
+      } as UIMessage["parts"][number]);
+    }
+
+    return {
+      id: message.id,
+      parts,
+    };
+  }, [message, shouldUseRevealController, stableText]);
+
+  const renderableBlocks = useMemo(
+    () => buildAnalysisRenderableBlocks(stableRenderableMessage, {
+      isStreaming: shouldUseRevealController && (isStreaming || unstableTail.length > 0),
+    }),
+    [isStreaming, shouldUseRevealController, stableRenderableMessage, unstableTail.length],
+  );
+  const revealEntries = useMemo(
+    () => buildAnalysisRevealEntries(renderableBlocks),
+    [renderableBlocks],
+  );
+  const [releasedEntryCount, setReleasedEntryCount] = useState(() => (
+    shouldUseRevealController ? 0 : revealEntries.length
+  ));
+
+  useEffect(() => {
+    if (!shouldUseRevealController) {
+      setReleasedEntryCount(revealEntries.length);
+      return;
+    }
+
+    setReleasedEntryCount((current) => Math.min(current, revealEntries.length));
+  }, [revealEntries.length, shouldUseRevealController]);
+
+  const revealPhase = getAnalysisAnswerRevealPhase({
+    isStreaming,
+    hasEverStreamed: shouldUseRevealController,
+    releasedEntryCount,
+    totalEntryCount: revealEntries.length,
+    unstableTail,
+  });
+  const displayBlocks = shouldUseRevealController
+    ? buildAnalysisDisplayBlocks(renderableBlocks, revealEntries, releasedEntryCount)
+    : renderableBlocks.map((block): AnalysisDisplayBlock => {
+      if (block.kind === "text") {
+        return block;
+      }
+
+      if (block.kind === "table") {
+        return {
+          ...block,
+          displayState: "ready",
+        };
+      }
+
+      return block;
+    });
+  const answerRevealBegins = displayBlocks.length > 0;
+  const isFooterReady = revealPhase === "settled";
+
+  useEffect(() => {
+    if (!shouldUseRevealController) return;
+    if (revealEntries.length === 0) return;
+    if (releasedEntryCount >= revealEntries.length) return;
+
+    const delayMs = getNextAnalysisRevealDelayMs({
+      releasedEntryCount,
+      entries: revealEntries,
+    });
+
+    const timer = window.setTimeout(() => {
+      setReleasedEntryCount((current) => Math.min(current + 1, revealEntries.length));
+    }, delayMs);
+
+    return () => window.clearTimeout(timer);
+  }, [releasedEntryCount, revealEntries, shouldUseRevealController]);
 
   useEffect(() => {
     setOptimisticFeedback(feedback ?? null);
     setDraftCorrectionText(feedback?.correctionText ?? "");
   }, [feedback]);
+
+  useEffect(() => {
+    if (!hasTrace || !shouldUseRevealController || hasTouchedThinkingRef.current) {
+      return;
+    }
+
+    if (revealPhase === "thinking") {
+      setIsThinkingExpanded(true);
+    }
+  }, [hasTrace, revealPhase, shouldUseRevealController]);
+
+  useEffect(() => {
+    if (!hasTrace || hasTouchedThinkingRef.current || hasAutoCollapsedThinkingRef.current) {
+      return;
+    }
+
+    if (answerRevealBegins) {
+      hasAutoCollapsedThinkingRef.current = true;
+      setIsThinkingExpanded(false);
+    }
+  }, [answerRevealBegins, hasTrace]);
+
+  useEffect(() => {
+    const shellVisible = displayBlocks.some(
+      (block) => block.kind === "table" && block.displayState === "shell",
+    );
+
+    if (!shouldUseRevealController || !onRevealProgress) {
+      previousReleasedEntryCountRef.current = releasedEntryCount;
+      previousShellVisibleRef.current = shellVisible;
+      previousAnswerRevealBeginsRef.current = answerRevealBegins;
+      return;
+    }
+
+    const previousReleasedEntryCount = previousReleasedEntryCountRef.current;
+    const previousShellVisible = previousShellVisibleRef.current;
+    const previousAnswerRevealBegins = previousAnswerRevealBeginsRef.current;
+
+    const didStartAnswer = answerRevealBegins && !previousAnswerRevealBegins;
+
+    if (didStartAnswer) {
+      onRevealProgress("answer-start");
+    }
+
+    if (shellVisible && !previousShellVisible && !didStartAnswer) {
+      onRevealProgress("table-shell");
+    }
+
+    if (releasedEntryCount > previousReleasedEntryCount) {
+      for (let index = previousReleasedEntryCount; index < releasedEntryCount; index += 1) {
+        const entry = revealEntries[index];
+        if (!entry) continue;
+        if (didStartAnswer && index === previousReleasedEntryCount && entry.kind === "text") {
+          continue;
+        }
+        onRevealProgress(entry.kind === "table" ? "table-ready" : "text-step");
+      }
+    }
+
+    previousReleasedEntryCountRef.current = releasedEntryCount;
+    previousShellVisibleRef.current = shellVisible;
+    previousAnswerRevealBeginsRef.current = answerRevealBegins;
+  }, [
+    answerRevealBegins,
+    displayBlocks,
+    onRevealProgress,
+    releasedEntryCount,
+    revealEntries,
+    shouldUseRevealController,
+  ]);
 
   function openEditor() {
     if (!onEditUserMessage) return;
@@ -702,11 +1174,14 @@ export function AnalysisMessage({
         ) : (
           <div className="min-w-0 space-y-3">
             {hasTrace ? (
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 <button
                   type="button"
-                  onClick={() => setIsThinkingExpanded((open) => !open)}
-                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground/70"
+                  onClick={() => {
+                    hasTouchedThinkingRef.current = true;
+                    setIsThinkingExpanded((open) => !open);
+                  }}
+                  className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground/70"
                 >
                   <ChevronDown
                     className={cn(
@@ -720,7 +1195,7 @@ export function AnalysisMessage({
                 </button>
 
                 {isThinkingExpanded ? (
-                  <div className="ml-4.5 space-y-2 border-l border-border/40 pl-3 text-xs leading-relaxed text-muted-foreground">
+                  <div className="ml-3.5 space-y-1 border-l border-border/40 pl-2.5 text-[11px] leading-5 text-muted-foreground">
                     {traceEntries.map((entry) => {
                       if (entry.kind === "reasoning") {
                         return (
@@ -737,7 +1212,7 @@ export function AnalysisMessage({
                       return (
                         <div
                           key={entry.id}
-                          className="flex items-center gap-2"
+                          className="flex items-center gap-1.5"
                         >
                           <span className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
                           <span>
@@ -752,7 +1227,7 @@ export function AnalysisMessage({
               </div>
             ) : null}
 
-            {renderableBlocks.map((block) => {
+            {displayBlocks.map((block) => {
               if (block.kind === "text") {
                 const segments = buildAnalysisCiteSegments(block.text);
                 const hasCiteMarkers = segments.some((segment) => segment.kind === "cite");
@@ -763,7 +1238,10 @@ export function AnalysisMessage({
                       key={block.key}
                       className="prose-analysis min-w-0 max-w-none break-words [overflow-wrap:anywhere]"
                     >
-                      <StreamingMarkdown text={block.text} isStreaming={isStreaming} />
+                      <StreamingMarkdown
+                        text={block.text}
+                        isStreaming={shouldUseRevealController && revealPhase !== "settled"}
+                      />
                     </div>
                   );
                 }
@@ -816,6 +1294,7 @@ export function AnalysisMessage({
                     <GroundedTableCard
                       card={block.part.output}
                       focus={block.focus}
+                      displayState={block.displayState}
                     />
                   </div>
                 );
@@ -831,7 +1310,7 @@ export function AnalysisMessage({
               );
             })}
 
-            {!isStreaming && getAnalysisUIMessageText(message).length > 0 ? (
+            {isFooterReady && rawAssistantText.length > 0 ? (
               <div className="-mt-2 flex justify-start">
                 <CopyMessageButton
                   text={getAnalysisUIMessageText(message)}
@@ -840,7 +1319,7 @@ export function AnalysisMessage({
               </div>
             ) : null}
 
-            {shouldShowEvidence ? (
+            {shouldShowEvidence && isFooterReady ? (
               <Collapsible open={isEvidenceOpen} onOpenChange={setIsEvidenceOpen}>
                 <div className="pt-1">
                   <CollapsibleTrigger asChild>
@@ -894,7 +1373,7 @@ export function AnalysisMessage({
               </Collapsible>
             ) : null}
 
-            {message.role === "assistant" && !isStreaming && onSubmitFeedback ? (
+            {message.role === "assistant" && isFooterReady && onSubmitFeedback ? (
               <div className="space-y-3 pt-1">
                 <div className="flex justify-center">
                   <div className="flex items-center gap-2 rounded-full border border-border/70 bg-background/90 px-2 py-1 shadow-[0_8px_24px_rgba(15,23,42,0.14)]">
@@ -966,7 +1445,7 @@ export function AnalysisMessage({
               </div>
             ) : null}
 
-            {followUpSuggestions.length > 0 && onSelectFollowUpSuggestion ? (
+            {isFooterReady && followUpSuggestions.length > 0 && onSelectFollowUpSuggestion ? (
               <div className="flex flex-wrap justify-center gap-2 pt-1">
                 {followUpSuggestions.map((suggestion) => (
                   <button

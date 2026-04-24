@@ -6,12 +6,62 @@ import type { UIMessage } from "ai";
 import { buildAnalysisCiteMarker } from "@/lib/analysis/citeAnchors";
 import {
   AnalysisMessage,
+  buildAnalysisDisplayBlocks,
+  buildAnalysisRevealEntries,
+  getAnalysisAnswerRevealPhase,
+  getNextAnalysisRevealDelayMs,
   getAnalysisMessageEvidenceItems,
   getAnalysisMessageFollowUpItems,
   getAnalysisTraceEntries,
   getAnalysisTraceHeaderLabel,
+  splitAnalysisStableTextWindow,
+  splitAnalysisTextForReveal,
   getVisibleEvidenceItems,
 } from "@/components/analysis/AnalysisMessage";
+import { buildAnalysisRenderableBlocks } from "@/lib/analysis/renderAnchors";
+import type { AnalysisTableCard } from "@/lib/analysis/types";
+
+function makeTablePart(toolCallId: string, tableId: string = "q1"): UIMessage["parts"][number] {
+  const output: AnalysisTableCard = {
+    status: "available",
+    tableId,
+    title: `${tableId} overall`,
+    questionId: tableId.toUpperCase(),
+    questionText: "How satisfied are you?",
+    tableType: "frequency",
+    surveySection: null,
+    baseText: "All respondents",
+    tableSubtitle: null,
+    userNote: null,
+    valueMode: "pct",
+    columns: [],
+    rows: [],
+    totalRows: 0,
+    totalColumns: 0,
+    truncatedRows: 0,
+    truncatedColumns: 0,
+    focusedCutIds: null,
+    requestedCutGroups: null,
+    focusedRowKeys: null,
+    focusedGroupKeys: null,
+    significanceTest: null,
+    significanceLevel: null,
+    comparisonGroups: [],
+    sourceRefs: [],
+  };
+
+  return {
+    type: "tool-fetchTable",
+    toolCallId,
+    state: "output-available",
+    input: {
+      tableId,
+      cutGroups: null,
+      valueMode: "pct",
+    },
+    output,
+  } as UIMessage["parts"][number];
+}
 
 describe("AnalysisMessage trace presentation", () => {
   it("surfaces fetchTable and other tool activity as analysis steps with friendly labels", () => {
@@ -551,5 +601,101 @@ describe("AnalysisMessage trace presentation", () => {
     );
 
     expect(markup).not.toContain("aria-label=\"Edit message\"");
+  });
+});
+
+describe("AnalysisMessage reveal helpers", () => {
+  it("holds incomplete render markers out of the stable text window while streaming", () => {
+    expect(splitAnalysisStableTextWindow("Intro [[render tableId=q1", true)).toEqual({
+      stableText: "Intro ",
+      unstableTail: "[[render tableId=q1",
+    });
+  });
+
+  it("holds incomplete cite markers out of the stable text window while streaming", () => {
+    expect(splitAnalysisStableTextWindow("Overall is 45%.[[cite cellIds=q1|r|c|pct", true)).toEqual({
+      stableText: "Overall is 45%.",
+      unstableTail: "[[cite cellIds=q1|r|c|pct",
+    });
+  });
+
+  it("keeps citation markers attached to the sentence they support", () => {
+    const cite = buildAnalysisCiteMarker(["q1|row_1|__total__%3A%3Atotal|pct"]);
+
+    expect(splitAnalysisTextForReveal(`Overall is 45%.${cite} Next sentence.`)).toEqual([
+      `Overall is 45%.${cite} `,
+      "Next sentence.",
+    ]);
+  });
+
+  it("shows a table shell when the next unreleased entry is a table block", () => {
+    const blocks = buildAnalysisRenderableBlocks({
+      id: "assistant-shell",
+      parts: [
+        makeTablePart("tool-1", "q1"),
+        { type: "text", text: "Intro.\n\n[[render tableId=q1]]\n\nClose." },
+      ],
+    });
+
+    const entries = buildAnalysisRevealEntries(blocks);
+    const displayBlocks = buildAnalysisDisplayBlocks(blocks, entries, 1);
+
+    expect(displayBlocks).toEqual([
+      expect.objectContaining({ kind: "text", text: "Intro." }),
+      expect.objectContaining({ kind: "table", displayState: "shell" }),
+    ]);
+  });
+
+  it("moves through thinking, handoff, composing, and settled phases", () => {
+    expect(getAnalysisAnswerRevealPhase({
+      isStreaming: true,
+      hasEverStreamed: true,
+      releasedEntryCount: 0,
+      totalEntryCount: 0,
+      unstableTail: "",
+    })).toBe("thinking");
+
+    expect(getAnalysisAnswerRevealPhase({
+      isStreaming: true,
+      hasEverStreamed: true,
+      releasedEntryCount: 0,
+      totalEntryCount: 2,
+      unstableTail: "",
+    })).toBe("handoff");
+
+    expect(getAnalysisAnswerRevealPhase({
+      isStreaming: false,
+      hasEverStreamed: true,
+      releasedEntryCount: 1,
+      totalEntryCount: 2,
+      unstableTail: "",
+    })).toBe("composing");
+
+    expect(getAnalysisAnswerRevealPhase({
+      isStreaming: false,
+      hasEverStreamed: true,
+      releasedEntryCount: 2,
+      totalEntryCount: 2,
+      unstableTail: "",
+    })).toBe("settled");
+  });
+
+  it("uses longer composed delays for first reveal, paragraph breaks, tables, and post-table settles", () => {
+    const blocks = buildAnalysisRenderableBlocks({
+      id: "assistant-delays",
+      parts: [
+        makeTablePart("tool-1", "q1"),
+        {
+          type: "text",
+          text: "First sentence.\n\nSecond paragraph.\n\n[[render tableId=q1]]\n\nWrap up.",
+        },
+      ],
+    });
+    const entries = buildAnalysisRevealEntries(blocks);
+
+    expect(getNextAnalysisRevealDelayMs({ releasedEntryCount: 0, entries })).toBe(260);
+    expect(getNextAnalysisRevealDelayMs({ releasedEntryCount: 1, entries })).toBe(220);
+    expect(getNextAnalysisRevealDelayMs({ releasedEntryCount: 2, entries })).toBe(240);
+    expect(getNextAnalysisRevealDelayMs({ releasedEntryCount: 3, entries })).toBe(160);
   });
 });

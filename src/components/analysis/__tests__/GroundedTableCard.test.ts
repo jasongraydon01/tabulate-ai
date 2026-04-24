@@ -394,4 +394,16 @@ describe("GroundedTableCard helpers", () => {
 
     expect(markup).toContain("border-l-2");
   });
+
+  it("renders a reserved shell footprint when the card is in shell mode", () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(GroundedTableCard, {
+        card: groupedCard,
+        displayState: "shell",
+      }),
+    );
+
+    expect(markup).toContain("data-analysis-table-shell=\"true\"");
+    expect(markup).not.toContain("Q1. How satisfied are you?");
+  });
 });

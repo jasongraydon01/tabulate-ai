@@ -10,6 +10,12 @@ export interface AnalysisThreadScrollTarget {
   getBoundingClientRect: () => Pick<DOMRect, "top">;
 }
 
+export type AnalysisThreadRevealScrollEvent =
+  | "answer-start"
+  | "text-step"
+  | "table-shell"
+  | "table-ready";
+
 export function getAnalysisThreadMessageScrollTop(
   viewport: AnalysisThreadScrollViewport,
   target: AnalysisThreadScrollTarget,
@@ -52,4 +58,17 @@ export function isAnalysisThreadNearBottom(
   threshold = 96,
 ): boolean {
   return getAnalysisThreadBottomDistance(viewport) <= threshold;
+}
+
+export function scrollAnalysisThreadForRevealEvent(
+  viewport: AnalysisThreadScrollViewport,
+  target: AnalysisThreadScrollTarget,
+  event: AnalysisThreadRevealScrollEvent,
+) {
+  if (event === "answer-start") {
+    scrollAnalysisThreadToMessageStart(viewport, target, "smooth");
+    return;
+  }
+
+  scrollAnalysisThreadToBottom(viewport, "smooth");
 }
