@@ -1,123 +1,146 @@
 # Final Table Contract Hard Cut
 
-**Purpose:** make `results/tables.json` the single final-table contract for analysis, citations, and downstream consumers so every surface projects from the same ordered, row-semantic-aware artifact.
+**Purpose:** make `results/tables.json` the single final-table contract for analysis, citations, and downstream export consumers so every surface projects from the same ordered, row-semantic-aware artifact.
 
 ## Current State
 
-### Hard-cut status
+The hard cut itself is implemented. The main contract decisions are settled:
 
-- **Contract boundary is in place.**
-  - `results/tables.json` now treats ordered `columns`, ordered `rows`, and ordered `rows[].cells` as the authoritative final contract.
-  - Stable cell identity is now `tableId + rowKey + cutKey`.
-  - Row-level display semantics are carried by `row.valueType` + `row.format`.
+- `results/tables.json` is the intended final-table artifact.
+- ordered `columns`, ordered `rows`, and ordered `rows[].cells` are the contract shape.
+- stable cell identity is `tableId + rowKey + cutKey`.
+- analysis grounding, rendered analysis tables, and citation flows have already been moved onto the settled contract.
+- downstream cleanup work landed and stale `getTableCard` helper language was removed from the live analysis workflow.
 
-- **Post-R finalization is in place.**
-  - `src/lib/v3/runtime/finalTableContract.ts` builds the final contract.
-  - `src/lib/v3/runtime/postV3Processing.ts` finalizes and strict-validates `tables.json`, `tables-weighted.json`, and `tables-unweighted.json` after R execution.
-  - Column ordering prefers compute-package cut order.
-  - `mean_rows` tables preserve numeric display semantics in the final contract.
-  - The derived demo banner table stays on a deterministic builder path.
+This document is now mainly a **post-implementation bug-tracking outline**, not an active slice plan.
 
-- **Analysis has already moved partway onto the contract.**
-  - `src/lib/analysis/grounding.ts` reads ordered row and column metadata from the final contract.
-  - `fetchTable`, `confirmCitation`, and model markdown projection already use contract rows, cut keys, and row-level formatting.
-  - Mixed percent and numeric rows already have deterministic regression coverage.
+## What The Hard Cut Already Achieved
 
-### Important naming clarification
+- post-R final table materialization exists in `src/lib/v3/runtime/finalTableContract.ts`
+- post-R finalization/validation exists in `src/lib/v3/runtime/postV3Processing.ts`
+- analysis grounding uses the settled `searchRunCatalog` -> `fetchTable` -> optional render marker -> `confirmCitation` workflow
+- rendered analysis tables preserve contract row order and row-level formatting semantics
+- Q / WinCross / export readers were moved toward the final contract instead of legacy compatibility branches
 
-- The model-facing tool is **`fetchTable`**.
-- There is currently **no `getRenderTable` symbol** in the repo.
-- If agents keep talking about `getTableCard`, that is stale internal/prompt language, not the actual tool workflow we want to preserve.
+## Where We Actually Are Now
 
-### What is already done
+The remaining work is not “finish the hard cut design.” It is **stabilize the hard cut after implementation**.
 
-- final-table contract builder introduced
-- post-R enrichment and validation introduced
-- typed ordered `columns` / `rows` / `cells` added to results artifacts
-- contract-driven row order and row semantics established in analysis grounding
-- stable cell identity simplified to `tableId + rowKey + cutKey`
-- **Slice C is complete.**
-  - live analysis grounding now validates final-contract tables without analysis-time rebuild-on-read recovery
-  - malformed tables are quarantined into `brokenTables` so one bad table does not take down the whole analysis session
-  - `fetchTable` is contract-driven and no longer accepts live `valueMode` input
-  - live `confirmCitation` is semantic-first (`tableId + rowLabel + columnLabel`, with optional fallback refs for ambiguity)
-  - the default active analysis prompt is aligned with the live Slice C fetch/render/cite contract
+The current failures are showing up because some runs still reach downstream consumers with a raw or partially finalized `results/tables*.json` artifact even though Q and WinCross now expect the settled final contract.
 
-### What is not done yet
+## Confirmed Bug Stack
 
-- full rendered-table / citation alignment audit
-- downstream consumer audit and cleanup
+### 1. Final-table materialization can still fail upstream
+
+We traced a real failing run where the post-R final-contract pass failed before `results/tables.json` was upgraded into the settled `columns` / `rows` / `cells` shape.
+
+Confirmed issue:
+
+- `src/lib/v3/runtime/finalTableContract.ts` is still reading the stage-22 compute artifact using a stale shape assumption in at least one path.
+- The persisted compute artifact on disk is top-level `tables` / `cuts`, while the final-table builder still expects `computePackage.rScriptInput?.tables` / `computePackage.rScriptInput?.cuts`.
+- That mismatch breaks final-contract row construction for the derived demo banner path and leaves the raw tables artifact in place.
+
+### 2. R success is being conflated with post-R contract finalization
+
+This is an important labeling problem:
+
+- R execution can succeed and still produce useful raw table data.
+- post-R final table contract materialization can fail afterward.
+- the current pipeline path records that failure under the `"R Execution"` stage and continues in a way that makes the state hard to reason about.
+
+What we want conceptually is:
+
+- `R succeeded`
+- `final table contract succeeded/failed`
+- `export contract ready/not ready`
+
+Those are separate states and the system should describe them separately.
+
+### 3. Export readiness is too optimistic
+
+The export-manifest/readiness layer currently does not fail closed on an invalid final tables artifact.
+
+Confirmed issue:
+
+- a run can still report as export-ready even when the exact `resultsTables` input that Q / WinCross will read does not conform to the final contract.
+- that means the exporter becomes the first strict consumer to surface the problem instead of the pipeline/readiness layer catching it earlier.
+
+### 4. Q and WinCross are surfacing the upstream contract break
+
+The current Q / WinCross failures are symptoms of the upstream artifact problem, not the primary root cause.
+
+What is happening:
+
+- Q and WinCross now correctly parse `resultsTables` as the final contract.
+- if they are handed a raw `results/tables.json` artifact without `columns` / `rows`, they fail immediately.
+- that failure is useful signal, but the deeper bug lives earlier in finalization and readiness.
+
+### 5. Weighted-path metadata still needs explicit end-to-end verification
+
+We already fixed one export metadata path issue on `dev` so dual-output runs point `artifactPaths.inputs.resultsTables` at the weighted final artifact instead of the stale base path.
+
+That fix was necessary, but it is not the current root cause for the failing unweighted run we inspected. The main blocker remains upstream finalization.
 
 ## Remaining Work
 
-### Slice D — Rendered Analysis Tables And Citations
+### Priority 1 — Fix upstream final-table materialization
 
-**Goal:** make rendered table cards and citation presentation align cleanly with the contract-driven grounding path.
+Primary target:
 
-This slice owns:
+- make `src/lib/v3/runtime/finalTableContract.ts` read the actual persisted stage-22 compute artifact shape used by the live pipeline
 
-- `src/components/analysis/GroundedTableCard.tsx`
-- compact and expanded rendered-table behavior
-- render-marker focus behavior in `src/lib/analysis/renderAnchors.ts`
-- end-to-end rendered alignment between table cards, displayed cell values, and citation anchors
+Expected result:
 
-This slice does **not** own:
+- successful runs produce finalized `results/tables.json` (and weighted variants where relevant) in the settled contract shape before downstream consumers ever see them
 
-- changing how live grounding loads tables
-- rebuilding or hydrating incomplete contracts
-- broad prompt/tool terminology cleanup
+### Priority 2 — Separate pipeline statuses and error labeling
 
-**Boundary rule:** Slice D is about what the user sees once a grounded table is already available.
+Primary target:
 
-### Slice E — Downstream Consumer Audit And Cleanup
+- stop describing post-R finalization failures as `"R Execution"` failures
 
-**Goal:** remove stale abstractions and deliberately clean up the remaining consumers after C and D are settled.
+Expected result:
 
-This slice owns:
+- a run can truthfully report that R succeeded while also showing that final-contract materialization failed
+- downstream debugging becomes much clearer
 
-- audit of all other `results/tables.json` consumers
-- cleanup of deprecated compatibility fields and replay shims
-- cleanup of stale prompt/comment/test wording that still talks about `getTableCard`
-- explicit confirmation in code comments and prompt language that the workflow is `fetchTable`, not a legacy helper concept
+### Priority 3 — Tighten export readiness around `resultsTables`
 
-This slice is also the right place to:
+Primary target:
 
-- remove or rename obsolete helper concepts if they are no longer earning their keep
-- clean up tests whose names still describe the old workflow
-- do the final removal pass on compatibility branches introduced during the cut
+- validate the `resultsTables` input artifact as part of export readiness / manifest integrity, not only inside the export service
 
-**Boundary rule:** Slice E is cleanup, naming, audit, and removal work after the live behavior is correct.
+Expected result:
 
-## Specific Clarifications To Keep Us Aligned
+- bad final-table artifacts are blocked earlier
+- Q / WinCross stop being the first place we discover contract failure
 
-### `fetchTable` vs stale helper language
+### Priority 4 — Add end-to-end regression coverage for the settled contract
 
-The planning and prompt language should describe the workflow as:
+Primary target:
 
-1. `searchRunCatalog`
-2. `fetchTable`
-3. optional render marker
-4. `confirmCitation`
+- add deterministic coverage that exercises the real path from post-R finalization through export-readiness and export-consumer parsing
 
-It should **not** describe the workflow as “call `getTableCard`”.
+Expected result:
 
-### `getRenderTable`
+- we prove the hard cut works on real artifact flow, not only in isolated helper tests
 
-There is no `getRenderTable` code path to migrate or deprecate right now.
+## Working Diagnosis
 
-If we want the codebase to stop surfacing similar stale ideas, the actual cleanup target is:
+The hard cut is conceptually right and the settled contract should remain in place. The current problem is that some live runs are not reliably making it all the way onto that contract before downstream consumers read the artifact.
 
-- stale `getTableCard` prompt language
-- stale test names and comments
-- any internal helper naming that causes agents to talk about the wrong abstraction
+So the current phase is:
 
-## Success Criteria For The Remaining Work
+1. fix upstream finalization
+2. cleanly separate status labeling
+3. tighten readiness validation
+4. re-run end-to-end verification for Q and WinCross
 
-The hard cut is complete when all of the following are true:
+## Done Means
 
-- `results/tables.json` is the trusted final-table contract for downstream consumers
-- analysis grounding does not normally reconstruct missing row/column contract data
-- `fetchTable` markdown projection matches contract row order and row semantics
-- rendered cards and confirmed citations show the same values the contract defines
-- code and prompt language consistently describe the workflow as `fetchTable`
-- stale compatibility branches and stale helper-language are removed intentionally, not left to drift
+We can treat the hard cut as fully stabilized when all of the following are true:
+
+- successful runs reliably materialize `results/tables.json` into the settled final contract
+- the pipeline distinguishes R success from post-R finalization success
+- export readiness fails closed when `resultsTables` is not in final-contract shape
+- Q and WinCross succeed on fresh runs without relying on legacy compatibility behavior
