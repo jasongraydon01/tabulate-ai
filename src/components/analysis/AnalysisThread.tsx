@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { useChat } from "@ai-sdk/react";
-import { AlertCircle, ChevronDown } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 
 import { AnalysisMessage } from "@/components/analysis/AnalysisMessage";
 import {
@@ -16,7 +16,6 @@ import { PromptComposer } from "@/components/analysis/PromptComposer";
 import { GridLoader } from "@/components/ui/grid-loader";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { AnalysisMessageFeedbackRecord, AnalysisMessageFeedbackVote } from "@/lib/analysis/types";
-import { cn } from "@/lib/utils";
 
 interface AnalysisThreadProps {
   runId: string;
@@ -87,24 +86,15 @@ export function shouldShowAnalysisPendingState(
   return !hasVisibleAnalysisMessageParts(lastMessage);
 }
 
-function PendingAnalysisMessage({ isSubmitted }: { isSubmitted: boolean }) {
+export function PendingAnalysisMessage() {
   const summaryLabel = "TabulateAI is analyzing the artifacts...";
-  const statusLabel = isSubmitted
-    ? "Checking the run artifacts"
-    : "Grounding the answer";
 
   return (
     <div className="flex w-full justify-start">
       <div className="min-w-0 max-w-[88%]">
-        <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
-          <div className="flex min-w-0 items-center gap-2">
-            <GridLoader size="sm" />
-            <span className="min-w-0 truncate italic">{summaryLabel}</span>
-          </div>
-          <div className="flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground/75">
-            <span>{statusLabel}</span>
-            <ChevronDown className={cn("h-3 w-3 transition-transform", "-rotate-90")} />
-          </div>
+        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+          <GridLoader size="sm" />
+          <span className="min-w-0 truncate italic">{summaryLabel}</span>
         </div>
       </div>
     </div>
@@ -339,7 +329,7 @@ export function AnalysisThread({
             })
           )}
 
-          {shouldShowPendingState ? <PendingAnalysisMessage isSubmitted={status === "submitted"} /> : null}
+          {shouldShowPendingState ? <PendingAnalysisMessage /> : null}
 
           {error && (
             <div className="rounded-2xl border border-tab-rose/30 bg-tab-rose/10 p-4 text-sm text-tab-rose">

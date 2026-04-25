@@ -1,8 +1,11 @@
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { UIMessage } from "ai";
 
 import {
   hasVisibleAnalysisMessageParts,
+  PendingAnalysisMessage,
   shouldShowAnalysisMessageActions,
   shouldShowAnalysisPendingState,
 } from "@/components/analysis/AnalysisThread";
@@ -95,5 +98,16 @@ describe("AnalysisThread pending state", () => {
 
     expect(hasVisibleAnalysisMessageParts(message)).toBe(false);
     expect(shouldShowAnalysisPendingState([message], "streaming")).toBe(true);
+  });
+
+  it("renders the loading placeholder without the old status dropdown copy", () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(PendingAnalysisMessage),
+    );
+
+    expect(markup).toContain("TabulateAI is analyzing the artifacts...");
+    expect(markup).not.toContain("Checking the run artifacts");
+    expect(markup).not.toContain("Grounding the answer");
+    expect(markup).not.toContain("<svg");
   });
 });
