@@ -84,6 +84,31 @@ export interface PipelineSummary {
     };
   };
   error?: string;
+  postProcessing?: {
+    rExecution?: {
+      attempted: boolean;
+      success: boolean;
+      durationMs: number;
+      error?: string;
+      skippedReason?: string;
+      outputTableCount?: number | null;
+    };
+    finalTableContract?: {
+      attempted: boolean;
+      success: boolean;
+      durationMs: number;
+      error?: string;
+      skippedReason?: string;
+      outputTableCount?: number | null;
+    };
+    excelExport?: {
+      attempted: boolean;
+      success: boolean;
+      durationMs: number;
+      error?: string;
+      skippedReason?: string;
+    };
+  };
   /** V3 runtime stage checkpoint. Present when V3 stage tracking is active. */
   v3Checkpoint?: V3PipelineCheckpoint;
   review?: {

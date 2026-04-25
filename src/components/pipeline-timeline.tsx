@@ -66,7 +66,7 @@ const TIMELINE_STEPS: TimelineStep[] = [
     id: 'output',
     label: 'Generating Output',
     description: 'Building result artifacts, uploading outputs, and finalizing the delivered files.',
-    stages: ['contract_build', 'r2_finalize', 'complete'],
+    stages: ['finalizing_tables', 'contract_build', 'r2_finalize', 'complete'],
     legacyStages: ['generating_r', 'writing_outputs'],
   },
 ];

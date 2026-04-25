@@ -16,7 +16,7 @@ import path from 'path';
 // Shared V3 runtime
 import { runV3Pipeline } from '../v3/runtime/runV3Pipeline';
 import type { V3PipelineResult } from '../v3/runtime/runV3Pipeline';
-import { runPostV3Processing } from '../v3/runtime/postV3Processing';
+import { assessPostV3Processing, runPostV3Processing } from '../v3/runtime/postV3Processing';
 import { buildPipelineSummary, getCostSummaryString } from '../v3/runtime/buildPipelineSummary';
 import { buildDecisionsSummary, buildPipelineDecisions } from '../v3/runtime/pipelineDecisions';
 import { writeTableReport } from '../v3/runtime/tableReport';
@@ -572,15 +572,24 @@ export async function runPipeline(
       log: (msg: string) => log(msg, 'dim'),
     });
 
-    stageTiming['rExecution'] = postResult.rDurationMs;
-    stageTiming['excelExport'] = postResult.excelDurationMs;
-    if (postResult.rSuccess) {
-      wideEvent.recordStage('rExecution', 'ok', postResult.rDurationMs);
+    const postProcessingAssessment = assessPostV3Processing(postResult);
+    stageTiming['rExecution'] = postResult.rExecution.durationMs;
+    stageTiming['finalTableContract'] = postResult.finalTableContract.durationMs;
+    stageTiming['excelExport'] = postResult.excelExport.durationMs;
+    if (postResult.rExecution.success) {
+      wideEvent.recordStage('rExecution', 'ok', postResult.rExecution.durationMs);
     }
-    if (postResult.excelSuccess) {
-      wideEvent.recordStage('excelExport', 'ok', postResult.excelDurationMs);
+    if (postResult.finalTableContract.success) {
+      wideEvent.recordStage('finalTableContract', 'ok', postResult.finalTableContract.durationMs);
     }
-    eventBus.emitStageComplete(3, 'R + Excel', postResult.rDurationMs + postResult.excelDurationMs);
+    if (postResult.excelExport.success) {
+      wideEvent.recordStage('excelExport', 'ok', postResult.excelExport.durationMs);
+    }
+    eventBus.emitStageComplete(
+      3,
+      'R + Excel',
+      postResult.rExecution.durationMs + postResult.finalTableContract.durationMs + postResult.excelExport.durationMs,
+    );
     log('', 'reset');
 
     const exportErrors: Array<{
@@ -597,59 +606,80 @@ export async function runPipeline(
       wincross: { success: false as boolean },
     };
 
-    try {
-      const copiedWideSav = await ensureWideSavFallback(outputDir, 'dataFile.sav');
-      if (copiedWideSav) {
-        log('  [ExportData] Copied export/data/wide.sav fallback from runtime dataFile.sav', 'dim');
-      }
-      const resultFiles: string[] = await fs.readdir(path.join(outputDir, 'results')).catch((): string[] => []);
-      const hasDualWeightOutputs =
-        resultFiles.includes('tables-weighted.json') &&
-        resultFiles.includes('tables-unweighted.json');
+    if (postResult.finalTableContract.success) {
+      try {
+        const copiedWideSav = await ensureWideSavFallback(outputDir, 'dataFile.sav');
+        if (copiedWideSav) {
+          log('  [ExportData] Copied export/data/wide.sav fallback from runtime dataFile.sav', 'dim');
+        }
+        const resultFiles: string[] = await fs.readdir(path.join(outputDir, 'results')).catch((): string[] => []);
+        const hasDualWeightOutputs =
+          resultFiles.includes('tables-weighted.json') &&
+          resultFiles.includes('tables-unweighted.json');
 
-      await persistPhase0Artifacts({
-        outputDir,
-        tablesWithLoopFrame: v3Result.compute.rScriptInput.tables as unknown as import('../../schemas/verificationAgentSchema').TableWithLoopFrame[],
-        loopMappings: v3Result.compute.rScriptInput.loopMappings ?? [],
-        loopSemanticsPolicy: v3Result.compute.rScriptInput.loopSemanticsPolicy,
-        weightVariable: weightVariable ?? null,
-        hasDualWeightOutputs,
-        sourceSavUploadedName: path.basename(files.spss),
-        sourceSavRuntimeName: 'dataFile.sav',
-        convexRefs: { pipelineId },
-      });
-      const phase1Manifest = await buildPhase1Manifest(outputDir);
-      exportArtifacts = buildExportArtifactRefs(phase1Manifest.metadata);
-      exportReadiness = phase1Manifest.metadata.readiness;
-    } catch (error) {
-      exportErrors.push({
-        format: 'shared',
-        stage: 'contract_build',
-        message: error instanceof Error ? error.message : String(error),
-        retryable: true,
-        timestamp: new Date().toISOString(),
-      });
+        await persistPhase0Artifacts({
+          outputDir,
+          tablesWithLoopFrame: v3Result.compute.rScriptInput.tables as unknown as import('../../schemas/verificationAgentSchema').TableWithLoopFrame[],
+          loopMappings: v3Result.compute.rScriptInput.loopMappings ?? [],
+          loopSemanticsPolicy: v3Result.compute.rScriptInput.loopSemanticsPolicy,
+          weightVariable: weightVariable ?? null,
+          hasDualWeightOutputs,
+          sourceSavUploadedName: path.basename(files.spss),
+          sourceSavRuntimeName: 'dataFile.sav',
+          convexRefs: { pipelineId },
+        });
+        const phase1Manifest = await buildPhase1Manifest(outputDir);
+        exportArtifacts = buildExportArtifactRefs(phase1Manifest.metadata);
+        exportReadiness = phase1Manifest.metadata.readiness;
+      } catch (error) {
+        exportErrors.push({
+          format: 'shared',
+          stage: 'contract_build',
+          message: error instanceof Error ? error.message : String(error),
+          retryable: true,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } else {
+      log('  [ExportData] Skipping export contract build because final table contract materialization failed', 'dim');
     }
 
-    try {
-      const generated = await generateLocalQAndWinCrossExports(outputDir);
-      localExports = {
-        q: { success: generated.q.success },
-        wincross: { success: generated.wincross.success },
-      };
-      exportErrors.push(...generated.errors);
-    } catch (error) {
+    if (postResult.finalTableContract.success) {
+      try {
+        const generated = await generateLocalQAndWinCrossExports(outputDir);
+        localExports = {
+          q: { success: generated.q.success },
+          wincross: { success: generated.wincross.success },
+        };
+        exportErrors.push(...generated.errors);
+      } catch (error) {
+        exportErrors.push({
+          format: 'q',
+          stage: 'serialize',
+          message: error instanceof Error ? error.message : String(error),
+          retryable: true,
+          timestamp: new Date().toISOString(),
+        });
+        exportErrors.push({
+          format: 'wincross',
+          stage: 'serialize',
+          message: 'WinCross export skipped because local export generation failed.',
+          retryable: true,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } else {
       exportErrors.push({
         format: 'q',
         stage: 'serialize',
-        message: error instanceof Error ? error.message : String(error),
+        message: 'Q export skipped because final table contract materialization failed.',
         retryable: true,
         timestamp: new Date().toISOString(),
       });
       exportErrors.push({
         format: 'wincross',
         stage: 'serialize',
-        message: 'WinCross export skipped because local export generation failed.',
+        message: 'WinCross export skipped because final table contract materialization failed.',
         retryable: true,
         timestamp: new Date().toISOString(),
       });
@@ -660,10 +690,10 @@ export async function runPipeline(
     // -----------------------------------------------------------------------
     const totalDuration = Date.now() - startTime;
     const terminalStatus: 'success' | 'partial' | 'error' = (
-      postResult.excelSuccess && localExports.q.success && localExports.wincross.success
+      postProcessingAssessment.status === 'success' && localExports.q.success && localExports.wincross.success
     )
       ? 'success'
-      : (postResult.excelSuccess || postResult.rSuccess || localExports.q.success || localExports.wincross.success)
+      : (postProcessingAssessment.status !== 'error' || localExports.q.success || localExports.wincross.success)
         ? 'partial'
         : 'error';
 
@@ -726,8 +756,8 @@ export async function runPipeline(
         validationWarningCount: validationResult.warnings.length,
       },
       timing: {
-        postRMs: postResult.rDurationMs,
-        excelMs: postResult.excelDurationMs,
+        postRMs: postResult.rExecution.durationMs + postResult.finalTableContract.durationMs,
+        excelMs: postResult.excelExport.durationMs,
         totalMs: totalDuration,
       },
     });
@@ -808,7 +838,8 @@ export async function runPipeline(
     clearPipelineTimeout();
     const terminalError = terminalStatus === 'partial'
       ? [
-        !postResult.excelSuccess ? 'Excel export failed' : null,
+        !postResult.finalTableContract.success ? 'Final table contract materialization failed' : null,
+        postResult.finalTableContract.success && !postResult.excelExport.success ? 'Excel export failed' : null,
         !localExports.q.success ? 'Q export failed' : null,
         !localExports.wincross.success ? 'WinCross export failed' : null,
       ].filter((value): value is string => !!value).join('; ')

@@ -64,33 +64,86 @@ export interface PostV3ProcessingInput {
 
   /** Optional logger function (CLI uses colored logger, orchestrator uses console.log) */
   log?: (message: string) => void;
+
+  /** Optional hook fired when post-R final-table materialization begins. */
+  onFinalTableStageStart?: () => Promise<void> | void;
+}
+
+export interface PostV3PhaseResult {
+  attempted: boolean;
+  success: boolean;
+  durationMs: number;
+  error?: string;
+  skippedReason?: string;
+  outputTableCount?: number;
 }
 
 export interface PostV3ProcessingResult {
-  /** Whether R execution succeeded */
-  rSuccess: boolean;
-  /** Whether Excel export succeeded */
-  excelSuccess: boolean;
   /** Path to master.R script */
   masterRPath: string;
-  /** R execution duration in ms */
-  rDurationMs: number;
-  /** Excel export duration in ms */
-  excelDurationMs: number;
   /** Path to R execution log */
   rLogPath?: string;
   /** Static validation report from R script generation */
   staticValidationReport?: ValidationReport;
   /** Weight variable if dual output was produced */
   weightVariable?: string;
-  /** Number of tables in R output JSON */
-  rOutputTableCount?: number;
   /** R script size in bytes */
   rScriptSizeBytes: number;
-  /** Error message if R execution failed */
-  rError?: string;
-  /** Error message if Excel export failed */
-  excelError?: string;
+  /** R execution result */
+  rExecution: PostV3PhaseResult;
+  /** Post-R final-table contract materialization result */
+  finalTableContract: PostV3PhaseResult;
+  /** Excel export result */
+  excelExport: PostV3PhaseResult;
+}
+
+export interface PostV3ProcessingAssessment {
+  status: 'success' | 'partial' | 'error';
+  message: string;
+  finalStage: 'rExecution' | 'finalTableContract' | 'excelExport';
+}
+
+function buildSkippedPhase(skippedReason: string): PostV3PhaseResult {
+  return {
+    attempted: false,
+    success: false,
+    durationMs: 0,
+    skippedReason,
+  };
+}
+
+export function assessPostV3Processing(
+  result: PostV3ProcessingResult,
+): PostV3ProcessingAssessment {
+  if (!result.rExecution.success) {
+    return {
+      status: 'error',
+      message: 'R execution failed.',
+      finalStage: 'rExecution',
+    };
+  }
+
+  if (!result.finalTableContract.success) {
+    return {
+      status: 'partial',
+      message: 'R execution succeeded but final table contract materialization failed.',
+      finalStage: 'finalTableContract',
+    };
+  }
+
+  if (!result.excelExport.success) {
+    return {
+      status: 'partial',
+      message: 'Final table contract succeeded but Excel generation failed.',
+      finalStage: 'excelExport',
+    };
+  }
+
+  return {
+    status: 'success',
+    message: 'Pipeline completed successfully.',
+    finalStage: 'excelExport',
+  };
 }
 
 // =============================================================================
@@ -239,6 +292,7 @@ export async function runPostV3Processing(
     theme = 'classic',
     abortSignal,
     log = console.log,
+    onFinalTableStageStart,
   } = input;
 
   const computeDir = path.join(outputDir, 'compute');
@@ -278,23 +332,27 @@ export async function runPostV3Processing(
   // -------------------------------------------------------------------------
   // Step 2: R Execution
   // -------------------------------------------------------------------------
-  let rSuccess = false;
-  let rDurationMs = 0;
   let rLogPath: string | undefined;
-  let rError: string | undefined;
-  let rOutputTableCount: number | undefined;
+  const rExecution: PostV3PhaseResult = {
+    attempted: false,
+    success: false,
+    durationMs: 0,
+  };
 
   if (abortSignal?.aborted) {
     return {
-      rSuccess: false,
-      excelSuccess: false,
       masterRPath: masterPath,
-      rDurationMs: 0,
-      excelDurationMs: 0,
       rScriptSizeBytes: masterScript.length,
       staticValidationReport,
       weightVariable,
-      rError: 'Aborted before R execution',
+      rExecution: {
+        attempted: false,
+        success: false,
+        durationMs: 0,
+        error: 'Aborted before R execution',
+      },
+      finalTableContract: buildSkippedPhase('Skipped because R execution did not run.'),
+      excelExport: buildSkippedPhase('Skipped because R execution did not run.'),
     };
   }
 
@@ -307,6 +365,7 @@ export async function runPostV3Processing(
   const rStart = Date.now();
 
   try {
+    rExecution.attempted = true;
     const rCommand = await findRCommand();
     const { stdout, stderr } = await execFileAsync(rCommand, [masterPath], {
       cwd: outputDir,
@@ -315,68 +374,13 @@ export async function runPostV3Processing(
       env: { ...process.env, LANG: 'en_US.UTF-8', LC_ALL: 'en_US.UTF-8' },
     });
 
-    rDurationMs = Date.now() - rStart;
+    rExecution.durationMs = Date.now() - rStart;
     rLogPath = await saveRLog(computeDir, stdout, stderr, true);
-    rSuccess = true;
-
-    // Process R output files
-    const resultFiles = await fs.readdir(resultsDir);
-    const finalTableComputeInput: FinalTableContractComputeInput = {
-      tables: compute.rScriptInput.tables,
-      cuts: compute.rScriptInput.cuts,
-    };
-
-    if (weightVariable) {
-      // Dual output mode: weighted + unweighted
-      const hasWeighted = resultFiles.includes('tables-weighted.json');
-      const hasUnweighted = resultFiles.includes('tables-unweighted.json');
-
-      if (hasWeighted && hasUnweighted) {
-        const weightedData = await finalizeResultsTablesArtifact(
-          path.join(resultsDir, 'tables-weighted.json'),
-          finalTableComputeInput,
-        );
-        await finalizeResultsTablesArtifact(
-          path.join(resultsDir, 'tables-unweighted.json'),
-          finalTableComputeInput,
-        );
-        rOutputTableCount = Object.keys(weightedData.tables || {}).length;
-        log(`[PostV3] R output: tables-weighted.json + tables-unweighted.json (${rOutputTableCount} tables each)`);
-
-        // Streamlined data from weighted
-        const streamlinedData = extractStreamlinedData(weightedData);
-        await fs.writeFile(
-          path.join(resultsDir, 'data-streamlined.json'),
-          JSON.stringify(streamlinedData, null, 2),
-          'utf-8',
-        );
-      } else {
-        log('[PostV3] WARNING: Expected tables-weighted.json + tables-unweighted.json but not all found');
-      }
-    } else {
-      // Standard single output
-      if (resultFiles.includes('tables.json')) {
-        const jsonData = await finalizeResultsTablesArtifact(
-          path.join(resultsDir, 'tables.json'),
-          finalTableComputeInput,
-        );
-        rOutputTableCount = Object.keys(jsonData.tables || {}).length;
-
-        log(`[PostV3] R output: tables.json (${rOutputTableCount} tables)`);
-
-        const streamlinedData = extractStreamlinedData(jsonData as Parameters<typeof extractStreamlinedData>[0]);
-        await fs.writeFile(
-          path.join(resultsDir, 'data-streamlined.json'),
-          JSON.stringify(streamlinedData, null, 2),
-          'utf-8',
-        );
-      } else {
-        log('[PostV3] WARNING: No tables.json generated');
-      }
-    }
-    log(`[PostV3] R execution: ${rDurationMs}ms`);
+    rExecution.success = true;
+    log(`[PostV3] R execution: ${rExecution.durationMs}ms`);
   } catch (err) {
-    rDurationMs = Date.now() - rStart;
+    rExecution.durationMs = Date.now() - rStart;
+    rExecution.attempted = true;
     const execError = err as { stdout?: string; stderr?: string; message?: string };
     const stdout = execError.stdout || '';
     const stderr = execError.stderr || '';
@@ -393,15 +397,15 @@ export async function runPostV3Processing(
     const isBufferOverflow = errorMsg.includes('maxBuffer') || errorMsg.includes('ERR_CHILD_PROCESS_STDIO_MAXBUFFER');
     if (isBufferOverflow) {
       const currentLimitMB = Math.round(maxBufferBytes / (1024 * 1024));
-      rError = `R output exceeded the ${currentLimitMB} MB buffer limit. Set R_MAX_BUFFER_MB to a higher value (e.g., ${currentLimitMB * 2}) and re-run.`;
+      rExecution.error = `R output exceeded the ${currentLimitMB} MB buffer limit. Set R_MAX_BUFFER_MB to a higher value (e.g., ${currentLimitMB * 2}) and re-run.`;
     } else {
-      rError = signalDescription || errorMsg.substring(0, 500);
+      rExecution.error = signalDescription || errorMsg.substring(0, 500);
     }
 
     if (errorMsg.includes('command not found') && !errorMsg.includes('Error in')) {
       log('[PostV3] R not installed — script saved for manual execution');
     } else {
-      log(`[PostV3] R execution failed: ${rError}`);
+      log(`[PostV3] R execution failed: ${rExecution.error}`);
     }
 
     try {
@@ -430,17 +434,118 @@ export async function runPostV3Processing(
   }
 
   // -------------------------------------------------------------------------
-  // Step 3: Excel Export
+  // Step 3: Final Table Contract Materialization
   // -------------------------------------------------------------------------
-  let excelSuccess = false;
-  let excelDurationMs = 0;
-  let excelError: string | undefined;
+  const finalTableContract: PostV3PhaseResult = rExecution.success
+    ? { attempted: false, success: false, durationMs: 0 }
+    : buildSkippedPhase('Skipped because R execution failed.');
 
-  if (rSuccess) {
+  if (rExecution.success) {
+    await onFinalTableStageStart?.();
+    log('[PostV3] Finalizing results tables...');
+    const finalizationStart = Date.now();
+
+    try {
+      finalTableContract.attempted = true;
+      const resultFiles = await fs.readdir(resultsDir);
+      const finalTableComputeInput: FinalTableContractComputeInput = {
+        tables: compute.rScriptInput.tables,
+        cuts: compute.rScriptInput.cuts,
+      };
+
+      if (weightVariable) {
+        const hasWeighted = resultFiles.includes('tables-weighted.json');
+        const hasUnweighted = resultFiles.includes('tables-unweighted.json');
+        if (!hasWeighted || !hasUnweighted) {
+          throw new Error('R completed but did not generate both weighted and unweighted tables artifacts.');
+        }
+
+        const weightedData = await finalizeResultsTablesArtifact(
+          path.join(resultsDir, 'tables-weighted.json'),
+          finalTableComputeInput,
+        );
+        await finalizeResultsTablesArtifact(
+          path.join(resultsDir, 'tables-unweighted.json'),
+          finalTableComputeInput,
+        );
+        finalTableContract.outputTableCount = Object.keys(weightedData.tables || {}).length;
+        log(
+          `[PostV3] Final tables: tables-weighted.json + tables-unweighted.json (${finalTableContract.outputTableCount} tables each)`,
+        );
+
+        const streamlinedData = extractStreamlinedData(weightedData);
+        await fs.writeFile(
+          path.join(resultsDir, 'data-streamlined.json'),
+          JSON.stringify(streamlinedData, null, 2),
+          'utf-8',
+        );
+      } else {
+        if (!resultFiles.includes('tables.json')) {
+          throw new Error('R completed but did not generate results/tables.json.');
+        }
+
+        const jsonData = await finalizeResultsTablesArtifact(
+          path.join(resultsDir, 'tables.json'),
+          finalTableComputeInput,
+        );
+        finalTableContract.outputTableCount = Object.keys(jsonData.tables || {}).length;
+        log(`[PostV3] Final tables: tables.json (${finalTableContract.outputTableCount} tables)`);
+
+        const streamlinedData = extractStreamlinedData(jsonData as Parameters<typeof extractStreamlinedData>[0]);
+        await fs.writeFile(
+          path.join(resultsDir, 'data-streamlined.json'),
+          JSON.stringify(streamlinedData, null, 2),
+          'utf-8',
+        );
+      }
+
+      finalTableContract.durationMs = Date.now() - finalizationStart;
+      finalTableContract.success = true;
+      log(`[PostV3] Final table contract: ${finalTableContract.durationMs}ms`);
+    } catch (err) {
+      finalTableContract.durationMs = Date.now() - finalizationStart;
+      finalTableContract.error = err instanceof Error ? err.message : String(err);
+      log(`[PostV3] Final table contract failed: ${finalTableContract.error}`);
+
+      try {
+        await persistSystemError({
+          outputDir,
+          dataset,
+          pipelineId,
+          stageNumber: 11,
+          stageName: 'Final Table Contract',
+          severity: 'error',
+          actionTaken: 'continued',
+          error: err,
+          meta: {
+            action: 'final_table_contract_failed',
+            message: finalTableContract.error,
+            weightVariable: weightVariable ?? null,
+          },
+        });
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Step 4: Excel Export
+  // -------------------------------------------------------------------------
+  const excelExport: PostV3PhaseResult = finalTableContract.success
+    ? { attempted: false, success: false, durationMs: 0 }
+    : buildSkippedPhase(
+      rExecution.success
+        ? 'Skipped because final table contract materialization failed.'
+        : 'Skipped because R execution failed.',
+    );
+
+  if (finalTableContract.success) {
     log('[PostV3] Generating Excel workbook...');
     const excelStart = Date.now();
 
     try {
+      excelExport.attempted = true;
       if (weightVariable) {
         // Dual workbook: weighted + unweighted
         const weightedJsonPath = path.join(resultsDir, 'tables-weighted.json');
@@ -478,20 +583,20 @@ export async function runPostV3Processing(
         }
       }
 
-      excelDurationMs = Date.now() - excelStart;
-      excelSuccess = true;
-      log(`[PostV3] Excel export: ${excelDurationMs}ms`);
+      excelExport.durationMs = Date.now() - excelStart;
+      excelExport.success = true;
+      log(`[PostV3] Excel export: ${excelExport.durationMs}ms`);
     } catch (err) {
-      excelDurationMs = Date.now() - excelStart;
-      excelError = err instanceof Error ? err.message : String(err);
-      log(`[PostV3] Excel generation failed: ${excelError}`);
+      excelExport.durationMs = Date.now() - excelStart;
+      excelExport.error = err instanceof Error ? err.message : String(err);
+      log(`[PostV3] Excel generation failed: ${excelExport.error}`);
 
       try {
         await persistSystemError({
           outputDir,
           dataset,
           pipelineId,
-          stageNumber: 11,
+          stageNumber: 12,
           stageName: 'Excel Export',
           severity: 'error',
           actionTaken: 'continued',
@@ -502,20 +607,18 @@ export async function runPostV3Processing(
         // ignore
       }
     }
+  } else if (excelExport.skippedReason) {
+    log(`[PostV3] ${excelExport.skippedReason}`);
   }
 
   return {
-    rSuccess,
-    excelSuccess,
     masterRPath: masterPath,
-    rDurationMs,
-    excelDurationMs,
     rLogPath,
     staticValidationReport,
     weightVariable,
-    rOutputTableCount,
     rScriptSizeBytes: masterScript.length,
-    rError,
-    excelError,
+    rExecution,
+    finalTableContract,
+    excelExport,
   };
 }

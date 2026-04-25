@@ -381,6 +381,33 @@ function parseExportErrors(value: unknown): RunResultExportError[] | undefined {
   });
 }
 
+function parsePostProcessingPhase(value: unknown): RunResultPostProcessingPhase | undefined {
+  const record = asRecord(value);
+  if (!record) return undefined;
+
+  return {
+    ...record,
+    attempted: asBoolean(record.attempted),
+    success: asBoolean(record.success),
+    durationMs: asNumber(record.durationMs),
+    error: asString(record.error),
+    skippedReason: asString(record.skippedReason),
+    outputTableCount: asNumber(record.outputTableCount),
+  };
+}
+
+function parsePostProcessing(value: unknown): RunResultPostProcessing | undefined {
+  const record = asRecord(value);
+  if (!record) return undefined;
+
+  return {
+    ...record,
+    rExecution: parsePostProcessingPhase(record.rExecution),
+    finalTableContract: parsePostProcessingPhase(record.finalTableContract),
+    excelExport: parsePostProcessingPhase(record.excelExport),
+  };
+}
+
 function parseReviewR2Keys(value: unknown): RunResultReviewR2Keys | undefined {
   const record = asRecord(value);
   if (!record) return undefined;
@@ -468,6 +495,23 @@ export interface RunResultExportError {
   [key: string]: unknown;
 }
 
+export interface RunResultPostProcessingPhase {
+  attempted?: boolean;
+  success?: boolean;
+  durationMs?: number;
+  error?: string;
+  skippedReason?: string;
+  outputTableCount?: number;
+  [key: string]: unknown;
+}
+
+export interface RunResultPostProcessing {
+  rExecution?: RunResultPostProcessingPhase;
+  finalTableContract?: RunResultPostProcessingPhase;
+  excelExport?: RunResultPostProcessingPhase;
+  [key: string]: unknown;
+}
+
 export type RunResultExportPackages = Record<string, Record<string, unknown>>;
 
 export interface RunResultR2Files {
@@ -506,6 +550,7 @@ export type ParsedRunResult = Record<string, unknown> & {
   exportArtifacts?: Record<string, unknown>;
   exportReadiness?: Record<string, unknown>;
   exportErrors?: RunResultExportError[];
+  postProcessing?: RunResultPostProcessing;
   exportPackages?: RunResultExportPackages;
   v3Checkpoint?: V3PipelineCheckpoint;
   feedback?: RunResultFeedbackEntry[];
@@ -550,6 +595,7 @@ export function parseRunResult(raw: unknown): ParsedRunResult | undefined {
     exportArtifacts: asRecord(record.exportArtifacts),
     exportReadiness: asRecord(record.exportReadiness),
     exportErrors: parseExportErrors(record.exportErrors),
+    postProcessing: parsePostProcessing(record.postProcessing),
     exportPackages: parseExportPackages(record.exportPackages),
     v3Checkpoint: parseV3Checkpoint(record.v3Checkpoint),
     feedback: parseFeedback(record.feedback),

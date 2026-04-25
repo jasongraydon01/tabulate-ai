@@ -19,6 +19,7 @@ describe('pipelineStageSchema', () => {
       'v3_compute',
       'compute',
       'executing_r',
+      'finalizing_tables',
       'contract_build',
       'r2_finalize',
       'complete',

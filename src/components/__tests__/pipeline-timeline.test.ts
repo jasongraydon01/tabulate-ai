@@ -29,6 +29,15 @@ describe('pipeline timeline', () => {
     expect(statuses.get('output')).toBe('active');
   });
 
+  it('maps finalizing tables to the output step before contract build begins', () => {
+    expect(getTimelineStepId('finalizing_tables', 'in_progress')).toBe('output');
+
+    const statuses = getStepStatuses('finalizing_tables', 'in_progress');
+
+    expect(statuses.get('computing')).toBe('completed');
+    expect(statuses.get('output')).toBe('active');
+  });
+
   it('shows review only when the run is in review flow', () => {
     const enrichmentMarkup = renderToStaticMarkup(
       React.createElement(PipelineTimeline, {

@@ -13,6 +13,7 @@ export const V3_PIPELINE_STAGES = [
   'v3_compute',
   'compute',
   'executing_r',
+  'finalizing_tables',
   'contract_build',
   'r2_finalize',
   'complete',

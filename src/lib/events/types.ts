@@ -288,7 +288,8 @@ export const STAGE_NAMES: Record<number, string> = {
   8: 'R Validation',
   9: 'R Script Generation',
   10: 'R Execution',
-  11: 'Excel Export',
+  11: 'Final Table Contract',
+  12: 'Excel Export',
 };
 
-export const TOTAL_STAGES = 11;
+export const TOTAL_STAGES = 12;

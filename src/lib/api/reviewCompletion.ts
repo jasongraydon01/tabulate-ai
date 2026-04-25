@@ -23,7 +23,7 @@ import { buildCutsSpec } from '@/lib/tables/CutsSpec';
 import { resolveStatConfig } from '@/lib/v3/runtime/compute/resolveStatConfig';
 import { runComputePipeline } from '@/lib/v3/runtime/compute/runComputePipeline';
 import { canonicalToComputeTables } from '@/lib/v3/runtime/compute/canonicalToComputeTables';
-import { runPostV3Processing } from '@/lib/v3/runtime/postV3Processing';
+import { assessPostV3Processing, runPostV3Processing } from '@/lib/v3/runtime/postV3Processing';
 import { buildDecisionsSummary, buildPipelineDecisions, type PipelineDecisions } from '@/lib/v3/runtime/pipelineDecisions';
 import { writeTableReport } from '@/lib/v3/runtime/tableReport';
 import { persistSystemError, readPipelineErrors, summarizePipelineErrors } from '@/lib/errors/ErrorPersistence';
@@ -68,7 +68,7 @@ import {
 } from '@/lib/r2/R2FileManager';
 import { sendPipelineNotification } from '@/lib/notifications/email';
 import { evaluateAndPersistRunQuality } from '@/lib/evaluation/runEvaluationService';
-import { parseRunResult, type RunResultShape } from '@/schemas/runResultSchema';
+import { parseRunResult, type RunResultPostProcessing, type RunResultShape } from '@/schemas/runResultSchema';
 
 // -------------------------------------------------------------------------
 // Types
@@ -807,6 +807,7 @@ export interface CompletePipelineResult {
   status: 'success' | 'partial' | 'error';
   message: string;
   outputDir: string;
+  postProcessing?: RunResultPostProcessing;
   exportArtifacts?: ExportArtifactRefs;
   exportReadiness?: ExportArtifactRefs['readiness'];
   exportErrors?: Array<{
@@ -1210,11 +1211,21 @@ export async function completePipeline(
       theme: wizardConfig?.theme,
       abortSignal,
       log: (msg: string) => console.log(msg),
+      onFinalTableStageStart: async () => {
+        await updateReviewRunStatus(runId, {
+          status: 'resuming',
+          stage: 'finalizing_tables',
+          progress: 84,
+          message: 'Finalizing table outputs...',
+        });
+      },
     });
 
+    const postProcessingAssessment = assessPostV3Processing(postResult);
     console.log(
-      `[ReviewCompletion] PostV3: R ${postResult.rSuccess ? 'succeeded' : 'failed'} (${postResult.rDurationMs}ms), ` +
-      `Excel ${postResult.excelSuccess ? 'succeeded' : 'failed'} (${postResult.excelDurationMs}ms)`,
+      `[ReviewCompletion] PostV3: R ${postResult.rExecution.success ? 'succeeded' : 'failed'} (${postResult.rExecution.durationMs}ms), ` +
+      `final tables ${postResult.finalTableContract.success ? 'succeeded' : 'failed'} (${postResult.finalTableContract.durationMs}ms), ` +
+      `Excel ${postResult.excelExport.success ? 'succeeded' : 'failed'} (${postResult.excelExport.durationMs}ms)`,
     );
 
     let exportArtifacts: ExportArtifactRefs | undefined;
@@ -1227,44 +1238,55 @@ export async function completePipeline(
       timestamp: string;
     }> = [];
 
-    try {
-      const copiedWideSav = await ensureWideSavFallback(outputDir, 'dataFile.sav');
-      if (copiedWideSav) {
-        console.log('[ReviewCompletion][ExportData] Copied export/data/wide.sav fallback from runtime dataFile.sav');
-      }
-
-      const resultFiles: string[] = await fs.readdir(path.join(outputDir, 'results')).catch((): string[] => []);
-      const hasDualWeightOutputs =
-        resultFiles.includes('tables-weighted.json') &&
-        resultFiles.includes('tables-unweighted.json');
-
-      await persistPhase0Artifacts({
-        outputDir,
-        tablesWithLoopFrame: computeResult.rScriptInput.tables as unknown as import('@/schemas/verificationAgentSchema').TableWithLoopFrame[],
-        loopMappings,
-        loopSemanticsPolicy,
-        weightVariable: wizardConfig?.weightVariable ?? null,
-        hasDualWeightOutputs,
-        sourceSavUploadedName: path.basename(reviewState.spssPath || 'dataFile.sav'),
-        sourceSavRuntimeName: 'dataFile.sav',
-        convexRefs: {
-          runId,
-          pipelineId,
-        },
-      });
-      const phase1Manifest = await buildPhase1Manifest(outputDir);
-      exportArtifacts = buildExportArtifactRefs(phase1Manifest.metadata);
-      exportReadiness = phase1Manifest.metadata.readiness;
-    } catch (exportErr) {
-      const message = exportErr instanceof Error ? exportErr.message : String(exportErr);
-      console.warn('[ReviewCompletion][ExportData] Failed to build shared export contract (non-fatal):', exportErr);
-      exportErrors.push({
-        format: 'shared',
+    if (postResult.finalTableContract.success) {
+      await updateReviewRunStatus(runId, {
+        status: 'resuming',
         stage: 'contract_build',
-        message,
-        retryable: true,
-        timestamp: new Date().toISOString(),
+        progress: 88,
+        message: 'Building export contract...',
       });
+
+      try {
+        const copiedWideSav = await ensureWideSavFallback(outputDir, 'dataFile.sav');
+        if (copiedWideSav) {
+          console.log('[ReviewCompletion][ExportData] Copied export/data/wide.sav fallback from runtime dataFile.sav');
+        }
+
+        const resultFiles: string[] = await fs.readdir(path.join(outputDir, 'results')).catch((): string[] => []);
+        const hasDualWeightOutputs =
+          resultFiles.includes('tables-weighted.json') &&
+          resultFiles.includes('tables-unweighted.json');
+
+        await persistPhase0Artifacts({
+          outputDir,
+          tablesWithLoopFrame: computeResult.rScriptInput.tables as unknown as import('@/schemas/verificationAgentSchema').TableWithLoopFrame[],
+          loopMappings,
+          loopSemanticsPolicy,
+          weightVariable: wizardConfig?.weightVariable ?? null,
+          hasDualWeightOutputs,
+          sourceSavUploadedName: path.basename(reviewState.spssPath || 'dataFile.sav'),
+          sourceSavRuntimeName: 'dataFile.sav',
+          convexRefs: {
+            runId,
+            pipelineId,
+          },
+        });
+        const phase1Manifest = await buildPhase1Manifest(outputDir);
+        exportArtifacts = buildExportArtifactRefs(phase1Manifest.metadata);
+        exportReadiness = phase1Manifest.metadata.readiness;
+      } catch (exportErr) {
+        const message = exportErr instanceof Error ? exportErr.message : String(exportErr);
+        console.warn('[ReviewCompletion][ExportData] Failed to build shared export contract (non-fatal):', exportErr);
+        exportErrors.push({
+          format: 'shared',
+          stage: 'contract_build',
+          message,
+          retryable: true,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } else {
+      console.log('[ReviewCompletion][ExportData] Skipping export contract build because final table contract materialization failed');
     }
 
     // -----------------------------------------------------------------------
@@ -1284,7 +1306,7 @@ export async function completePipeline(
     }
 
     const cutsSpec = buildCutsSpec(modifiedCrosstabResult);
-    const finalStatus = postResult.excelSuccess ? 'success' : (postResult.rSuccess ? 'partial' : 'error');
+    const finalStatus = postProcessingAssessment.status;
     const errorRead = await readPipelineErrors(outputDir);
     const pipelineDecisions = buildPipelineDecisions({
       config: wizardConfig,
@@ -1311,8 +1333,8 @@ export async function completePipeline(
         records: errorRead.records,
       },
       timing: {
-        postRMs: postResult.rDurationMs,
-        excelMs: postResult.excelDurationMs,
+        postRMs: postResult.rExecution.durationMs + postResult.finalTableContract.durationMs,
+        excelMs: postResult.excelExport.durationMs,
         totalMs: totalDurationMs,
       },
     });
@@ -1358,6 +1380,7 @@ export async function completePipeline(
         },
       },
       v3Checkpoint: computeResult.checkpoint,
+      postProcessing: postResult as PipelineSummary['postProcessing'],
       pipelineDecisions,
       decisionsSummary,
     });
@@ -1374,7 +1397,7 @@ export async function completePipeline(
 
     metricsCollector.unbindWideEvent();
     wideEvent.set('tableCount', computeResult.rScriptInput.tables.length);
-    wideEvent.set('finalStage', postResult.excelSuccess ? 'excelExport' : (postResult.rSuccess ? 'excelExport' : 'rExecution'));
+    wideEvent.set('finalStage', postProcessingAssessment.finalStage);
     if (finalStatus !== 'success' && errorRead.records.length > 0) {
       wideEvent.set('errorSummary', summarizePipelineErrors(errorRead.records));
       const topErr = errorRead.records.find(r => r.severity === 'fatal')
@@ -1384,15 +1407,14 @@ export async function completePipeline(
         wideEvent.set('topError', topErr.message || topErr.stageName || 'Unknown');
       }
     }
-    wideEvent.finish(finalStatus === 'success' ? 'success' : 'partial');
+    wideEvent.finish(finalStatus === 'success' ? 'success' : finalStatus === 'error' ? 'error' : 'partial');
 
     return {
       success: true,
       status: finalStatus as 'success' | 'partial' | 'error',
-      message: postResult.excelSuccess
-        ? 'Pipeline completed successfully'
-        : (postResult.rSuccess ? 'R complete but Excel failed' : 'R execution failed'),
+      message: postProcessingAssessment.message,
       outputDir,
+      postProcessing: postResult as unknown as Record<string, unknown>,
       tableCount: computeResult.rScriptInput.tables.length,
       cutCount: cutsSpec.cuts.length,
       bannerGroups: modifiedCrosstabResult.bannerCuts.length,
@@ -1567,7 +1589,7 @@ export async function runQueuedReviewResume(params: {
   let exportReadiness = result.exportReadiness;
   const exportErrors = [...(result.exportErrors ?? [])];
 
-  if (r2Outputs) {
+  if (r2Outputs && result.postProcessing?.finalTableContract && result.postProcessing.finalTableContract.success === true) {
     try {
       const metadataPath = path.join(params.outputDir, 'export', 'export-metadata.json');
       try {
@@ -1632,6 +1654,7 @@ export async function runQueuedReviewResume(params: {
     },
     pipelineDecisions: result.pipelineDecisions,
     decisionsSummary: result.decisionsSummary,
+    ...(result.postProcessing ? { postProcessing: result.postProcessing as RunResultShape['postProcessing'] } : {}),
     ...(exportArtifacts ? { exportArtifacts: exportArtifacts as unknown as RunResultShape['exportArtifacts'] } : {}),
     ...(exportReadiness ? { exportReadiness: exportReadiness as unknown as RunResultShape['exportReadiness'] } : {}),
     ...(exportErrors.length > 0 ? { exportErrors } : {}),
@@ -1674,6 +1697,7 @@ export async function runQueuedReviewResume(params: {
     ...result,
     status: terminalStatus,
     message: terminalMessage,
+    ...(result.postProcessing ? { postProcessing: result.postProcessing } : {}),
     ...(exportArtifacts ? { exportArtifacts } : {}),
     ...(exportReadiness ? { exportReadiness } : {}),
     ...(exportErrors.length > 0 ? { exportErrors } : {}),

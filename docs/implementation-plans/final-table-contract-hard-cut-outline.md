@@ -20,6 +20,10 @@ This document is now mainly a **post-implementation stabilization tracker**, not
 - `src/lib/v3/runtime/postV3Processing.ts` finalizes `results/tables*.json` from the in-memory compute input used to generate the R script instead of re-reading `compute/22-compute-package.json` with a stale nested-shape assumption.
 - `src/lib/v3/runtime/finalTableContract.ts` now reads the actual top-level `tables` / `cuts` contract used by stage 22.
 - deterministic regression coverage now includes both the derived demo-banner path and dual weighted/unweighted finalization.
+- **Slice 2 complete on `dev`**: post-R processing now distinguishes `R execution`, `final table contract materialization`, and `Excel export` as separate outcomes.
+- the live pipeline now uses a dedicated `finalizing_tables` stage between `executing_r` and export-contract work.
+- runs no longer describe final-table materialization failures as `"R Execution"` failures.
+- export-contract assembly is skipped when final-table materialization fails, so later stages no longer mask that failure.
 
 ## What The Hard Cut Already Achieved
 
@@ -48,21 +52,22 @@ What was fixed:
 - the shared post-R path now finalizes raw `results/tables*.json` from the same compute input that generated the R script.
 - regression coverage now protects the derived demo banner path and weighted/unweighted finalization.
 
-### 2. R success is being conflated with post-R contract finalization
+### 2. R success was being conflated with post-R contract finalization and is now fixed
 
-This is an important labeling problem:
+This was an important labeling problem:
 
 - R execution can succeed and still produce useful raw table data.
 - post-R final table contract materialization can fail afterward.
-- the current pipeline path records that failure under the `"R Execution"` stage and continues in a way that makes the state hard to reason about.
+- the old pipeline path recorded that failure under the `"R Execution"` stage and continued in a way that made the state hard to reason about.
 
-What we want conceptually is:
+What now exists conceptually in the pipeline:
 
-- `R succeeded`
+- `R succeeded/failed`
 - `final table contract succeeded/failed`
+- `Excel succeeded/failed`
 - `export contract ready/not ready`
 
-Those are separate states and the system should describe them separately.
+Those are separate states and the system now carries that distinction through shared post-processing, summaries, and worker status handling.
 
 ### 3. Export readiness is too optimistic
 
@@ -103,19 +108,16 @@ Delivered result:
 
 ### Priority 2 — Separate pipeline statuses and error labeling
 
-Primary target:
+Status:
 
-- stop describing post-R finalization failures as `"R Execution"` failures
+- **Done on `dev`**
 
-Expected result:
+Delivered result:
 
-- a run can truthfully report that R succeeded while also showing that final-contract materialization failed
-- downstream debugging becomes much clearer
-
-What is left at a high level:
-
-- introduce an explicit post-R finalization success/failure state instead of collapsing it into `"R Execution"`
-- make run summaries, persisted errors, and UI-facing status reflect `R success` vs `final-table contract success`
+- post-R processing now tracks `rExecution`, `finalTableContract`, and `excelExport` separately
+- the pipeline uses a dedicated `finalizing_tables` stage before export-contract work
+- runs can now truthfully report `R succeeded but final table contract materialization failed`
+- persisted errors and summaries no longer collapse final-table materialization failures into `"R Execution"`
 
 ### Priority 3 — Tighten export readiness around `resultsTables`
 
@@ -155,7 +157,7 @@ The hard cut is conceptually right and the settled contract should remain in pla
 So the current phase is:
 
 1. upstream finalization fixed
-2. cleanly separate status labeling
+2. status labeling fixed
 3. tighten readiness validation
 4. re-run end-to-end verification for Q and WinCross
 

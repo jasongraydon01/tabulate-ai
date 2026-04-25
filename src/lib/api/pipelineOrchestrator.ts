@@ -49,7 +49,7 @@ import { runComputePipeline } from '@/lib/v3/runtime/compute/runComputePipeline'
 import { canonicalToComputeTables } from '@/lib/v3/runtime/compute/canonicalToComputeTables';
 import { mergeParallelCheckpoints } from '@/lib/v3/runtime/runV3Pipeline';
 import type { V3PipelineResult } from '@/lib/v3/runtime/runV3Pipeline';
-import { runPostV3Processing } from '@/lib/v3/runtime/postV3Processing';
+import { assessPostV3Processing, runPostV3Processing } from '@/lib/v3/runtime/postV3Processing';
 import { buildPipelineSummary } from '@/lib/v3/runtime/buildPipelineSummary';
 import type { PipelineSummary as V3PipelineSummaryType } from '@/lib/v3/runtime/buildPipelineSummary';
 import { writeTableReport } from '@/lib/v3/runtime/tableReport';
@@ -401,6 +401,31 @@ function adaptV3SummaryToLegacy(
         estimatedCostUsd: a.estimatedCostUsd,
       })),
       totals: v3Summary.costs.totals as PipelineSummary['costs'] extends { totals: infer T } ? T : never,
+    },
+    postProcessing: {
+      rExecution: {
+        attempted: v3Summary.rExecution.attempted,
+        success: v3Summary.rExecution.success,
+        durationMs: v3Summary.rExecution.durationMs,
+        ...(v3Summary.rExecution.error ? { error: v3Summary.rExecution.error } : {}),
+        ...(v3Summary.rExecution.skippedReason ? { skippedReason: v3Summary.rExecution.skippedReason } : {}),
+        outputTableCount: v3Summary.rExecution.outputTableCount,
+      },
+      finalTableContract: {
+        attempted: v3Summary.finalTableContract.attempted,
+        success: v3Summary.finalTableContract.success,
+        durationMs: v3Summary.finalTableContract.durationMs,
+        ...(v3Summary.finalTableContract.error ? { error: v3Summary.finalTableContract.error } : {}),
+        ...(v3Summary.finalTableContract.skippedReason ? { skippedReason: v3Summary.finalTableContract.skippedReason } : {}),
+        outputTableCount: v3Summary.finalTableContract.outputTableCount,
+      },
+      excelExport: {
+        attempted: v3Summary.excelExport.attempted,
+        success: v3Summary.excelExport.success,
+        durationMs: v3Summary.excelExport.durationMs,
+        ...(v3Summary.excelExport.error ? { error: v3Summary.excelExport.error } : {}),
+        ...(v3Summary.excelExport.skippedReason ? { skippedReason: v3Summary.excelExport.skippedReason } : {}),
+      },
     },
     v3Checkpoint,
     errors: v3Summary.errors as PipelineSummary['errors'],
@@ -1202,14 +1227,27 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
       theme: wizardConfig?.theme,
       abortSignal,
       log: (msg: string) => console.log(msg),
+      onFinalTableStageStart: async () => {
+        await updateRunStatus(runId, {
+          status: 'in_progress',
+          stage: 'finalizing_tables',
+          progress: 80,
+          message: 'Finalizing table outputs...',
+        });
+      },
     });
 
-    if (postResult.rSuccess) {
-      wideEvent.recordStage('rExecution', 'ok', postResult.rDurationMs);
+    if (postResult.rExecution.success) {
+      wideEvent.recordStage('rExecution', 'ok', postResult.rExecution.durationMs);
     }
-    if (postResult.excelSuccess) {
-      wideEvent.recordStage('excelExport', 'ok', postResult.excelDurationMs);
+    if (postResult.finalTableContract.success) {
+      wideEvent.recordStage('finalTableContract', 'ok', postResult.finalTableContract.durationMs);
     }
+    if (postResult.excelExport.success) {
+      wideEvent.recordStage('excelExport', 'ok', postResult.excelExport.durationMs);
+    }
+
+    const postProcessingAssessment = assessPostV3Processing(postResult);
 
     let exportArtifacts: ExportArtifactRefs | undefined;
     let exportReadiness: ExportArtifactRefs['readiness'] | undefined;
@@ -1221,49 +1259,60 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
       timestamp: string;
     }> = [];
 
-    try {
-      const copiedWideSav = await ensureWideSavFallback(outputDir, 'dataFile.sav');
-      if (copiedWideSav) {
-        console.log('[ExportData] Copied export/data/wide.sav fallback from runtime dataFile.sav');
-      }
-
-      const resultFiles: string[] = await fs.readdir(path.join(outputDir, 'results')).catch((): string[] => []);
-      const hasDualWeightOutputs =
-        resultFiles.includes('tables-weighted.json') &&
-        resultFiles.includes('tables-unweighted.json');
-
-      await persistPhase0Artifacts({
-        outputDir,
-        tablesWithLoopFrame: computeResult.rScriptInput.tables as unknown as import('@/schemas/verificationAgentSchema').TableWithLoopFrame[],
-        loopMappings: resolvedLoopMappings,
-        loopSemanticsPolicy,
-        compiledLoopContract,
-        weightVariable: wizardConfig?.weightVariable ?? null,
-        hasDualWeightOutputs,
-        sourceSavUploadedName: path.basename(spssPath),
-        sourceSavRuntimeName: 'dataFile.sav',
-        convexRefs: {
-          runId,
-          projectId: convexProjectId,
-          orgId: convexOrgId,
-          pipelineId,
-        },
-      });
-
-      const phase1Manifest = await buildPhase1Manifest(outputDir);
-      exportArtifacts = buildExportArtifactRefs(phase1Manifest.metadata);
-      exportReadiness = phase1Manifest.metadata.readiness;
-      console.log('[ExportData] Shared export contract persisted');
-    } catch (exportErr) {
-      const message = exportErr instanceof Error ? exportErr.message : String(exportErr);
-      console.warn('[ExportData] Failed to build shared export contract (non-fatal):', exportErr);
-      exportErrors.push({
-        format: 'shared',
+    if (postResult.finalTableContract.success) {
+      await updateRunStatus(runId, {
+        status: 'in_progress',
         stage: 'contract_build',
-        message,
-        retryable: true,
-        timestamp: new Date().toISOString(),
+        progress: 85,
+        message: 'Building export contract...',
       });
+
+      try {
+        const copiedWideSav = await ensureWideSavFallback(outputDir, 'dataFile.sav');
+        if (copiedWideSav) {
+          console.log('[ExportData] Copied export/data/wide.sav fallback from runtime dataFile.sav');
+        }
+
+        const resultFiles: string[] = await fs.readdir(path.join(outputDir, 'results')).catch((): string[] => []);
+        const hasDualWeightOutputs =
+          resultFiles.includes('tables-weighted.json') &&
+          resultFiles.includes('tables-unweighted.json');
+
+        await persistPhase0Artifacts({
+          outputDir,
+          tablesWithLoopFrame: computeResult.rScriptInput.tables as unknown as import('@/schemas/verificationAgentSchema').TableWithLoopFrame[],
+          loopMappings: resolvedLoopMappings,
+          loopSemanticsPolicy,
+          compiledLoopContract,
+          weightVariable: wizardConfig?.weightVariable ?? null,
+          hasDualWeightOutputs,
+          sourceSavUploadedName: path.basename(spssPath),
+          sourceSavRuntimeName: 'dataFile.sav',
+          convexRefs: {
+            runId,
+            projectId: convexProjectId,
+            orgId: convexOrgId,
+            pipelineId,
+          },
+        });
+
+        const phase1Manifest = await buildPhase1Manifest(outputDir);
+        exportArtifacts = buildExportArtifactRefs(phase1Manifest.metadata);
+        exportReadiness = phase1Manifest.metadata.readiness;
+        console.log('[ExportData] Shared export contract persisted');
+      } catch (exportErr) {
+        const message = exportErr instanceof Error ? exportErr.message : String(exportErr);
+        console.warn('[ExportData] Failed to build shared export contract (non-fatal):', exportErr);
+        exportErrors.push({
+          format: 'shared',
+          stage: 'contract_build',
+          message,
+          retryable: true,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } else {
+      console.log('[ExportData] Skipping export contract build because final table contract materialization failed');
     }
 
     // -----------------------------------------------------------------------
@@ -1331,10 +1380,7 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
     );
 
     // Determine terminal status
-    const excelGenerated = postResult.excelSuccess;
-    const rExecutionSuccess = postResult.rSuccess;
-    const terminalStatus: RunStatus = excelGenerated ? 'success'
-      : (rExecutionSuccess ? 'partial' : 'error');
+    const terminalStatus: RunStatus = postProcessingAssessment.status;
 
     // Adapt V3 summary to legacy PipelineSummary shape for Convex
     const pipelineSummary = adaptV3SummaryToLegacy(
@@ -1383,8 +1429,8 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
         validationWarningCount: validationResult.warnings.length,
       },
       timing: {
-        postRMs: postResult.rDurationMs,
-        excelMs: postResult.excelDurationMs,
+        postRMs: postResult.rExecution.durationMs + postResult.finalTableContract.durationMs,
+        excelMs: postResult.excelExport.durationMs,
         totalMs: totalDuration,
       },
     });
@@ -1429,7 +1475,7 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
     const costMetrics = await metricsCollector.getSummary();
     metricsCollector.unbindWideEvent();
     wideEvent.set('tableCount', computeResult.rScriptInput.tables.length);
-    wideEvent.set('finalStage', excelGenerated ? 'excelExport' : (rExecutionSuccess ? 'excelExport' : 'rExecution'));
+    wideEvent.set('finalStage', postProcessingAssessment.finalStage);
     if (terminalStatus !== 'success' && errorRead?.records.length) {
       const errSummary = summarizePipelineErrors(errorRead.records);
       wideEvent.set('errorSummary', errSummary);
@@ -1440,7 +1486,7 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
         wideEvent.set('topError', topErr.message || topErr.stageName || 'Unknown');
       }
     }
-    wideEvent.finish(excelGenerated ? 'success' : (rExecutionSuccess ? 'partial' : 'error'));
+    wideEvent.finish(terminalStatus === 'success' ? 'success' : terminalStatus === 'error' ? 'error' : 'partial');
 
     // Upload outputs to R2 for all run types, including demos.
     // Demo runs still use local temp paths for current email delivery, but
@@ -1448,6 +1494,13 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
     let r2Manifest: R2FileManifest | undefined;
     let r2UploadFailed = false;
     if (convexOrgId && convexProjectId) {
+      await updateRunStatus(runId, {
+        status: 'in_progress',
+        stage: 'r2_finalize',
+        progress: 92,
+        message: 'Finalizing run artifacts...',
+      });
+
       try {
         const runTimestamp = pipelineId.replace('pipeline-', '').replace(/-(\d{3}Z)$/, '.$1');
         r2Manifest = await uploadPipelineOutputs(
@@ -1483,7 +1536,7 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
       }
     }
 
-    if (r2Manifest?.outputs && convexOrgId && convexProjectId) {
+    if (r2Manifest?.outputs && convexOrgId && convexProjectId && postResult.finalTableContract.success) {
       try {
         await finalizeExportMetadataWithR2Refs(outputDir, r2Manifest.outputs);
         const refreshedManifest = await buildPhase1Manifest(outputDir);
@@ -1513,20 +1566,19 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
     }
 
     // Downgrade to 'partial' if Excel was generated but R2 upload failed
-    const finalStatus: RunStatus = excelGenerated
+    const finalStatus: RunStatus = terminalStatus === 'success'
       ? (r2UploadFailed ? 'partial' : 'success')
-      : (rExecutionSuccess ? 'partial' : 'error');
+      : terminalStatus;
+    const excelGenerated = postResult.excelExport.success;
     const tableCount = computeResult.rScriptInput.tables.length;
     const cutCount = computeResult.rScriptInput.cuts.length;
     const bannerGroupCount = planningResult.crosstabPlan.crosstabPlan.bannerCuts.length;
 
-    const finalMessage = excelGenerated
+    const finalMessage = terminalStatus === 'success'
       ? r2UploadFailed
         ? `Generated ${tableCount} tables but file upload failed — contact support.`
         : `Complete! Generated ${tableCount} crosstab tables in ${durationSec}s`
-      : rExecutionSuccess
-        ? 'R execution complete but Excel generation failed.'
-        : 'R scripts generated. Execution failed - check R installation.';
+      : postProcessingAssessment.message;
 
     // Quality evaluation
     const qualityEval = await evaluateAndPersistRunQuality({
@@ -1564,6 +1616,7 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
       pipelineDecisions,
       decisionsSummary,
       quality: qualityEval.quality as RunResultShape['quality'],
+      postProcessing: postResult as unknown as RunResultShape['postProcessing'],
       ...(exportArtifacts ? { exportArtifacts: exportArtifacts as unknown as RunResultShape['exportArtifacts'] } : {}),
       ...(exportReadiness ? { exportReadiness: exportReadiness as RunResultShape['exportReadiness'] } : {}),
       ...(exportErrors.length > 0 ? { exportErrors } : {}),

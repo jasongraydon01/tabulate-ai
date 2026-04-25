@@ -4,6 +4,7 @@ import * as path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
+  assessPostV3Processing,
   finalizeResultsTablesArtifact,
   getRExecutionTimeoutMs,
 } from '../postV3Processing';
@@ -39,6 +40,60 @@ describe('getRExecutionTimeoutMs', () => {
   it('honors the explicit environment override', () => {
     process.env.R_EXECUTION_TIMEOUT_MS = '420000';
     expect(getRExecutionTimeoutMs(537)).toBe(420000);
+  });
+});
+
+describe('assessPostV3Processing', () => {
+  it('classifies final-table materialization failure separately from R execution', () => {
+    const assessment = assessPostV3Processing({
+      masterRPath: '/tmp/master.R',
+      rScriptSizeBytes: 10,
+      rExecution: { attempted: true, success: true, durationMs: 100 },
+      finalTableContract: {
+        attempted: true,
+        success: false,
+        durationMs: 25,
+        error: 'Final table contract mismatch',
+      },
+      excelExport: {
+        attempted: false,
+        success: false,
+        durationMs: 0,
+        skippedReason: 'Skipped because final table contract materialization failed.',
+      },
+    });
+
+    expect(assessment).toEqual({
+      status: 'partial',
+      message: 'R execution succeeded but final table contract materialization failed.',
+      finalStage: 'finalTableContract',
+    });
+  });
+
+  it('classifies Excel failure after successful final-table materialization as partial', () => {
+    const assessment = assessPostV3Processing({
+      masterRPath: '/tmp/master.R',
+      rScriptSizeBytes: 10,
+      rExecution: { attempted: true, success: true, durationMs: 100 },
+      finalTableContract: {
+        attempted: true,
+        success: true,
+        durationMs: 25,
+        outputTableCount: 12,
+      },
+      excelExport: {
+        attempted: true,
+        success: false,
+        durationMs: 30,
+        error: 'Workbook render failed',
+      },
+    });
+
+    expect(assessment).toEqual({
+      status: 'partial',
+      message: 'Final table contract succeeded but Excel generation failed.',
+      finalStage: 'excelExport',
+    });
   });
 });
 

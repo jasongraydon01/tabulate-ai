@@ -81,16 +81,28 @@ export interface PipelineSummary {
     computeCuts: number;
   };
   rExecution: {
+    attempted: boolean;
     success: boolean;
     durationMs: number;
     scriptSizeBytes: number;
     outputTableCount: number | null;
     error?: string;
+    skippedReason?: string;
+  };
+  finalTableContract: {
+    attempted: boolean;
+    success: boolean;
+    durationMs: number;
+    outputTableCount: number | null;
+    error?: string;
+    skippedReason?: string;
   };
   excelExport: {
+    attempted: boolean;
     success: boolean;
     durationMs: number;
     error?: string;
+    skippedReason?: string;
   };
   costs: {
     byAgent: unknown[];
@@ -132,8 +144,9 @@ export async function buildPipelineSummary(
   for (const stage of v3Result.checkpoint.completedStages) {
     stageTiming[`v3_stage_${stage.completedStage}`] = stage.durationMs;
   }
-  stageTiming['rExecution'] = postResult.rDurationMs;
-  stageTiming['excelExport'] = postResult.excelDurationMs;
+  stageTiming['rExecution'] = postResult.rExecution.durationMs;
+  stageTiming['finalTableContract'] = postResult.finalTableContract.durationMs;
+  stageTiming['excelExport'] = postResult.excelExport.durationMs;
 
   const crosstabPlan = v3Result.planning.crosstabPlan.crosstabPlan;
   const bannerGroupCount = crosstabPlan.bannerCuts?.length ?? 0;
@@ -192,16 +205,28 @@ export async function buildPipelineSummary(
       computeCuts: v3Result.compute.rScriptInput.cuts.length,
     },
     rExecution: {
-      success: postResult.rSuccess,
-      durationMs: postResult.rDurationMs,
+      attempted: postResult.rExecution.attempted,
+      success: postResult.rExecution.success,
+      durationMs: postResult.rExecution.durationMs,
       scriptSizeBytes: postResult.rScriptSizeBytes,
-      outputTableCount: postResult.rOutputTableCount ?? null,
-      ...(postResult.rError ? { error: postResult.rError } : {}),
+      outputTableCount: postResult.rExecution.outputTableCount ?? null,
+      ...(postResult.rExecution.error ? { error: postResult.rExecution.error } : {}),
+      ...(postResult.rExecution.skippedReason ? { skippedReason: postResult.rExecution.skippedReason } : {}),
+    },
+    finalTableContract: {
+      attempted: postResult.finalTableContract.attempted,
+      success: postResult.finalTableContract.success,
+      durationMs: postResult.finalTableContract.durationMs,
+      outputTableCount: postResult.finalTableContract.outputTableCount ?? null,
+      ...(postResult.finalTableContract.error ? { error: postResult.finalTableContract.error } : {}),
+      ...(postResult.finalTableContract.skippedReason ? { skippedReason: postResult.finalTableContract.skippedReason } : {}),
     },
     excelExport: {
-      success: postResult.excelSuccess,
-      durationMs: postResult.excelDurationMs,
-      ...(postResult.excelError ? { error: postResult.excelError } : {}),
+      attempted: postResult.excelExport.attempted,
+      success: postResult.excelExport.success,
+      durationMs: postResult.excelExport.durationMs,
+      ...(postResult.excelExport.error ? { error: postResult.excelExport.error } : {}),
+      ...(postResult.excelExport.skippedReason ? { skippedReason: postResult.excelExport.skippedReason } : {}),
     },
     costs: {
       byAgent: costMetrics.byAgent,
