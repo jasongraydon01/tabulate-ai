@@ -130,6 +130,14 @@ const analysisAgentMetricsValidator = v.object({
 const analysisMessagePartValidator = v.object({
   type: v.string(),
   text: v.optional(v.string()),
+  tableId: v.optional(v.string()),
+  focus: v.optional(v.object({
+    rowLabels: v.optional(v.array(v.string())),
+    rowRefs: v.optional(v.array(v.string())),
+    groupNames: v.optional(v.array(v.string())),
+    groupRefs: v.optional(v.array(v.string())),
+  })),
+  cellIds: v.optional(v.array(v.string())),
   state: v.optional(v.string()),
   artifactId: v.optional(v.id("analysisArtifacts")),
   label: v.optional(v.string()),

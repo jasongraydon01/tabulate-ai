@@ -43,7 +43,7 @@ interface ParsedRenderMarker {
   raw: string;
 }
 
-interface ParsedRenderMarkerOccurrence extends ParsedRenderMarker {
+export interface AnalysisRenderMarkerParsedOccurrence extends ParsedRenderMarker {
   start: number;
   end: number;
 }
@@ -125,8 +125,8 @@ function parseRenderMarker(match: RegExpExecArray): ParsedRenderMarker | null {
   };
 }
 
-function extractParsedRenderMarkerOccurrences(text: string): ParsedRenderMarkerOccurrence[] {
-  const markers: ParsedRenderMarkerOccurrence[] = [];
+export function extractAnalysisRenderMarkerOccurrences(text: string): AnalysisRenderMarkerParsedOccurrence[] {
+  const markers: AnalysisRenderMarkerParsedOccurrence[] = [];
 
   for (let searchIndex = 0; searchIndex < text.length;) {
     const markerStart = text.indexOf(RENDER_MARKER_PREFIX, searchIndex);
@@ -293,11 +293,11 @@ function resolveRenderFocus(part: FetchTableUIPart, marker: ParsedRenderMarker):
 }
 
 function extractParsedRenderMarkers(text: string): ParsedRenderMarker[] {
-  return extractParsedRenderMarkerOccurrences(text);
+  return extractAnalysisRenderMarkerOccurrences(text);
 }
 
 export function stripAnalysisRenderAnchors(text: string): string {
-  const markers = extractParsedRenderMarkerOccurrences(text);
+  const markers = extractAnalysisRenderMarkerOccurrences(text);
   if (markers.length === 0) {
     return normalizeRenderableText(text);
   }
@@ -327,7 +327,7 @@ export function buildAnalysisRenderableBlocks(
   const tableParts = getRenderableTableParts(message.parts);
   const tableMap = buildTableIdMap(tableParts);
 
-  const markers = extractParsedRenderMarkerOccurrences(text);
+  const markers = extractAnalysisRenderMarkerOccurrences(text);
 
   const referencedTableIds = new Set(markers.map((marker) => marker.tableId));
 
@@ -486,7 +486,7 @@ export function stripInvalidAnalysisRenderMarkers(
 ): string {
   if (issues.length === 0) return text;
   const rawValues = new Set(issues.map((issue) => issue.raw));
-  const markers = extractParsedRenderMarkerOccurrences(text);
+  const markers = extractAnalysisRenderMarkerOccurrences(text);
   if (markers.length === 0) return text;
 
   let stripped = "";

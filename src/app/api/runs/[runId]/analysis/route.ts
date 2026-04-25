@@ -26,6 +26,8 @@ import { loadAnalysisGroundingContext } from "@/lib/analysis/grounding";
 import {
   buildAnalysisEvidenceItems,
   getAnalysisUIMessageText,
+  normalizePersistedAnalysisArtifactRecord,
+  normalizePersistedAnalysisMessageRecord,
   persistedAnalysisMessagesToUIMessages,
   sanitizeAnalysisAssistantMessageContent,
   sanitizeAnalysisMessageContent,
@@ -37,9 +39,10 @@ import {
 } from "@/lib/analysis/renderAnchors";
 import { attemptAnalysisMarkerRepair } from "@/lib/analysis/markerRepair";
 import {
-  buildPersistedAnalysisParts,
+  buildPersistedAnalysisPartsWithStructuredAssistantParts,
   type PersistedAnalysisPart,
 } from "@/lib/analysis/persistence";
+import { buildAnalysisStructuredAssistantPartsFromText } from "@/lib/analysis/structuredParts";
 import {
   writeAnalysisTurnErrorTrace,
   writeAnalysisTurnTrace,
@@ -50,6 +53,7 @@ import {
 } from "@/lib/analysis/title";
 import { FETCH_TABLE_TOOL_TYPE } from "@/lib/analysis/toolLabels";
 import {
+  type AnalysisStructuredAssistantPart,
   isAnalysisTableCard,
   type AnalysisGroundingRef,
   type AnalysisMessageMetadata,
@@ -235,44 +239,10 @@ function applyArtifactIdsToGroundingRefsForPersistence(
     }
 
     return buildPersistedGroundingRef(ref, artifactId, {
-      anchorId: String(artifactId),
+      anchorId: ref.anchorId ?? undefined,
       renderedInCurrentMessage: true,
     });
   });
-}
-
-function normalizeGroundingRefForUI(ref: {
-  claimId: string;
-  claimType: "numeric" | "context" | "cell";
-  evidenceKind: "table_card" | "context" | "cell";
-  refType: string;
-  refId: string;
-  label: string;
-  anchorId?: string;
-  artifactId?: Id<"analysisArtifacts">;
-  sourceTableId?: string;
-  sourceQuestionId?: string;
-  rowKey?: string;
-  cutKey?: string;
-  renderedInCurrentMessage?: boolean;
-}): AnalysisGroundingRef {
-  return {
-    claimId: ref.claimId,
-    claimType: ref.claimType,
-    evidenceKind: ref.evidenceKind,
-    refType: ref.refType as AnalysisGroundingRef["refType"],
-    refId: ref.refId,
-    label: ref.label,
-    ...(ref.anchorId ? { anchorId: ref.anchorId } : {}),
-    ...(ref.artifactId ? { artifactId: String(ref.artifactId) } : {}),
-    ...(ref.sourceTableId ? { sourceTableId: ref.sourceTableId } : {}),
-    ...(ref.sourceQuestionId ? { sourceQuestionId: ref.sourceQuestionId } : {}),
-    ...(ref.rowKey ? { rowKey: ref.rowKey } : {}),
-    ...(ref.cutKey ? { cutKey: ref.cutKey } : {}),
-    ...(typeof ref.renderedInCurrentMessage === "boolean"
-      ? { renderedInCurrentMessage: ref.renderedInCurrentMessage }
-      : {}),
-  };
 }
 
 function buildFinalAssistantParts(params: {
@@ -301,13 +271,17 @@ function buildFinalAssistantParts(params: {
 
 async function persistAssistantMessageParts(params: {
   parts: UIMessage["parts"];
+  structuredAssistantParts: AnalysisStructuredAssistantPart[];
   sessionId: Id<"analysisSessions">;
   orgId: Id<"organizations">;
   projectId: Id<"projects">;
   runId: Id<"runs">;
   createdBy: Id<"users">;
 }): Promise<PersistAssistantPartsResult> {
-  const pending = buildPersistedAnalysisParts(params.parts);
+  const pending = buildPersistedAnalysisPartsWithStructuredAssistantParts(
+    params.parts,
+    params.structuredAssistantParts,
+  );
   const persistedParts: PersistedPartForCreate[] = [];
   const artifactIdsByToolCallId: Record<string, Id<"analysisArtifacts">> = {};
 
@@ -423,28 +397,8 @@ export async function POST(
     const lastPersistedMessage = persistedMessages[persistedMessages.length - 1];
     const hasExistingAssistantMessage = persistedMessages.some((message) => message.role === "assistant");
     let conversationMessages = persistedAnalysisMessagesToUIMessages(
-      persistedMessages.map((message) => ({
-        _id: String(message._id),
-        role: message.role,
-        content: message.content,
-        groundingRefs: message.groundingRefs?.map(normalizeGroundingRefForUI),
-        parts: message.parts?.map((part) => ({
-          type: part.type,
-          text: part.text,
-          state: part.state,
-          artifactId: part.artifactId ? String(part.artifactId) : undefined,
-          label: part.label,
-          toolCallId: part.toolCallId,
-          input: part.input,
-          output: part.output,
-          cellSummary: part.cellSummary,
-        })),
-      })),
-      persistedArtifacts.map((artifact) => ({
-        _id: String(artifact._id),
-        artifactType: artifact.artifactType,
-        payload: artifact.payload,
-      })),
+      persistedMessages.map((message) => normalizePersistedAnalysisMessageRecord(message)),
+      persistedArtifacts.map((artifact) => normalizePersistedAnalysisArtifactRecord(artifact)),
     );
 
     if (
@@ -666,8 +620,12 @@ export async function POST(
 
           // Rebuild trust result against the post-repair text — the cite set
           // may have changed between initial stream and final text.
+          const structuredAssistantParts = buildAnalysisStructuredAssistantPartsFromText(
+            effectiveAssistantText,
+          );
           const trustResult = resolveAssistantMessageTrust({
             assistantText: effectiveAssistantText,
+            assistantParts: structuredAssistantParts,
             responseParts: finalEvent.responseMessage.parts,
             groundingEvents: groundingCapture,
           });
@@ -704,6 +662,7 @@ export async function POST(
 
           const { persistedParts, artifactIdsByToolCallId } = await persistAssistantMessageParts({
             parts: finalResponseParts,
+            structuredAssistantParts: trustResult.assistantParts,
             sessionId: session._id,
             orgId: auth.convexOrgId,
             projectId: session.projectId,

@@ -57,6 +57,58 @@ export interface AnalysisMessageMetadata {
   followUpSuggestions?: string[];
 }
 
+export interface AnalysisRenderDirectiveFocus {
+  rowLabels?: string[];
+  rowRefs?: string[];
+  groupNames?: string[];
+  groupRefs?: string[];
+}
+
+export interface AnalysisStructuredTextPart {
+  type: "text";
+  text: string;
+}
+
+export interface AnalysisStructuredRenderPart {
+  type: "render";
+  tableId: string;
+  focus?: AnalysisRenderDirectiveFocus;
+}
+
+export interface AnalysisStructuredCitePart {
+  type: "cite";
+  cellIds: string[];
+}
+
+export type AnalysisStructuredAssistantPart =
+  | AnalysisStructuredTextPart
+  | AnalysisStructuredRenderPart
+  | AnalysisStructuredCitePart;
+
+export function isAnalysisStructuredTextPart(value: unknown): value is AnalysisStructuredTextPart {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return record.type === "text" && typeof record.text === "string";
+}
+
+export function isAnalysisStructuredRenderPart(value: unknown): value is AnalysisStructuredRenderPart {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return record.type === "render" && typeof record.tableId === "string";
+}
+
+export function isAnalysisStructuredCitePart(value: unknown): value is AnalysisStructuredCitePart {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return record.type === "cite" && Array.isArray(record.cellIds);
+}
+
+export function isAnalysisStructuredAssistantPart(value: unknown): value is AnalysisStructuredAssistantPart {
+  return isAnalysisStructuredTextPart(value)
+    || isAnalysisStructuredRenderPart(value)
+    || isAnalysisStructuredCitePart(value);
+}
+
 export type AnalysisMessageFeedbackVote = "up" | "down";
 
 export interface AnalysisMessageFeedbackRecord {

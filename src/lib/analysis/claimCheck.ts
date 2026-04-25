@@ -1,8 +1,12 @@
 import { isToolUIPart, type UIMessage } from "ai";
 
 import { extractAnalysisCiteMarkers } from "@/lib/analysis/citeAnchors";
+import { serializeAnalysisStructuredAssistantPartsToText } from "@/lib/analysis/structuredParts";
 import { FETCH_TABLE_TOOL_TYPE } from "@/lib/analysis/toolLabels";
 import {
+  isAnalysisStructuredCitePart,
+  isAnalysisStructuredTextPart,
+  type AnalysisStructuredAssistantPart,
   parseAnalysisCellId,
   type AnalysisCellSummary,
   type AnalysisGroundingRef,
@@ -33,6 +37,7 @@ export interface InjectedAnalysisTableCard {
 
 export interface ClaimCheckResult {
   assistantText: string;
+  assistantParts: AnalysisStructuredAssistantPart[];
   hasGroundedClaims: boolean;
   groundingRefs: AnalysisGroundingRef[];
   injectedTableCards: InjectedAnalysisTableCard[];
@@ -68,6 +73,26 @@ function stripPlaceholderCitations(text: string): string {
     .trim();
 
   return compacted;
+}
+
+function stripPlaceholderCitationsFromAssistantParts(
+  parts: AnalysisStructuredAssistantPart[],
+): AnalysisStructuredAssistantPart[] {
+  const cleanedParts: AnalysisStructuredAssistantPart[] = [];
+
+  for (const part of parts) {
+    if (!isAnalysisStructuredTextPart(part)) {
+      cleanedParts.push(part);
+      continue;
+    }
+
+    const cleaned = stripPlaceholderCitations(part.text);
+    if (cleaned.length > 0) {
+      cleanedParts.push({ type: "text", text: cleaned });
+    }
+  }
+
+  return cleanedParts;
 }
 
 function collectRenderedTableCardsByTableId(
@@ -167,18 +192,23 @@ function isContextRefType(ref: AnalysisSourceRef): boolean {
 }
 
 /**
- * Walks the assistant text for `[[cite cellIds=...]]` markers and turns every
- * confirmed cellId into a per-claim `AnalysisGroundingRef` with `claimType: "cell"`.
- * Context refs from grounding events pass through unchanged. Unlike the prior
- * regex-based claim-check, this does NOT try to prove a prose number matches a
- * cell value — that's the deliberate v1 scope. Mechanical-value-match is out.
+ * Resolves grounded trust for a finalized assistant message. In Slice 1 the
+ * route can now pass canonical structured assistant parts, so cite-derived
+ * grounding comes from explicit `cite` parts when available and falls back to
+ * legacy marker scanning only for older text-only paths.
  */
 export function resolveAssistantMessageTrust(params: {
-  assistantText: string;
+  assistantText?: string;
+  assistantParts?: AnalysisStructuredAssistantPart[];
   responseParts: UIMessage["parts"];
   groundingEvents: AnalysisTurnGroundingEvent[];
 }): ClaimCheckResult {
-  const cleanedAssistantText = stripPlaceholderCitations(params.assistantText);
+  const cleanedAssistantParts = params.assistantParts
+    ? stripPlaceholderCitationsFromAssistantParts(params.assistantParts)
+    : [];
+  const cleanedAssistantText = cleanedAssistantParts.length > 0
+    ? serializeAnalysisStructuredAssistantPartsToText(cleanedAssistantParts)
+    : stripPlaceholderCitations(params.assistantText ?? "");
 
   const cellSummariesById = new Map<string, AnalysisCellSummary>();
   for (const event of params.groundingEvents) {
@@ -189,10 +219,12 @@ export function resolveAssistantMessageTrust(params: {
 
   const renderedTablesByTableId = collectRenderedTableCardsByTableId(params.responseParts);
 
-  const markers = extractAnalysisCiteMarkers(cleanedAssistantText);
+  const citedCellIds = cleanedAssistantParts.length > 0
+    ? cleanedAssistantParts.flatMap((part) => (isAnalysisStructuredCitePart(part) ? part.cellIds : []))
+    : extractAnalysisCiteMarkers(cleanedAssistantText).flatMap((marker) => marker.cellIds);
+
   const cellRefs: AnalysisGroundingRef[] = [];
-  for (const marker of markers) {
-    for (const cellId of marker.cellIds) {
+  for (const cellId of citedCellIds) {
       const parsed = parseAnalysisCellId(cellId);
       if (!parsed) continue;
 
@@ -204,7 +236,6 @@ export function resolveAssistantMessageTrust(params: {
         cellSummary: cellSummariesById.get(cellId),
         renderedTable: renderedTablesByTableId.get(parsed.tableId),
       }));
-    }
   }
 
   const contextRefs = params.groundingEvents
@@ -215,6 +246,7 @@ export function resolveAssistantMessageTrust(params: {
 
   return {
     assistantText: cleanedAssistantText,
+    assistantParts: cleanedAssistantParts,
     hasGroundedClaims: cellRefs.length > 0,
     groundingRefs: dedupeGroundingRefs([...cellRefs, ...contextRefs]),
     // Kept for backwards-compatible route shape; no injection in v1.

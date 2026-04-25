@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { buildPersistedAnalysisParts } from "@/lib/analysis/persistence";
+import {
+  buildPersistedAnalysisParts,
+  buildPersistedAnalysisPartsWithStructuredAssistantParts,
+} from "@/lib/analysis/persistence";
 import type { UIMessage } from "ai";
 
 function makeTableCardPayload(overrides: Partial<Record<string, unknown>> = {}) {
@@ -144,6 +147,37 @@ describe("buildPersistedAnalysisParts", () => {
           input: { questionId: "Q1" },
         },
       },
+    ]);
+  });
+
+  it("persists structured assistant parts explicitly when provided", () => {
+    const pending = buildPersistedAnalysisPartsWithStructuredAssistantParts(
+      [
+        { type: "tool-searchRunCatalog", toolCallId: "call-1", state: "output-available", input: { query: "brand" } } as unknown as UIMessage["parts"][number],
+        { type: "text", text: "Legacy marker text should not persist in this path." },
+      ],
+      [
+        { type: "text", text: "Intro." },
+        { type: "render", tableId: "q1", focus: { rowLabels: ["CSB"] } },
+        { type: "text", text: "Value." },
+        { type: "cite", cellIds: ["q1|row|cut"] },
+      ],
+    );
+
+    expect(pending).toEqual([
+      {
+        kind: "ready",
+        part: {
+          type: "tool-searchRunCatalog",
+          state: "output-available",
+          toolCallId: "call-1",
+          input: { query: "brand" },
+        },
+      },
+      { kind: "ready", part: { type: "text", text: "Intro." } },
+      { kind: "ready", part: { type: "render", tableId: "q1", focus: { rowLabels: ["CSB"] } } },
+      { kind: "ready", part: { type: "text", text: "Value." } },
+      { kind: "ready", part: { type: "cite", cellIds: ["q1|row|cut"] } },
     ]);
   });
 

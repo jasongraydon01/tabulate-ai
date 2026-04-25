@@ -12,8 +12,12 @@ import { AppBreadcrumbs } from "@/components/app-breadcrumbs";
 import { AnalysisEmptyState } from "@/components/analysis/AnalysisEmptyState";
 import { AnalysisSessionList } from "@/components/analysis/AnalysisSessionList";
 import { AnalysisThread } from "@/components/analysis/AnalysisThread";
-import { persistedAnalysisMessagesToUIMessages } from "@/lib/analysis/messages";
-import type { AnalysisGroundingRef, AnalysisMessageFeedbackRecord, AnalysisMessageFeedbackVote } from "@/lib/analysis/types";
+import {
+  normalizePersistedAnalysisArtifactRecord,
+  normalizePersistedAnalysisMessageRecord,
+  persistedAnalysisMessagesToUIMessages,
+} from "@/lib/analysis/messages";
+import type { AnalysisMessageFeedbackRecord, AnalysisMessageFeedbackVote } from "@/lib/analysis/types";
 import { useAuthContext } from "@/providers/auth-provider";
 
 interface AnalysisWorkspaceProps {
@@ -21,40 +25,6 @@ interface AnalysisWorkspaceProps {
   projectName: string;
   runId: string;
   runStatus: string;
-}
-
-function normalizeGroundingRefForUI(ref: {
-  claimId: string;
-  claimType: "numeric" | "context" | "cell";
-  evidenceKind: "table_card" | "context" | "cell";
-  refType: string;
-  refId: string;
-  label: string;
-  anchorId?: string;
-  artifactId?: string;
-  sourceTableId?: string;
-  sourceQuestionId?: string;
-  rowKey?: string;
-  cutKey?: string;
-  renderedInCurrentMessage?: boolean;
-}): AnalysisGroundingRef {
-  return {
-    claimId: ref.claimId,
-    claimType: ref.claimType,
-    evidenceKind: ref.evidenceKind,
-    refType: ref.refType as AnalysisGroundingRef["refType"],
-    refId: ref.refId,
-    label: ref.label,
-    ...(ref.anchorId ? { anchorId: ref.anchorId } : {}),
-    ...(ref.artifactId ? { artifactId: String(ref.artifactId) } : {}),
-    ...(ref.sourceTableId ? { sourceTableId: ref.sourceTableId } : {}),
-    ...(ref.sourceQuestionId ? { sourceQuestionId: ref.sourceQuestionId } : {}),
-    ...(ref.rowKey ? { rowKey: ref.rowKey } : {}),
-    ...(ref.cutKey ? { cutKey: ref.cutKey } : {}),
-    ...(typeof ref.renderedInCurrentMessage === "boolean"
-      ? { renderedInCurrentMessage: ref.renderedInCurrentMessage }
-      : {}),
-  };
 }
 
 export function AnalysisWorkspace({
@@ -322,26 +292,8 @@ export function AnalysisWorkspace({
           }
         }}
         initialMessages={persistedAnalysisMessagesToUIMessages(
-          messages.map((message) => ({
-            _id: String(message._id),
-            role: message.role,
-            content: message.content,
-            groundingRefs: message.groundingRefs?.map(normalizeGroundingRefForUI),
-            followUpSuggestions: message.followUpSuggestions,
-            parts: message.parts?.map((part) => ({
-              type: part.type,
-              text: part.text,
-              state: part.state,
-              artifactId: part.artifactId ? String(part.artifactId) : undefined,
-              label: part.label,
-              toolCallId: part.toolCallId,
-            })),
-          })),
-          artifacts.map((artifact) => ({
-            _id: String(artifact._id),
-            artifactType: artifact.artifactType,
-            payload: artifact.payload,
-          })),
+          messages.map((message) => normalizePersistedAnalysisMessageRecord(message)),
+          artifacts.map((artifact) => normalizePersistedAnalysisArtifactRecord(artifact)),
         )}
       />
     );

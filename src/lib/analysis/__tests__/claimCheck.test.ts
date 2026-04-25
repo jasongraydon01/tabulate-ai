@@ -224,6 +224,36 @@ describe("resolveAssistantMessageTrust (cite-driven)", () => {
     expect(result.hasGroundedClaims).toBe(false);
     expect(result.groundingRefs).toEqual([]);
   });
+
+  it("derives grounding refs from structured cite parts without rescanning prose text", () => {
+    const result = resolveAssistantMessageTrust({
+      assistantParts: [
+        { type: "text", text: "Awareness is 58% overall." },
+        { type: "cite", cellIds: [TOTAL_CELL_ID] },
+      ],
+      responseParts: [{ type: "text", text: "Awareness is 58% overall." }],
+      groundingEvents: [
+        {
+          toolName: "confirmCitation",
+          toolCallId: "confirm-1",
+          sourceRefs: makeCellSummary().sourceRefs,
+          cellSummary: makeCellSummary(),
+        },
+      ],
+    });
+
+    expect(result.assistantText).toBe(`Awareness is 58% overall.${buildAnalysisCiteMarker([TOTAL_CELL_ID])}`);
+    expect(result.assistantParts).toEqual([
+      { type: "text", text: "Awareness is 58% overall." },
+      { type: "cite", cellIds: [TOTAL_CELL_ID] },
+    ]);
+    expect(result.groundingRefs).toHaveLength(1);
+    expect(result.groundingRefs[0]).toMatchObject({
+      claimId: TOTAL_CELL_ID,
+      claimType: "cell",
+      refId: "q1",
+    });
+  });
 });
 
 describe("detectUncitedSpecificNumbers", () => {

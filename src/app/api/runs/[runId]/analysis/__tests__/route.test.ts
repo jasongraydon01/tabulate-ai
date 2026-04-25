@@ -345,6 +345,9 @@ describe("analysis chat route", () => {
               input: { topic: "brands" },
             },
             { type: "text", text: "Prior answer." },
+            { type: "render", tableId: "q1", focus: { rowLabels: ["CSB"] } },
+            { type: "text", text: "Value." },
+            { type: "cite", cellIds: ["q1|row|cut"] },
           ],
         },
       ])
@@ -435,7 +438,10 @@ describe("analysis chat route", () => {
               state: "input-available",
               input: { topic: "brands" },
             },
-            { type: "text", text: "Prior answer." },
+            {
+              type: "text",
+              text: 'Prior answer.\n\n[[render tableId=q1 rowLabels=["CSB"]]]\n\nValue.[[cite cellIds=q1|row|cut]]',
+            },
           ],
         },
         {
@@ -686,6 +692,10 @@ describe("analysis chat route", () => {
     expect(response.status).toBe(200);
     await response.text();
     expect(mocks.mutateInternal.mock.calls[2][1]).toEqual(expect.objectContaining({
+      parts: expect.arrayContaining([
+        { type: "text", text: "Overall satisfaction is 45%." },
+        { type: "cite", cellIds: [cellId] },
+      ]),
       groundingRefs: expect.arrayContaining([
         expect.objectContaining({
           claimId: cellId,
@@ -693,6 +703,8 @@ describe("analysis chat route", () => {
           evidenceKind: "cell",
           refType: "table",
           refId: "q1",
+          anchorId: "tool-1",
+          artifactId: "artifact-1",
           rowKey: "row_0_1",
           cutKey: "__total__::total",
           sourceTableId: "q1",
@@ -927,8 +939,7 @@ describe("analysis chat route", () => {
     await response.text();
     // The marker referenced q1 but q1 is not in the mock catalog and was not
     // fetched this turn — validation strips it from the in-memory text before
-    // persistence, and the separate stripAnalysisRenderAnchors pass strips
-    // from the persisted `content`. Both surfaces see the cleaned text.
+    // persistence, and the persisted assistant structure keeps only cleaned prose.
     expect(mocks.mutateInternal.mock.calls[1][1]).toEqual(expect.objectContaining({
       content: "Intro.\n\nClose.",
       parts: [
@@ -940,5 +951,125 @@ describe("analysis chat route", () => {
       assistantResponse: "Intro.\n\nClose.",
       abortSignal: expect.any(AbortSignal),
     });
+  });
+
+  it("persists structured render parts while leaving the current streamed text behavior unchanged", async () => {
+    mocks.loadAnalysisGroundingContext.mockResolvedValueOnce({
+      availability: "available",
+      missingArtifacts: [],
+      tables: { q1: { tableId: "q1" } },
+      questions: [],
+      bannerGroups: [],
+      bannerPlanGroups: [],
+      bannerRouteMetadata: null,
+      surveyMarkdown: null,
+      surveyQuestions: [],
+      projectContext: {
+        projectName: "TabulateAI Study",
+        runStatus: "success",
+        studyMethodology: null,
+        analysisMethod: null,
+        bannerSource: null,
+        bannerMode: null,
+        tableCount: null,
+        bannerGroupCount: null,
+        totalCuts: null,
+        bannerGroupNames: [],
+        researchObjectives: null,
+        bannerHints: null,
+        intakeFiles: {
+          dataFile: null,
+          survey: null,
+          bannerPlan: null,
+          messageList: null,
+        },
+      },
+      tablesMetadata: {
+        significanceTest: null,
+        significanceLevel: null,
+        comparisonGroups: [],
+      },
+    });
+
+    mocks.query
+      .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
+      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Analysis Session 1", titleSource: "manual" })
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
+    mocks.mutateInternal
+      .mockResolvedValueOnce("user-msg-1")
+      .mockResolvedValueOnce("artifact-1")
+      .mockResolvedValueOnce("assistant-msg-1");
+    mocks.streamAnalysisResponse.mockResolvedValueOnce({
+      streamResult: makeStreamResult({
+        responseMessage: {
+          parts: [
+            {
+              type: "tool-fetchTable",
+              toolCallId: "tool-1",
+              state: "output-available",
+              input: {
+                tableId: "q1",
+                cutGroups: null,
+              },
+              output: {
+                status: "available",
+                tableId: "q1",
+                title: "Q1 overall",
+                questionId: "Q1",
+                questionText: "How satisfied are you?",
+                tableType: "frequency",
+                surveySection: null,
+                baseText: "All respondents",
+                tableSubtitle: null,
+                userNote: null,
+                valueMode: "pct",
+                columns: [],
+                rows: [],
+                totalRows: 0,
+                totalColumns: 0,
+                truncatedRows: 0,
+                truncatedColumns: 0,
+                requestedCutGroups: null,
+                focusedRowKeys: null,
+                focusedGroupKeys: null,
+                significanceTest: null,
+                significanceLevel: null,
+                comparisonGroups: [],
+                sourceRefs: [],
+              },
+            },
+            {
+              type: "text",
+              text: "Intro.\n\n[[render tableId=q1]]\n\nClose.",
+            },
+          ],
+        },
+      }),
+      getTraceCapture: () => makeTraceCapture(),
+      getGroundingCapture: () => [],
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/runs/run-1/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          messages: [{ id: "user-1", role: "user", parts: [{ type: "text", text: "Show me the narrative and table" }] }],
+        }),
+      }),
+      { params: Promise.resolve({ runId: "run-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(mocks.mutateInternal.mock.calls[2][1]).toEqual(expect.objectContaining({
+      content: "Intro.\n\nClose.",
+      parts: expect.arrayContaining([
+        { type: "render", tableId: "q1" },
+      ]),
+    }));
   });
 });

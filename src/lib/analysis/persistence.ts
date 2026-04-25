@@ -2,11 +2,15 @@ import { isReasoningUIPart, isTextUIPart, isToolUIPart, type UIMessage } from "a
 
 import { sanitizeGroundingToolOutput } from "@/lib/analysis/grounding";
 import { sanitizeAnalysisAssistantMessageContent } from "@/lib/analysis/messages";
+import type { AnalysisStructuredAssistantPart } from "@/lib/analysis/types";
 import {
   CONFIRM_CITATION_TOOL_TYPE,
   FETCH_TABLE_TOOL_TYPE,
 } from "@/lib/analysis/toolLabels";
 import {
+  isAnalysisStructuredCitePart,
+  isAnalysisStructuredRenderPart,
+  isAnalysisStructuredTextPart,
   isAnalysisCellSummary,
   isAnalysisTableCard,
   type AnalysisCellSummary,
@@ -16,6 +20,9 @@ import {
 export interface PersistedAnalysisPart {
   type: string;
   text?: string;
+  tableId?: string;
+  focus?: unknown;
+  cellIds?: string[];
   state?: string;
   label?: string;
   toolCallId?: string;
@@ -60,10 +67,69 @@ export type PendingAnalysisPart =
  * duplicating large table payloads inline.
  */
 export function buildPersistedAnalysisParts(parts: UIMessage["parts"]): PendingAnalysisPart[] {
+  return buildPersistedAnalysisPartsWithStructuredAssistantParts(parts);
+}
+
+export function buildPersistedAnalysisPartsWithStructuredAssistantParts(
+  parts: UIMessage["parts"],
+  structuredAssistantParts?: AnalysisStructuredAssistantPart[],
+): PendingAnalysisPart[] {
   const pending: PendingAnalysisPart[] = [];
+  let insertedStructuredAssistantParts = false;
+
+  function appendStructuredAssistantParts() {
+    if (insertedStructuredAssistantParts || !structuredAssistantParts || structuredAssistantParts.length === 0) {
+      insertedStructuredAssistantParts = true;
+      return;
+    }
+
+    for (const part of structuredAssistantParts) {
+      if (isAnalysisStructuredTextPart(part)) {
+        const text = sanitizeAnalysisAssistantMessageContent(part.text);
+        if (!text) continue;
+        pending.push({
+          kind: "ready",
+          part: {
+            type: "text",
+            text,
+          },
+        });
+        continue;
+      }
+
+      if (isAnalysisStructuredRenderPart(part)) {
+        pending.push({
+          kind: "ready",
+          part: {
+            type: "render",
+            tableId: part.tableId,
+            ...(part.focus ? { focus: part.focus } : {}),
+          },
+        });
+        continue;
+      }
+
+      if (isAnalysisStructuredCitePart(part) && part.cellIds.length > 0) {
+        pending.push({
+          kind: "ready",
+          part: {
+            type: "cite",
+            cellIds: [...part.cellIds],
+          },
+        });
+      }
+    }
+
+    insertedStructuredAssistantParts = true;
+  }
 
   for (const part of parts) {
     if (isTextUIPart(part)) {
+      if (structuredAssistantParts) {
+        appendStructuredAssistantParts();
+        continue;
+      }
+
       const text = sanitizeAnalysisAssistantMessageContent(part.text);
       if (!text) continue;
       pending.push({
@@ -152,5 +218,6 @@ export function buildPersistedAnalysisParts(parts: UIMessage["parts"]): PendingA
     });
   }
 
+  appendStructuredAssistantParts();
   return pending;
 }

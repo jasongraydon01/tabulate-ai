@@ -7,6 +7,7 @@ import {
   getAnalysisMessageFollowUpSuggestions,
   getSanitizedConversationMessagesForModel,
   getAnalysisUIMessageText,
+  normalizePersistedAnalysisMessageRecord,
   normalizeAssistantMarkdown,
   persistedAnalysisMessagesToUIMessages,
   sanitizeAnalysisAssistantMessageContent,
@@ -192,6 +193,98 @@ describe("analysis message helpers", () => {
       { type: "reasoning", text: "Thinking through base sizes first.", state: "done" },
       { type: "text", text: "Base looks solid." },
     ]);
+  });
+
+  it("rehydrates persisted structured assistant parts into legacy marker text for the current renderer", () => {
+    const messages = persistedAnalysisMessagesToUIMessages([
+      {
+        _id: "msg-1",
+        role: "assistant",
+        content: "Intro. Close.",
+        parts: [
+          { type: "text", text: "Intro." },
+          { type: "render", tableId: "q1", focus: { rowLabels: ["CSB"] } },
+          { type: "text", text: "Value." },
+          { type: "cite", cellIds: ["q1|row|cut"] },
+        ],
+      },
+    ]);
+
+    expect(messages[0].parts).toEqual([
+      {
+        type: "text",
+        text: 'Intro.\n\n[[render tableId=q1 rowLabels=["CSB"]]]\n\nValue.[[cite cellIds=q1|row|cut]]',
+      },
+    ]);
+  });
+
+  it("preserves structured assistant part payloads through the shared persisted-message normalizer", () => {
+    const messages = persistedAnalysisMessagesToUIMessages([
+      normalizePersistedAnalysisMessageRecord({
+        _id: "msg-1",
+        role: "assistant",
+        content: "Intro. Value.",
+        parts: [
+          { type: "text", text: "Intro." },
+          { type: "render", tableId: "q1", focus: { rowLabels: ["CSB"], groupRefs: ["group:age"] } },
+          { type: "text", text: "Value." },
+          { type: "cite", cellIds: ["q1|row|cut"] },
+          {
+            type: "tool-searchRunCatalog",
+            toolCallId: "call-1",
+            state: "output-available",
+            input: { query: "awareness" },
+            output: { matches: ["Q1"] },
+          },
+        ],
+        groundingRefs: [
+          {
+            claimId: "q1|row|cut",
+            claimType: "cell",
+            evidenceKind: "cell",
+            refType: "table",
+            refId: "q1",
+            label: "Q1 overall — CSB / Total",
+            anchorId: "tool-1",
+            artifactId: "artifact-1",
+            sourceTableId: "q1",
+            sourceQuestionId: "Q1",
+            rowKey: "row",
+            cutKey: "cut",
+            renderedInCurrentMessage: true,
+          },
+        ],
+        followUpSuggestions: ["Show me the base sizes"],
+      }),
+    ]);
+
+    expect(messages[0]).toEqual({
+      id: "msg-1",
+      role: "assistant",
+      metadata: {
+        hasGroundedClaims: true,
+        evidence: [
+          expect.objectContaining({
+            anchorId: "tool-1",
+            artifactId: "artifact-1",
+          }),
+        ],
+        followUpSuggestions: ["Show me the base sizes"],
+      },
+      parts: [
+        {
+          type: "text",
+          text: 'Intro.\n\n[[render tableId=q1 rowLabels=["CSB"] groupRefs=["group:age"]]]\n\nValue.[[cite cellIds=q1|row|cut]]',
+        },
+        {
+          type: "tool-searchRunCatalog",
+          toolCallId: "call-1",
+          state: "output-available",
+          input: { query: "awareness" },
+          output: { matches: ["Q1"] },
+        },
+      ],
+    });
   });
 
   it("rehydrates persisted non-fetchTable tool parts when allowlisted and toolCallId is present", () => {

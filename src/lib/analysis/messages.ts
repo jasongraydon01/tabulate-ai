@@ -8,12 +8,15 @@ import {
 import { stripAnalysisCiteAnchors } from "@/lib/analysis/citeAnchors";
 import { buildFetchTableModelMarkdown } from "@/lib/analysis/grounding";
 import { stripAnalysisRenderAnchors } from "@/lib/analysis/renderAnchors";
+import { serializeAnalysisStructuredAssistantPartsToText } from "@/lib/analysis/structuredParts";
 import {
   CONFIRM_CITATION_TOOL_TYPE,
   FETCH_TABLE_TOOL_TYPE,
 } from "@/lib/analysis/toolLabels";
 import type { AnalysisFetchTableCutGroups } from "@/lib/analysis/types";
 import {
+  type AnalysisStructuredAssistantPart,
+  type AnalysisRenderDirectiveFocus,
   isAnalysisCellSummary,
   isAnalysisTableCard,
   type AnalysisCellSummary,
@@ -26,29 +29,146 @@ import {
 export const MAX_ANALYSIS_MESSAGE_CHARS = 4000;
 export const MAX_ANALYSIS_ASSISTANT_MESSAGE_CHARS = 16000;
 
-interface PersistedAnalysisMessageRecord {
+interface PersistedAnalysisPartRecordInput {
+  type: string;
+  text?: string;
+  tableId?: string;
+  focus?: unknown;
+  cellIds?: unknown;
+  state?: string;
+  artifactId?: unknown;
+  label?: string;
+  toolCallId?: string;
+  cellSummary?: unknown;
+  input?: unknown;
+  output?: unknown;
+}
+
+interface PersistedAnalysisPartRecord {
+  type: string;
+  text?: string;
+  tableId?: string;
+  focus?: unknown;
+  cellIds?: unknown;
+  state?: string;
+  artifactId?: string;
+  label?: string;
+  toolCallId?: string;
+  cellSummary?: unknown;
+  input?: unknown;
+  output?: unknown;
+}
+
+interface PersistedAnalysisGroundingRefInput {
+  claimId: string;
+  claimType: "numeric" | "context" | "cell";
+  evidenceKind: "table_card" | "context" | "cell";
+  refType: string;
+  refId: string;
+  label: string;
+  anchorId?: string | null;
+  artifactId?: unknown;
+  sourceTableId?: string;
+  sourceQuestionId?: string;
+  rowKey?: string;
+  cutKey?: string;
+  renderedInCurrentMessage?: boolean;
+}
+
+export interface PersistedAnalysisMessageRecord {
   _id: string;
   role: "user" | "assistant" | "system";
   content: string;
-  parts?: Array<{
-    type: string;
-    text?: string;
-    state?: string;
-    artifactId?: string;
-    label?: string;
-    toolCallId?: string;
-    cellSummary?: unknown;
-    input?: unknown;
-    output?: unknown;
-  }>;
+  parts?: PersistedAnalysisPartRecord[];
   groundingRefs?: AnalysisGroundingRef[];
   followUpSuggestions?: string[];
 }
 
-interface PersistedAnalysisArtifactRecord {
+export interface PersistedAnalysisArtifactRecord {
   _id: string;
   artifactType: "table_card" | "note";
   payload: unknown;
+}
+
+function normalizePersistedAnalysisPartRecord(
+  part: PersistedAnalysisPartRecordInput,
+): PersistedAnalysisPartRecord {
+  return {
+    type: part.type,
+    ...(typeof part.text === "string" ? { text: part.text } : {}),
+    ...(typeof part.tableId === "string" ? { tableId: part.tableId } : {}),
+    ...(part.focus !== undefined ? { focus: part.focus } : {}),
+    ...(part.cellIds !== undefined ? { cellIds: part.cellIds } : {}),
+    ...(typeof part.state === "string" ? { state: part.state } : {}),
+    ...(part.artifactId !== undefined && part.artifactId !== null
+      ? { artifactId: String(part.artifactId) }
+      : {}),
+    ...(typeof part.label === "string" ? { label: part.label } : {}),
+    ...(typeof part.toolCallId === "string" ? { toolCallId: part.toolCallId } : {}),
+    ...(part.cellSummary !== undefined ? { cellSummary: part.cellSummary } : {}),
+    ...(part.input !== undefined ? { input: part.input } : {}),
+    ...(part.output !== undefined ? { output: part.output } : {}),
+  };
+}
+
+function normalizePersistedAnalysisGroundingRef(
+  ref: PersistedAnalysisGroundingRefInput,
+): AnalysisGroundingRef {
+  return {
+    claimId: ref.claimId,
+    claimType: ref.claimType,
+    evidenceKind: ref.evidenceKind,
+    refType: ref.refType as AnalysisGroundingRef["refType"],
+    refId: ref.refId,
+    label: ref.label,
+    ...(typeof ref.anchorId === "string" ? { anchorId: ref.anchorId } : {}),
+    ...(ref.artifactId !== undefined && ref.artifactId !== null
+      ? { artifactId: String(ref.artifactId) }
+      : {}),
+    ...(typeof ref.sourceTableId === "string" ? { sourceTableId: ref.sourceTableId } : {}),
+    ...(typeof ref.sourceQuestionId === "string" ? { sourceQuestionId: ref.sourceQuestionId } : {}),
+    ...(typeof ref.rowKey === "string" ? { rowKey: ref.rowKey } : {}),
+    ...(typeof ref.cutKey === "string" ? { cutKey: ref.cutKey } : {}),
+    ...(typeof ref.renderedInCurrentMessage === "boolean"
+      ? { renderedInCurrentMessage: ref.renderedInCurrentMessage }
+      : {}),
+  };
+}
+
+export function normalizePersistedAnalysisMessageRecord(
+  message: {
+    _id: unknown;
+    role: "user" | "assistant" | "system";
+    content: string;
+    parts?: PersistedAnalysisPartRecordInput[];
+    groundingRefs?: PersistedAnalysisGroundingRefInput[];
+    followUpSuggestions?: string[];
+  },
+): PersistedAnalysisMessageRecord {
+  return {
+    _id: String(message._id),
+    role: message.role,
+    content: message.content,
+    ...(message.parts ? { parts: message.parts.map(normalizePersistedAnalysisPartRecord) } : {}),
+    ...(message.groundingRefs
+      ? { groundingRefs: message.groundingRefs.map(normalizePersistedAnalysisGroundingRef) }
+      : {}),
+    ...(message.followUpSuggestions ? { followUpSuggestions: message.followUpSuggestions } : {}),
+  };
+}
+
+export function normalizePersistedAnalysisArtifactRecord(
+  artifact: {
+    _id: unknown;
+    artifactType: "table_card" | "note";
+    payload: unknown;
+  },
+): PersistedAnalysisArtifactRecord {
+  return {
+    _id: String(artifact._id),
+    artifactType: artifact.artifactType,
+    payload: artifact.payload,
+  };
 }
 
 function normalizeAnalysisLineBreaks(content: string): string {
@@ -258,6 +378,34 @@ function extractCellSummary(
   return isAnalysisCellSummary(cellSummary) ? (cellSummary as AnalysisCellSummary) : null;
 }
 
+function extractStructuredAssistantPart(
+  part: PersistedAnalysisPartRecord,
+): AnalysisStructuredAssistantPart | null {
+  if (part.type === "text" && typeof part.text === "string") {
+    return { type: "text", text: part.text };
+  }
+
+  if (part.type === "render" && typeof part.tableId === "string") {
+    return {
+      type: "render",
+      tableId: part.tableId,
+      ...(part.focus && typeof part.focus === "object" && !Array.isArray(part.focus)
+        ? { focus: part.focus as AnalysisRenderDirectiveFocus }
+        : {}),
+    } as AnalysisStructuredAssistantPart;
+  }
+
+  if (part.type === "cite" && Array.isArray(part.cellIds)) {
+    const cellIds = part.cellIds
+      .filter((cellId: unknown): cellId is string => typeof cellId === "string")
+      .map((cellId: string) => cellId.trim())
+      .filter((cellId: string) => cellId.length > 0);
+    return cellIds.length > 0 ? { type: "cite", cellIds } : null;
+  }
+
+  return null;
+}
+
 export function persistedAnalysisMessagesToUIMessages(
   messages: PersistedAnalysisMessageRecord[],
   artifacts: PersistedAnalysisArtifactRecord[] = [],
@@ -287,15 +435,27 @@ export function persistedAnalysisMessagesToUIMessages(
       : {}),
     parts: (() => {
       const parts: UIMessage["parts"] = [];
+      const structuredAssistantParts: AnalysisStructuredAssistantPart[] = [];
+
+      function flushStructuredAssistantParts() {
+        if (structuredAssistantParts.length === 0) return;
+        const text = serializeAnalysisStructuredAssistantPartsToText(structuredAssistantParts);
+        structuredAssistantParts.length = 0;
+        if (!text) return;
+        parts.push({
+          type: "text",
+          text,
+        });
+      }
 
       for (const part of message.parts ?? []) {
-        if (part.type === "text" && part.text) {
-          parts.push({
-            type: "text",
-            text: part.text,
-          });
+        const structuredAssistantPart = extractStructuredAssistantPart(part);
+        if (structuredAssistantPart) {
+          structuredAssistantParts.push(structuredAssistantPart);
           continue;
         }
+
+        flushStructuredAssistantParts();
 
         if (part.type === "reasoning" && part.text) {
           parts.push({
@@ -341,6 +501,8 @@ export function persistedAnalysisMessagesToUIMessages(
           } as UIMessage["parts"][number]);
         }
       }
+
+      flushStructuredAssistantParts();
 
       if (parts.length === 0 && message.content) {
         parts.push({
