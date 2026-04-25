@@ -22,7 +22,7 @@ import { extractStreamlinedData } from '@/lib/data/extractStreamlinedData';
 import { ResultsTablesFinalContractSchema } from '@/lib/exportData/inputArtifactSchemas';
 import { fixRHexEscapes } from '@/lib/r/fixRHexEscapes';
 import { persistSystemError } from '@/lib/errors/ErrorPersistence';
-import { buildFinalTablesContract } from './finalTableContract';
+import { buildFinalTablesContract, type FinalTableContractComputeInput } from './finalTableContract';
 
 import type { ComputePackageOutput } from './compute/types';
 
@@ -202,13 +202,13 @@ async function saveRLog(
   return rLogPath;
 }
 
-async function finalizeResultsTablesArtifact(
+export async function finalizeResultsTablesArtifact(
   jsonPath: string,
-  computePackage: ComputePackageOutput,
+  computeInput: FinalTableContractComputeInput,
 ) {
   const jsonContent = fixRHexEscapes(await fs.readFile(jsonPath, 'utf-8'));
   const rawResultsTables = JSON.parse(jsonContent);
-  const finalized = buildFinalTablesContract(rawResultsTables, computePackage);
+  const finalized = buildFinalTablesContract(rawResultsTables, computeInput);
   const validated = ResultsTablesFinalContractSchema.parse(finalized);
   await fs.writeFile(jsonPath, JSON.stringify(validated, null, 2), 'utf-8');
   return validated;
@@ -321,10 +321,10 @@ export async function runPostV3Processing(
 
     // Process R output files
     const resultFiles = await fs.readdir(resultsDir);
-    const computePackagePath = path.join(computeDir, '22-compute-package.json');
-    const computePackage = JSON.parse(
-      await fs.readFile(computePackagePath, 'utf-8'),
-    ) as ComputePackageOutput;
+    const finalTableComputeInput: FinalTableContractComputeInput = {
+      tables: compute.rScriptInput.tables,
+      cuts: compute.rScriptInput.cuts,
+    };
 
     if (weightVariable) {
       // Dual output mode: weighted + unweighted
@@ -334,11 +334,11 @@ export async function runPostV3Processing(
       if (hasWeighted && hasUnweighted) {
         const weightedData = await finalizeResultsTablesArtifact(
           path.join(resultsDir, 'tables-weighted.json'),
-          computePackage,
+          finalTableComputeInput,
         );
         await finalizeResultsTablesArtifact(
           path.join(resultsDir, 'tables-unweighted.json'),
-          computePackage,
+          finalTableComputeInput,
         );
         rOutputTableCount = Object.keys(weightedData.tables || {}).length;
         log(`[PostV3] R output: tables-weighted.json + tables-unweighted.json (${rOutputTableCount} tables each)`);
@@ -358,7 +358,7 @@ export async function runPostV3Processing(
       if (resultFiles.includes('tables.json')) {
         const jsonData = await finalizeResultsTablesArtifact(
           path.join(resultsDir, 'tables.json'),
-          computePackage,
+          finalTableComputeInput,
         );
         rOutputTableCount = Object.keys(jsonData.tables || {}).length;
 

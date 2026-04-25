@@ -76,11 +76,9 @@ interface ComputeTable {
   rows?: ComputeRow[];
 }
 
-interface ComputePackageArtifact {
-  rScriptInput?: {
-    tables?: ComputeTable[];
-    cuts?: ComputeCut[];
-  };
+export interface FinalTableContractComputeInput {
+  tables?: ComputeTable[];
+  cuts?: ComputeCut[];
 }
 
 interface FinalTableColumn {
@@ -400,12 +398,12 @@ function buildBannerColumnLookup(metadata: ResultsMetadata | undefined): Map<str
 }
 
 function buildComputeCutLookup(
-  computePackage: ComputePackageArtifact,
+  computeInput: FinalTableContractComputeInput,
 ): Map<string, { groupName: string; statLetter: string | null; order: number }> {
   const lookup = new Map<string, { groupName: string; statLetter: string | null; order: number }>();
   let order = 0;
 
-  for (const cut of computePackage.rScriptInput?.cuts ?? []) {
+  for (const cut of computeInput.cuts ?? []) {
     if (typeof cut.name !== "string" || cut.name.trim().length === 0) continue;
     lookup.set(normalizeText(cut.name), {
       groupName: typeof cut.groupName === "string" ? cut.groupName : "",
@@ -421,11 +419,11 @@ function buildComputeCutLookup(
 function buildFinalTableColumns(
   table: ResultsTableEntry,
   metadata: ResultsMetadata | undefined,
-  computePackage: ComputePackageArtifact,
+  computeInput: FinalTableContractComputeInput,
 ): FinalTableColumn[] {
   const columnsByNormalizedCut = new Map<string, FinalTableColumn>();
   const bannerLookup = buildBannerColumnLookup(metadata);
-  const computeLookup = buildComputeCutLookup(computePackage);
+  const computeLookup = buildComputeCutLookup(computeInput);
   const dataEntries = Object.entries(table.data ?? {});
 
   for (const [cutName, cut] of dataEntries) {
@@ -466,10 +464,10 @@ function buildDemoBannerRows(
   tableId: string,
   rowKeys: string[],
   totalCut: ResultsCutData | undefined,
-  computePackage: ComputePackageArtifact,
+  computeInput: FinalTableContractComputeInput,
   tableType: string | undefined,
 ): FinalTableRow[] {
-  const cuts = (computePackage.rScriptInput?.cuts ?? []).filter(
+  const cuts = (computeInput.cuts ?? []).filter(
     (cut): cut is ComputeCut & { name: string } =>
       typeof cut.name === "string" && cut.name.trim().length > 0,
   );
@@ -494,7 +492,7 @@ function buildFinalTableRows(
   tableId: string,
   table: ResultsTableEntry,
   computeTable: ComputeTable | undefined,
-  computePackage: ComputePackageArtifact,
+  computeInput: FinalTableContractComputeInput,
 ): FinalTableRow[] {
   const columns = Object.entries(table.data ?? {});
   const totalEntry = columns.find(([cutName, cut]) => isTotalCut(cutName, cut)) ?? columns[0];
@@ -518,7 +516,7 @@ function buildFinalTableRows(
   }
 
   if (tableId === DEMO_BANNER_TABLE_ID && computeRows.length === 0) {
-    return buildDemoBannerRows(tableId, rowKeys, totalCut, computePackage, tableType);
+    return buildDemoBannerRows(tableId, rowKeys, totalCut, computeInput, tableType);
   }
 
   if (computeRows.length !== rowKeys.length) {
@@ -533,16 +531,16 @@ export function buildFinalTableContractEntry(
   tableId: string,
   table: ResultsTableEntry,
   metadata: ResultsMetadata | undefined,
-  computePackage: ComputePackageArtifact,
+  computeInput: FinalTableContractComputeInput,
 ): FinalTableContractEntry {
   const computeTables = new Map(
-    (computePackage.rScriptInput?.tables ?? [])
+    (computeInput.tables ?? [])
       .filter((entry): entry is ComputeTable & { tableId: string } => typeof entry.tableId === "string")
       .map((entry) => [entry.tableId, entry]),
   );
   const computeTable = computeTables.get(tableId);
-  const columns = buildFinalTableColumns(table, metadata, computePackage);
-  const rows = buildFinalTableRows(tableId, table, computeTable, computePackage)
+  const columns = buildFinalTableColumns(table, metadata, computeInput);
+  const rows = buildFinalTableRows(tableId, table, computeTable, computeInput)
     .map((row) => ({
       ...row,
       cells: buildFinalRowCells(columns, table, row),
@@ -557,7 +555,7 @@ export function buildFinalTableContractEntry(
 
 export function buildFinalTablesContract(
   resultsTables: ResultsTablesArtifact,
-  computePackage: ComputePackageArtifact,
+  computeInput: FinalTableContractComputeInput,
 ): FinalTablesContractArtifact {
   return {
     ...resultsTables,
@@ -565,7 +563,7 @@ export function buildFinalTablesContract(
       Object.entries(resultsTables.tables).map(([tableId, table]) => {
         return [
           tableId,
-          buildFinalTableContractEntry(tableId, table, resultsTables.metadata, computePackage),
+          buildFinalTableContractEntry(tableId, table, resultsTables.metadata, computeInput),
         ];
       }),
     ),

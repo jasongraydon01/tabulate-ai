@@ -12,7 +12,14 @@ The hard cut itself is implemented. The main contract decisions are settled:
 - analysis grounding, rendered analysis tables, and citation flows have already been moved onto the settled contract.
 - downstream cleanup work landed and stale `getTableCard` helper language was removed from the live analysis workflow.
 
-This document is now mainly a **post-implementation bug-tracking outline**, not an active slice plan.
+This document is now mainly a **post-implementation stabilization tracker**, not an active slice plan.
+
+### Stabilization Status
+
+- **Slice 1 complete on `dev`**: upstream final-table materialization now consumes the settled stage-22 compute shape directly.
+- `src/lib/v3/runtime/postV3Processing.ts` finalizes `results/tables*.json` from the in-memory compute input used to generate the R script instead of re-reading `compute/22-compute-package.json` with a stale nested-shape assumption.
+- `src/lib/v3/runtime/finalTableContract.ts` now reads the actual top-level `tables` / `cuts` contract used by stage 22.
+- deterministic regression coverage now includes both the derived demo-banner path and dual weighted/unweighted finalization.
 
 ## What The Hard Cut Already Achieved
 
@@ -24,21 +31,22 @@ This document is now mainly a **post-implementation bug-tracking outline**, not 
 
 ## Where We Actually Are Now
 
-The remaining work is not “finish the hard cut design.” It is **stabilize the hard cut after implementation**.
+The remaining work is not “finish the hard cut design.” It is **finish stabilization after implementation**.
 
-The current failures are showing up because some runs still reach downstream consumers with a raw or partially finalized `results/tables*.json` artifact even though Q and WinCross now expect the settled final contract.
+The first upstream blocker is now addressed. The remaining work is mostly about making pipeline state and export readiness describe that contract truthfully and fail closed when it is not satisfied.
 
 ## Confirmed Bug Stack
 
-### 1. Final-table materialization can still fail upstream
+### 1. Upstream final-table materialization mismatch was real and is now fixed
 
 We traced a real failing run where the post-R final-contract pass failed before `results/tables.json` was upgraded into the settled `columns` / `rows` / `cells` shape.
 
-Confirmed issue:
+What was fixed:
 
-- `src/lib/v3/runtime/finalTableContract.ts` is still reading the stage-22 compute artifact using a stale shape assumption in at least one path.
-- The persisted compute artifact on disk is top-level `tables` / `cuts`, while the final-table builder still expects `computePackage.rScriptInput?.tables` / `computePackage.rScriptInput?.cuts`.
-- That mismatch breaks final-contract row construction for the derived demo banner path and leaves the raw tables artifact in place.
+- `src/lib/v3/runtime/finalTableContract.ts` no longer expects `computePackage.rScriptInput?.tables` / `computePackage.rScriptInput?.cuts`.
+- the final-table builder now reads the settled top-level stage-22 `tables` / `cuts` shape directly.
+- the shared post-R path now finalizes raw `results/tables*.json` from the same compute input that generated the R script.
+- regression coverage now protects the derived demo banner path and weighted/unweighted finalization.
 
 ### 2. R success is being conflated with post-R contract finalization
 
@@ -85,13 +93,13 @@ That fix was necessary, but it is not the current root cause for the failing unw
 
 ### Priority 1 — Fix upstream final-table materialization
 
-Primary target:
+Status:
 
-- make `src/lib/v3/runtime/finalTableContract.ts` read the actual persisted stage-22 compute artifact shape used by the live pipeline
+- **Done on `dev`**
 
-Expected result:
+Delivered result:
 
-- successful runs produce finalized `results/tables.json` (and weighted variants where relevant) in the settled contract shape before downstream consumers ever see them
+- successful runs now materialize finalized `results/tables.json` (and weighted variants where relevant) from the settled stage-22 compute shape before downstream consumers read those artifacts
 
 ### Priority 2 — Separate pipeline statuses and error labeling
 
@@ -104,6 +112,11 @@ Expected result:
 - a run can truthfully report that R succeeded while also showing that final-contract materialization failed
 - downstream debugging becomes much clearer
 
+What is left at a high level:
+
+- introduce an explicit post-R finalization success/failure state instead of collapsing it into `"R Execution"`
+- make run summaries, persisted errors, and UI-facing status reflect `R success` vs `final-table contract success`
+
 ### Priority 3 — Tighten export readiness around `resultsTables`
 
 Primary target:
@@ -115,6 +128,11 @@ Expected result:
 - bad final-table artifacts are blocked earlier
 - Q / WinCross stop being the first place we discover contract failure
 
+What is left at a high level:
+
+- make export readiness validate the exact `resultsTables` artifact against the final contract schema
+- fail closed before Q / WinCross manifest generation if that artifact is missing or invalid
+
 ### Priority 4 — Add end-to-end regression coverage for the settled contract
 
 Primary target:
@@ -125,13 +143,18 @@ Expected result:
 
 - we prove the hard cut works on real artifact flow, not only in isolated helper tests
 
+What is left at a high level:
+
+- add end-to-end coverage that spans post-R finalization, export readiness, and export-consumer parsing
+- explicitly verify fresh Q and WinCross flows against finalized artifacts rather than helper-only fixtures
+
 ## Working Diagnosis
 
 The hard cut is conceptually right and the settled contract should remain in place. The current problem is that some live runs are not reliably making it all the way onto that contract before downstream consumers read the artifact.
 
 So the current phase is:
 
-1. fix upstream finalization
+1. upstream finalization fixed
 2. cleanly separate status labeling
 3. tighten readiness validation
 4. re-run end-to-end verification for Q and WinCross

@@ -59,22 +59,21 @@ describe("buildFinalTablesContract", () => {
         },
       },
       {
-        rScriptInput: {
-          tables: [
-            {
-              tableId: "b1__scale_item_detail_full_b1r2",
-              tableType: "frequency",
-              rows: [
-                { label: "Top 2 Box", rowKind: "net", isNet: true, indent: 0 },
-                { label: "Probably would not consider this bank", rowKind: "value", isNet: false, indent: 1 },
-                { label: "Mean", rowKind: "stat", statType: "mean", isNet: false, indent: 0 },
-                { label: "Median", rowKind: "stat", statType: "median", isNet: false, indent: 0 },
-                { label: "Std Dev", rowKind: "stat", statType: "stddev", isNet: false, indent: 0 },
-                { label: "Std Err", rowKind: "stat", statType: "stderr", isNet: false, indent: 0 },
-              ],
-            },
-          ],
-        },
+        tables: [
+          {
+            tableId: "b1__scale_item_detail_full_b1r2",
+            tableType: "frequency",
+            rows: [
+              { label: "Top 2 Box", rowKind: "net", isNet: true, indent: 0 },
+              { label: "Probably would not consider this bank", rowKind: "value", isNet: false, indent: 1 },
+              { label: "Mean", rowKind: "stat", statType: "mean", isNet: false, indent: 0 },
+              { label: "Median", rowKind: "stat", statType: "median", isNet: false, indent: 0 },
+              { label: "Std Dev", rowKind: "stat", statType: "stddev", isNet: false, indent: 0 },
+              { label: "Std Err", rowKind: "stat", statType: "stderr", isNet: false, indent: 0 },
+            ],
+          },
+        ],
+        cuts: [],
       },
     );
 
@@ -250,23 +249,21 @@ describe("buildFinalTablesContract", () => {
         },
       },
       {
-        rScriptInput: {
-          cuts: [
-            { name: "Total", statLetter: "T", groupName: "Total" },
-            { name: "Segment A", statLetter: "A", groupName: "Segments" },
-            { name: "Segment B", statLetter: "B", groupName: "Segments" },
-          ],
-          tables: [
-            {
-              tableId: "q5_mean_rows",
-              tableType: "mean_rows",
-              rows: [
-                { label: "Item A", rowKind: "value", isNet: false, indent: 0 },
-                { label: "Item B", rowKind: "value", isNet: false, indent: 0 },
-              ],
-            },
-          ],
-        },
+        cuts: [
+          { name: "Total", statLetter: "T", groupName: "Total" },
+          { name: "Segment A", statLetter: "A", groupName: "Segments" },
+          { name: "Segment B", statLetter: "B", groupName: "Segments" },
+        ],
+        tables: [
+          {
+            tableId: "q5_mean_rows",
+            tableType: "mean_rows",
+            rows: [
+              { label: "Item A", rowKind: "value", isNet: false, indent: 0 },
+              { label: "Item B", rowKind: "value", isNet: false, indent: 0 },
+            ],
+          },
+        ],
       },
     );
 
@@ -406,14 +403,12 @@ describe("buildFinalTablesContract", () => {
         },
       },
       {
-        rScriptInput: {
-          tables: [],
-          cuts: [
-            { name: "Total", statLetter: "T", groupName: "Total" },
-            { name: "Female", statLetter: "A", groupName: "Gender" },
-            { name: "Male", statLetter: "B", groupName: "Gender" },
-          ],
-        },
+        tables: [],
+        cuts: [
+          { name: "Total", statLetter: "T", groupName: "Total" },
+          { name: "Female", statLetter: "A", groupName: "Gender" },
+          { name: "Male", statLetter: "B", groupName: "Gender" },
+        ],
       },
     );
 
