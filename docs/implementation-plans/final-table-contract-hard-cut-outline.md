@@ -24,6 +24,9 @@ This document is now mainly a **post-implementation stabilization tracker**, not
 - the live pipeline now uses a dedicated `finalizing_tables` stage between `executing_r` and export-contract work.
 - runs no longer describe final-table materialization failures as `"R Execution"` failures.
 - export-contract assembly is skipped when final-table materialization fails, so later stages no longer mask that failure.
+- **Slice 3 complete on `dev`**: export readiness now validates the exact resolved `resultsTables` artifact against the final contract schema and fails closed when that artifact is missing or invalid.
+- the Phase 1 export manifest now includes the resolved `resultsTables` input in local artifact integrity checks, so tampering or stale raw-table artifacts invalidate readiness before Q / WinCross generation.
+- local demo Q / WinCross generation now respects the same fail-closed readiness gate instead of letting serializer paths be the first strict consumer.
 
 ## What The Hard Cut Already Achieved
 
@@ -69,14 +72,16 @@ What now exists conceptually in the pipeline:
 
 Those are separate states and the system now carries that distinction through shared post-processing, summaries, and worker status handling.
 
-### 3. Export readiness is too optimistic
+### 3. Export readiness used to be too optimistic and is now fixed
 
-The export-manifest/readiness layer currently does not fail closed on an invalid final tables artifact.
+The export-manifest/readiness layer now fails closed on an invalid final tables artifact.
 
-Confirmed issue:
+What was fixed:
 
-- a run can still report as export-ready even when the exact `resultsTables` input that Q / WinCross will read does not conform to the final contract.
-- that means the exporter becomes the first strict consumer to surface the problem instead of the pipeline/readiness layer catching it earlier.
+- the Phase 1 export manifest now validates `artifactPaths.inputs.resultsTables` against the settled final contract schema.
+- readiness now records an explicit `invalid_results_tables_contract` failure when that artifact is raw, stale, or otherwise invalid.
+- the resolved `resultsTables` path now participates in local integrity checks, so checksum drift on the real export input invalidates readiness.
+- local demo export generation now gates on the same readiness result instead of attempting best-effort serialization.
 
 ### 4. Q and WinCross are surfacing the upstream contract break
 
@@ -121,19 +126,15 @@ Delivered result:
 
 ### Priority 3 — Tighten export readiness around `resultsTables`
 
-Primary target:
+Status:
 
-- validate the `resultsTables` input artifact as part of export readiness / manifest integrity, not only inside the export service
+- **Done on `dev`**
 
-Expected result:
+Delivered result:
 
-- bad final-table artifacts are blocked earlier
-- Q / WinCross stop being the first place we discover contract failure
-
-What is left at a high level:
-
-- make export readiness validate the exact `resultsTables` artifact against the final contract schema
-- fail closed before Q / WinCross manifest generation if that artifact is missing or invalid
+- export readiness now validates the exact resolved `resultsTables` artifact against the final contract schema
+- bad final-table artifacts are blocked earlier in readiness instead of surfacing first inside Q / WinCross
+- the same fail-closed gate now applies to local demo export generation
 
 ### Priority 4 — Add end-to-end regression coverage for the settled contract
 
@@ -147,8 +148,8 @@ Expected result:
 
 What is left at a high level:
 
-- add end-to-end coverage that spans post-R finalization, export readiness, and export-consumer parsing
-- explicitly verify fresh Q and WinCross flows against finalized artifacts rather than helper-only fixtures
+- add end-to-end coverage that spans post-R finalization, export readiness, and export-consumer parsing on fresh runs
+- explicitly verify Q and WinCross consume finalized artifacts end-to-end rather than relying on helper-only fixtures or pre-baked manifest state
 
 ## Working Diagnosis
 
@@ -158,7 +159,7 @@ So the current phase is:
 
 1. upstream finalization fixed
 2. status labeling fixed
-3. tighten readiness validation
+3. readiness validation fixed
 4. re-run end-to-end verification for Q and WinCross
 
 ## Done Means

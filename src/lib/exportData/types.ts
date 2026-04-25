@@ -73,6 +73,7 @@ export const ExportReadinessReasonCodeSchema = z.enum([
   'r2_not_finalized',
   'checksum_mismatch',
   'artifact_consistency_mismatch',
+  'invalid_results_tables_contract',
   'not_exportable_requires_rerun',
   'unsupported_expression',
 ]);

@@ -7,6 +7,7 @@ import {
   JobRoutingManifestSchema,
   TableRoutingArtifactSchema,
   WinCrossExportManifestSchema,
+  type ExportManifestMetadata,
   type WinCrossExportManifest,
 } from '@/lib/exportData/types';
 import {
@@ -40,7 +41,7 @@ import { buildBlockedItemsFromTableStatuses } from '@/lib/exportData/wincross/co
 export interface LocalExportGenerationResult {
   q: { success: boolean; scriptPath?: string; error?: string };
   wincross: { success: boolean; jobPath?: string; manifestPath?: string; error?: string };
-  errors: Array<{ format: 'q' | 'wincross'; stage: 'serialize'; message: string; retryable: boolean; timestamp: string }>;
+  errors: Array<{ format: 'q' | 'wincross'; stage: 'readiness' | 'serialize'; message: string; retryable: boolean; timestamp: string }>;
 }
 
 export async function generateLocalQAndWinCrossExports(outputDir: string): Promise<LocalExportGenerationResult> {
@@ -49,6 +50,12 @@ export async function generateLocalQAndWinCrossExports(outputDir: string): Promi
     wincross: { success: false },
     errors: [],
   };
+
+  const metadata = await readLocalExportMetadata(outputDir);
+  const readinessBlocked = applyLocalReadinessGate(metadata, result);
+  if (readinessBlocked) {
+    return result;
+  }
 
   const resolved = await resolveLocalArtifacts(outputDir);
 
@@ -137,9 +144,7 @@ async function resolveLocalArtifacts(outputDir: string): Promise<{
   q: QExportResolvedArtifacts;
   wincross: WinCrossResolvedArtifacts;
 }> {
-  const metadata = ExportManifestMetadataSchema.parse(
-    await readJson(path.join(outputDir, 'export', 'export-metadata.json')),
-  );
+  const metadata = await readLocalExportMetadata(outputDir);
 
   const tableRouting = TableRoutingArtifactSchema.parse(
     await readJson(path.join(outputDir, metadata.artifactPaths.outputs.tableRouting)),
@@ -205,6 +210,46 @@ async function resolveLocalArtifacts(outputDir: string): Promise<{
     q: { ...resolvedBase, verboseDataMap },
     wincross: resolvedBase,
   };
+}
+
+async function readLocalExportMetadata(outputDir: string): Promise<ExportManifestMetadata> {
+  return ExportManifestMetadataSchema.parse(
+    await readJson(path.join(outputDir, 'export', 'export-metadata.json')),
+  );
+}
+
+function applyLocalReadinessGate(
+  metadata: ExportManifestMetadata,
+  result: LocalExportGenerationResult,
+): boolean {
+  const readiness = metadata.readiness?.local;
+  if (readiness?.ready === true) {
+    return false;
+  }
+
+  const reasonCodes = readiness?.reasonCodes ?? ['readiness_missing'];
+  const details = readiness?.details ?? ['Local export readiness metadata is missing.'];
+  const message = `Local export blocked: ${[...reasonCodes, ...details].join(' | ')}`;
+  const timestamp = new Date().toISOString();
+
+  result.q = { success: false, error: message };
+  result.wincross = { success: false, error: message };
+  result.errors.push({
+    format: 'q',
+    stage: 'readiness',
+    message,
+    retryable: true,
+    timestamp,
+  });
+  result.errors.push({
+    format: 'wincross',
+    stage: 'readiness',
+    message,
+    retryable: true,
+    timestamp,
+  });
+
+  return true;
 }
 
 async function readJson(filePath: string): Promise<unknown> {

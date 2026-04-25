@@ -54,6 +54,8 @@ async function seedPhase1Inputs(outputDir: string): Promise<void> {
     tables: {
       t1: {
         tableId: 't1',
+        questionId: 'Q1',
+        tableType: 'single',
         data: {},
         columns: [],
         rows: [],
@@ -112,7 +114,64 @@ describe('phase 1 export manifest', () => {
     expect(firstBuild.metadata.readiness?.reexport.reasonCodes).toContain('r2_not_finalized');
     expect(firstBuild.supportReport.expressionSummary.total).toBeGreaterThan(0);
     expect(firstBuild.supportReport.summary.q.warning).toBeGreaterThan(0);
+    expect(firstBuild.requiredArtifactPaths).toContain('results/tables.json');
+    expect(firstBuild.metadata.integrity?.artifactChecksums['results/tables.json']).toBeDefined();
     expect(firstBuild.metadata.idempotency?.jobs).toEqual(secondBuild.metadata.idempotency?.jobs);
+  });
+
+  it('fails readiness when resultsTables is still in the raw pre-finalized shape', async () => {
+    const outputDir = await makeTempOutputDir();
+    await seedPhase1Inputs(outputDir);
+    await fs.mkdir(path.join(outputDir, 'export/data'), { recursive: true });
+    await fs.writeFile(path.join(outputDir, 'export/data/wide.sav'), 'wide', 'utf-8');
+    await writeJson(outputDir, 'results/tables.json', {
+      metadata: {
+        generatedAt: new Date().toISOString(),
+        tableCount: 1,
+        cutCount: 1,
+      },
+      tables: {
+        t1: {
+          tableId: 't1',
+          data: {},
+        },
+      },
+    });
+
+    await persistPhase0Artifacts({
+      outputDir,
+      tablesWithLoopFrame: [withLoopFrame('t1', '')],
+      loopMappings: [],
+      sourceSavUploadedName: 'input.sav',
+      sourceSavRuntimeName: 'dataFile.sav',
+    });
+
+    const built = await buildPhase1Manifest(outputDir);
+    expect(built.metadata.readiness?.local.ready).toBe(false);
+    expect(built.metadata.readiness?.local.reasonCodes).toContain('invalid_results_tables_contract');
+    expect((built.metadata.readiness?.local.details ?? []).join(' ')).toContain('results/tables.json');
+  });
+
+  it('fails readiness when the resolved resultsTables artifact is missing', async () => {
+    const outputDir = await makeTempOutputDir();
+    await seedPhase1Inputs(outputDir);
+    await fs.mkdir(path.join(outputDir, 'export/data'), { recursive: true });
+    await fs.writeFile(path.join(outputDir, 'export/data/wide.sav'), 'wide', 'utf-8');
+
+    await persistPhase0Artifacts({
+      outputDir,
+      tablesWithLoopFrame: [withLoopFrame('t1', '')],
+      loopMappings: [],
+      sourceSavUploadedName: 'input.sav',
+      sourceSavRuntimeName: 'dataFile.sav',
+    });
+
+    await fs.unlink(path.join(outputDir, 'results/tables.json'));
+
+    const built = await buildPhase1Manifest(outputDir);
+    expect(built.metadata.readiness?.local.ready).toBe(false);
+    expect(built.metadata.readiness?.local.reasonCodes).toContain('missing_required_artifact');
+    expect((built.metadata.readiness?.local.details ?? []).join(' ')).toContain('results/tables.json');
   });
 
   it('marks readiness as checksum mismatch after artifact tampering', async () => {
@@ -144,6 +203,53 @@ describe('phase 1 export manifest', () => {
     const rebuiltAgain = await buildPhase1Manifest(outputDir);
     expect(rebuiltAgain.metadata.readiness?.local.ready).toBe(false);
     expect(rebuiltAgain.metadata.readiness?.local.reasonCodes).toContain('checksum_mismatch');
+  });
+
+  it('marks readiness as checksum mismatch after resultsTables tampering', async () => {
+    const outputDir = await makeTempOutputDir();
+    await seedPhase1Inputs(outputDir);
+    await fs.mkdir(path.join(outputDir, 'export/data'), { recursive: true });
+    await fs.writeFile(path.join(outputDir, 'export/data/wide.sav'), 'wide', 'utf-8');
+
+    await persistPhase0Artifacts({
+      outputDir,
+      tablesWithLoopFrame: [withLoopFrame('t1', '')],
+      loopMappings: [],
+      sourceSavUploadedName: 'input.sav',
+      sourceSavRuntimeName: 'dataFile.sav',
+    });
+
+    await buildPhase1Manifest(outputDir);
+    await writeJson(outputDir, 'results/tables.json', {
+      metadata: {
+        generatedAt: new Date().toISOString(),
+        tableCount: 1,
+        cutCount: 1,
+      },
+      tables: {
+        t1: {
+          tableId: 't1',
+          questionId: 'Q1',
+          tableType: 'single',
+          data: {},
+          columns: [{
+            cutKey: 'total',
+            cutName: 'Total',
+            groupKey: 'total',
+            groupName: null,
+            statLetter: null,
+            baseN: null,
+            isTotal: true,
+            order: 1,
+          }],
+          rows: [],
+        },
+      },
+    });
+
+    const rebuilt = await buildPhase1Manifest(outputDir);
+    expect(rebuilt.metadata.readiness?.local.ready).toBe(false);
+    expect(rebuilt.metadata.readiness?.local.reasonCodes).toContain('checksum_mismatch');
   });
 
   it('fails readiness when sorted-final, routing, and support artifacts diverge', async () => {
@@ -211,6 +317,59 @@ describe('phase 1 export manifest', () => {
     expect(built.metadata.readiness?.local.ready).toBe(false);
     expect(built.metadata.readiness?.local.reasonCodes).toContain('missing_required_data_file');
     expect((built.metadata.readiness?.local.details ?? []).join(' ')).toContain('export/data/wide.sav');
+  });
+
+  it('validates the resolved weighted resultsTables input in dual-output runs', async () => {
+    const outputDir = await makeTempOutputDir();
+    await seedPhase1Inputs(outputDir);
+    await fs.mkdir(path.join(outputDir, 'export/data'), { recursive: true });
+    await fs.writeFile(path.join(outputDir, 'export/data/wide.sav'), 'wide', 'utf-8');
+    await writeJson(outputDir, 'results/tables-weighted.json', {
+      metadata: {
+        generatedAt: new Date().toISOString(),
+        tableCount: 1,
+        cutCount: 1,
+      },
+      tables: {
+        t1: {
+          tableId: 't1',
+          data: {},
+        },
+      },
+    });
+    await writeJson(outputDir, 'results/tables-unweighted.json', {
+      metadata: {
+        generatedAt: new Date().toISOString(),
+        tableCount: 1,
+        cutCount: 1,
+      },
+      tables: {
+        t1: {
+          tableId: 't1',
+          questionId: 'Q1',
+          tableType: 'single',
+          data: {},
+          columns: [],
+          rows: [],
+        },
+      },
+    });
+
+    await persistPhase0Artifacts({
+      outputDir,
+      tablesWithLoopFrame: [withLoopFrame('t1', '')],
+      loopMappings: [],
+      weightVariable: 'wt',
+      hasDualWeightOutputs: true,
+      sourceSavUploadedName: 'input.sav',
+      sourceSavRuntimeName: 'dataFile.sav',
+    });
+
+    const built = await buildPhase1Manifest(outputDir);
+    expect(built.metadata.artifactPaths.inputs.resultsTables).toBe('results/tables-weighted.json');
+    expect(built.metadata.readiness?.local.ready).toBe(false);
+    expect(built.metadata.readiness?.local.reasonCodes).toContain('invalid_results_tables_contract');
+    expect((built.metadata.readiness?.local.details ?? []).join(' ')).toContain('results/tables-weighted.json');
   });
 
   it('rejects phase0 manifests in forward-only mode', async () => {

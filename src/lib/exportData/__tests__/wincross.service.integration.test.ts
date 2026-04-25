@@ -145,12 +145,15 @@ function createArtifacts(): any {
   };
 }
 
-function createRunResult(ready: boolean): Record<string, unknown> {
+function createRunResult(
+  ready: boolean,
+  reasonCodes: string[] = ready ? ['ready'] : ['r2_not_finalized'],
+): Record<string, unknown> {
   return {
     exportReadiness: {
       reexport: {
         ready,
-        reasonCodes: ready ? ['ready'] : ['r2_not_finalized'],
+        reasonCodes,
       },
     },
     exportArtifacts: {
@@ -237,6 +240,23 @@ describe('WinCross export service integration', () => {
       runResult,
       preferenceSource: { kind: 'default' },
     })).rejects.toBeInstanceOf(WinCrossExportServiceError);
+  });
+
+  it('surfaces invalid resultsTables readiness failures before export generation', async () => {
+    const runResult = createRunResult(false, ['invalid_results_tables_contract']);
+
+    await expect(generateWinCrossExportPackage({
+      runId: 'run-1',
+      orgId: 'org-1',
+      projectId: 'proj-1',
+      runResult,
+      preferenceSource: { kind: 'default' },
+    })).rejects.toSatisfy((error) => (
+      error instanceof WinCrossExportServiceError
+      && error.code === 'export_not_ready'
+      && Array.isArray(error.details)
+      && error.details.includes('invalid_results_tables_contract')
+    ));
   });
 
   it('generates a package and reuses cached descriptor', async () => {

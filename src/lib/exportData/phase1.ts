@@ -1,7 +1,11 @@
 import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import * as path from 'path';
-import { CrosstabRawArtifactSchema, SortedFinalArtifactSchema } from './inputArtifactSchemas';
+import {
+  CrosstabRawArtifactSchema,
+  ResultsTablesFinalContractSchema,
+  SortedFinalArtifactSchema,
+} from './inputArtifactSchemas';
 import { parseExpression } from './expression';
 import {
   EXPORT_ACTIVE_MANIFEST_VERSION,
@@ -65,6 +69,7 @@ interface ReadinessInputs {
   missingDataFiles: string[];
   checksumMismatches: string[];
   consistencyMismatches: string[];
+  invalidResultsTablesContractDetails: string[];
   r2Finalized: boolean;
   missingR2ArtifactRefs: string[];
   missingR2DataFileRefs: string[];
@@ -111,6 +116,7 @@ export async function buildPhase1Manifest(outputDir: string): Promise<BuildPhase
       },
     },
   };
+  const resultsTablesPath = metadata.artifactPaths.inputs.resultsTables;
 
   const crosstabRaw = await readRequiredJson(
     outputDir,
@@ -164,14 +170,22 @@ export async function buildPhase1Manifest(outputDir: string): Promise<BuildPhase
 
   await writeJson(outputDir, EXPORT_ARTIFACT_PATHS.supportReport, supportReport);
 
-  const requiredArtifactPaths = [
+  const requiredLocalArtifactPaths = [
+    EXPORT_ARTIFACT_PATHS.metadata,
+    resultsTablesPath,
+    EXPORT_ARTIFACT_PATHS.tableRouting,
+    EXPORT_ARTIFACT_PATHS.jobRoutingManifest,
+    EXPORT_ARTIFACT_PATHS.loopPolicy,
+    EXPORT_ARTIFACT_PATHS.supportReport,
+  ];
+  const requiredR2ArtifactPaths = [
     EXPORT_ARTIFACT_PATHS.metadata,
     EXPORT_ARTIFACT_PATHS.tableRouting,
     EXPORT_ARTIFACT_PATHS.jobRoutingManifest,
     EXPORT_ARTIFACT_PATHS.loopPolicy,
     EXPORT_ARTIFACT_PATHS.supportReport,
   ];
-  const checksumArtifactPaths = requiredArtifactPaths.filter(
+  const checksumArtifactPaths = requiredLocalArtifactPaths.filter(
     (relativePath) => relativePath !== EXPORT_ARTIFACT_PATHS.metadata,
   );
   const requiredDataFilePaths = [...new Set([
@@ -179,8 +193,9 @@ export async function buildPhase1Manifest(outputDir: string): Promise<BuildPhase
     ...jobRouting.jobs.map((job) => job.dataFileRelativePath),
   ])].sort();
 
-  const missingArtifacts = await findMissingPaths(outputDir, requiredArtifactPaths);
+  const missingArtifacts = await findMissingPaths(outputDir, requiredLocalArtifactPaths);
   const missingDataFiles = await findMissingPaths(outputDir, requiredDataFilePaths);
+  const invalidResultsTablesContractDetails = await validateResultsTablesContract(outputDir, resultsTablesPath);
 
   const artifactChecksums = await hashExistingPaths(outputDir, checksumArtifactPaths);
   const dataFileChecksums = await hashExistingPaths(outputDir, requiredDataFilePaths);
@@ -225,7 +240,7 @@ export async function buildPhase1Manifest(outputDir: string): Promise<BuildPhase
     jobs: buildIdempotencyJobs(metadata, jobRouting, integrityDigest),
   };
 
-  const missingR2ArtifactRefs = requiredArtifactPaths.filter((relativePath) => !metadata.r2Refs.artifacts[relativePath]);
+  const missingR2ArtifactRefs = requiredR2ArtifactPaths.filter((relativePath) => !metadata.r2Refs.artifacts[relativePath]);
   const missingR2DataFileRefs = requiredDataFilePaths.filter((relativePath) => !metadata.r2Refs.dataFiles[relativePath]);
 
   metadata.readiness = buildReadiness({
@@ -234,6 +249,7 @@ export async function buildPhase1Manifest(outputDir: string): Promise<BuildPhase
     missingDataFiles,
     checksumMismatches,
     consistencyMismatches,
+    invalidResultsTablesContractDetails,
     r2Finalized: metadata.r2Refs.finalized,
     missingR2ArtifactRefs,
     missingR2DataFileRefs,
@@ -244,7 +260,7 @@ export async function buildPhase1Manifest(outputDir: string): Promise<BuildPhase
   return {
     metadata,
     supportReport,
-    requiredArtifactPaths,
+    requiredArtifactPaths: requiredLocalArtifactPaths,
     requiredDataFilePaths,
   };
 }
@@ -670,6 +686,10 @@ function buildReadiness(input: ReadinessInputs): ExportReadiness {
     localCodes.push('artifact_consistency_mismatch');
     localDetails.push(`Artifact consistency mismatches: ${input.consistencyMismatches.join('; ')}`);
   }
+  if (input.invalidResultsTablesContractDetails.length > 0) {
+    localCodes.push('invalid_results_tables_contract');
+    localDetails.push(...input.invalidResultsTablesContractDetails);
+  }
 
   const localReasonCodes = dedupeCodes(localCodes.length === 0 ? ['ready'] : localCodes);
   const localReady = localReasonCodes.length === 1 && localReasonCodes[0] === 'ready';
@@ -724,6 +744,41 @@ async function readRequiredJson<T>(
 
   const value = JSON.parse(await fs.readFile(absolutePath, 'utf-8')) as unknown;
   return schema.parse(value);
+}
+
+async function validateResultsTablesContract(
+  outputDir: string,
+  relativePath: string,
+): Promise<string[]> {
+  const absolutePath = path.join(outputDir, relativePath);
+  if (!(await fileExists(absolutePath))) {
+    return [];
+  }
+
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(await fs.readFile(absolutePath, 'utf-8')) as unknown;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return [`Invalid resultsTables contract at ${relativePath}: could not parse JSON (${message}).`];
+  }
+
+  const parsed = ResultsTablesFinalContractSchema.safeParse(parsedJson);
+  if (parsed.success) {
+    return [];
+  }
+
+  const issueSummary = parsed.error.issues
+    .slice(0, 3)
+    .map((issue) => {
+      const issuePath = issue.path.length > 0 ? issue.path.join('.') : 'root';
+      return `${issuePath}: ${issue.message}`;
+    })
+    .join('; ');
+
+  return [
+    `Invalid resultsTables contract at ${relativePath}: ${issueSummary}`,
+  ];
 }
 
 async function readOptionalFilterTranslator(outputDir: string): Promise<FilterTranslatorOutput | null> {

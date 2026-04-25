@@ -1,9 +1,9 @@
-import { mkdtemp, readFile, rm } from 'fs/promises';
+import { mkdtemp, readFile, rm, writeFile, mkdir } from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { writeLocalWinCrossArtifacts } from '@/lib/exportData/localExports';
-import type { WinCrossExportManifest } from '@/lib/exportData/types';
+import { generateLocalQAndWinCrossExports, writeLocalWinCrossArtifacts } from '@/lib/exportData/localExports';
+import type { ExportManifestMetadata, WinCrossExportManifest } from '@/lib/exportData/types';
 
 describe('local WinCross exports', () => {
   const tempDirs: string[] = [];
@@ -43,5 +43,77 @@ describe('local WinCross exports', () => {
 
     const writtenJob = await readFile(jobPath);
     expect(writtenJob.equals(jobContent)).toBe(true);
+  });
+
+  it('blocks local export generation when local readiness is false', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'tabulate-local-export-'));
+    tempDirs.push(dir);
+
+    const metadata: ExportManifestMetadata = {
+      manifestVersion: 'phase1.v1',
+      generatedAt: '2026-04-25T00:00:00.000Z',
+      weighting: { weightVariable: null, mode: 'unweighted' },
+      sourceSavNames: { uploaded: 'input.sav', runtime: 'dataFile.sav' },
+      availableDataFiles: [],
+      artifactPaths: {
+        inputs: {
+          sortedFinal: 'tables/07-sorted-final.json',
+          resultsTables: 'results/tables.json',
+          crosstabRaw: 'crosstab/crosstab-output-raw.json',
+          loopSummary: 'stages/loop-summary.json',
+          loopPolicy: 'agents/loop-semantics/loop-semantics-policy.json',
+        },
+        outputs: {
+          metadata: 'export/export-metadata.json',
+          tableRouting: 'export/table-routing.json',
+          jobRoutingManifest: 'export/job-routing-manifest.json',
+          loopPolicy: 'export/loop-semantics-policy.json',
+          supportReport: 'export/support-report.json',
+        },
+      },
+      convexRefs: {},
+      r2Refs: {
+        finalized: false,
+        artifacts: {},
+        dataFiles: {},
+      },
+      warnings: [],
+      readiness: {
+        evaluatedAt: '2026-04-25T00:00:00.000Z',
+        local: {
+          ready: false,
+          reasonCodes: ['invalid_results_tables_contract'],
+          details: ['Invalid resultsTables contract at results/tables.json: tables.t1.questionId: Required'],
+        },
+        reexport: {
+          ready: false,
+          reasonCodes: ['invalid_results_tables_contract', 'r2_not_finalized'],
+          details: ['Invalid resultsTables contract at results/tables.json: tables.t1.questionId: Required'],
+        },
+      },
+    };
+
+    await mkdir(path.join(dir, 'export'), { recursive: true });
+    await writeFile(
+      path.join(dir, 'export', 'export-metadata.json'),
+      JSON.stringify(metadata, null, 2),
+      'utf8',
+    );
+
+    const result = await generateLocalQAndWinCrossExports(dir);
+    expect(result.q.success).toBe(false);
+    expect(result.wincross.success).toBe(false);
+    expect(result.errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        format: 'q',
+        stage: 'readiness',
+        message: expect.stringContaining('invalid_results_tables_contract'),
+      }),
+      expect.objectContaining({
+        format: 'wincross',
+        stage: 'readiness',
+        message: expect.stringContaining('results/tables.json'),
+      }),
+    ]));
   });
 });
