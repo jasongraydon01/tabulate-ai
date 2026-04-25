@@ -818,7 +818,7 @@ export default function ProjectDetailPage({
                   <p className="text-2xl font-serif font-semibold">
                     <AnimatedNumber value={summary.cuts ?? 0} />
                   </p>
-                  <p className="text-xs text-muted-foreground">Crosstabs</p>
+                  <p className="text-xs text-muted-foreground">Cuts</p>
                 </div>
                 <div className="text-center p-3 bg-muted rounded-lg">
                   <Layers className="h-5 w-5 mx-auto mb-1 text-primary" />

@@ -42,6 +42,12 @@ const REQUIRED_INPUT_ARTIFACTS = {
   compiledLoopContract: 'agents/loop-semantics/compiled-loop-contract.json',
 } as const;
 
+const RESULTS_TABLES_VARIANTS = {
+  canonical: 'results/tables.json',
+  weighted: 'results/tables-weighted.json',
+  unweighted: 'results/tables-unweighted.json',
+} as const;
+
 const FALLBACK_INPUT_ARTIFACTS = {
   sortedFinal: ['tables/13d-table-canonical.json', 'tables/07-sorted-final.json'],
   crosstabRaw: ['planning/21-crosstab-plan.json', 'crosstab/crosstab-output-raw.json'],
@@ -87,6 +93,36 @@ async function resolveVerboseDataMapInputPath(outputDir: string): Promise<string
   } catch {
     return undefined;
   }
+}
+
+async function resolveResultsTablesInputPath(params: {
+  outputDir: string;
+  weightVariable?: string | null;
+  hasDualWeightOutputs?: boolean;
+}): Promise<string> {
+  const candidates = params.hasDualWeightOutputs
+    ? [
+        RESULTS_TABLES_VARIANTS.weighted,
+        RESULTS_TABLES_VARIANTS.unweighted,
+        RESULTS_TABLES_VARIANTS.canonical,
+      ]
+    : params.weightVariable
+      ? [
+          RESULTS_TABLES_VARIANTS.weighted,
+          RESULTS_TABLES_VARIANTS.canonical,
+          RESULTS_TABLES_VARIANTS.unweighted,
+        ]
+      : [
+          RESULTS_TABLES_VARIANTS.canonical,
+          RESULTS_TABLES_VARIANTS.weighted,
+          RESULTS_TABLES_VARIANTS.unweighted,
+        ];
+
+  return resolveFirstExistingRelativePath(
+    params.outputDir,
+    candidates,
+    RESULTS_TABLES_VARIANTS.canonical,
+  );
 }
 
 async function writeJsonFile(outputDir: string, relativePath: string, value: unknown): Promise<void> {
@@ -415,6 +451,11 @@ export async function persistPhase0Artifacts(params: PersistPhase0ArtifactsParam
     [...FALLBACK_INPUT_ARTIFACTS.crosstabRaw],
     REQUIRED_INPUT_ARTIFACTS.crosstabRaw,
   );
+  const resultsTablesPath = await resolveResultsTablesInputPath({
+    outputDir: params.outputDir,
+    weightVariable: params.weightVariable,
+    hasDualWeightOutputs: params.hasDualWeightOutputs,
+  });
   const loopSummaryPath = await resolveFirstExistingRelativePath(
     params.outputDir,
     [...FALLBACK_INPUT_ARTIFACTS.loopSummary],
@@ -449,7 +490,7 @@ export async function persistPhase0Artifacts(params: PersistPhase0ArtifactsParam
 
   const requiredInputPresence = {
     sortedFinal: await fileExists(path.join(params.outputDir, sortedFinalPath)),
-    resultsTables: await fileExists(path.join(params.outputDir, REQUIRED_INPUT_ARTIFACTS.resultsTables)),
+    resultsTables: await fileExists(path.join(params.outputDir, resultsTablesPath)),
     crosstabRaw: await fileExists(path.join(params.outputDir, crosstabRawPath)),
     loopSummary: await fileExists(path.join(params.outputDir, loopSummaryPath)),
     loopPolicy: (
@@ -477,7 +518,7 @@ export async function persistPhase0Artifacts(params: PersistPhase0ArtifactsParam
     artifactPaths: {
       inputs: {
         sortedFinal: sortedFinalPath,
-        resultsTables: REQUIRED_INPUT_ARTIFACTS.resultsTables,
+        resultsTables: resultsTablesPath,
         crosstabRaw: crosstabRawPath,
         loopSummary: loopSummaryPath,
         loopPolicy: REQUIRED_INPUT_ARTIFACTS.loopPolicy,

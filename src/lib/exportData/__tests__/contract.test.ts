@@ -158,6 +158,36 @@ describe('exportData contract', () => {
     expect(wideFile?.r2Key).toBe('r2/export/data/wide.sav');
   });
 
+  it('prefers finalized weighted results tables as the canonical export input in dual-output runs', async () => {
+    const outputDir = await makeTempOutputDir();
+    await seedRequiredInputArtifacts(outputDir);
+    await fs.mkdir(path.join(outputDir, 'export/data'), { recursive: true });
+    await fs.writeFile(path.join(outputDir, 'export/data/wide.sav'), 'wide', 'utf-8');
+    await fs.writeFile(
+      path.join(outputDir, 'results/tables-weighted.json'),
+      JSON.stringify({ metadata: {}, tables: {} }, null, 2),
+      'utf-8',
+    );
+    await fs.writeFile(
+      path.join(outputDir, 'results/tables-unweighted.json'),
+      JSON.stringify({ metadata: {}, tables: {} }, null, 2),
+      'utf-8',
+    );
+
+    const persisted = await persistPhase0Artifacts({
+      outputDir,
+      tablesWithLoopFrame: [withLoopFrame('t1', '')],
+      loopMappings: [],
+      weightVariable: 'wt',
+      hasDualWeightOutputs: true,
+      sourceSavUploadedName: 'input.sav',
+      sourceSavRuntimeName: 'dataFile.sav',
+    });
+
+    expect(persisted.metadata.weighting.mode).toBe('both');
+    expect(persisted.metadata.artifactPaths.inputs.resultsTables).toBe('results/tables-weighted.json');
+  });
+
   it('copies wide.sav from runtime sav when export wide is missing', async () => {
     const outputDir = await makeTempOutputDir();
     await fs.writeFile(path.join(outputDir, 'dataFile.sav'), 'runtime', 'utf-8');
