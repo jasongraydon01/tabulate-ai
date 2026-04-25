@@ -1825,11 +1825,9 @@ function assertResolvedBaseContract(table: Record<string, unknown>): void {
 
   if (resolvedBaseValidation.requiresSharedDisplayedBase) {
     const normalizedBaseText = typeof table.baseText === 'string' ? table.baseText : '';
-    const normalizedUserNote = typeof table.userNote === 'string' ? table.userNote : '';
     const legacyDisclosurePattern = /(base varies|rebased|qualified respondents|substantive|\(n\s*varies\))/i;
     if (
       legacyDisclosurePattern.test(normalizedBaseText)
-      || legacyDisclosurePattern.test(normalizedUserNote)
     ) {
       throw new Error(
         `Table "${String(table.tableId ?? 'unknown')}" carries legacy base disclosure text that conflicts with the simplified base contract`,

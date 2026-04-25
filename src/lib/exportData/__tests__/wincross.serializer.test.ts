@@ -1421,7 +1421,53 @@ describe('WinCross serializer', () => {
     expect(result.applicationDiagnostics.tables[0]?.displayTemplateKind).toBe('plain_rows');
   });
 
-  it('rejects legacy varying-base disclosure text under the simplified contract', () => {
+  it('rejects legacy varying-base disclosure text in baseText under the simplified contract', () => {
+    const artifacts = createArtifacts({
+      tables: [
+        {
+          tableId: 't1',
+          questionId: 'Q1',
+          questionText: 'Question 1',
+          tableKind: 'standard_overview',
+          tableType: 'frequency',
+          additionalFilter: '',
+          baseText: 'Those who were shown Q1; base varies by item (n=120-150)',
+          userNote: 'Multiple answers accepted',
+          basePolicy: 'question_base_shared',
+          baseViewRole: 'anchor',
+          plannerBaseComparability: 'varying_but_acceptable',
+          plannerBaseSignals: ['varying-item-bases', 'rebased-base'],
+          computeRiskSignals: ['row-base-varies-within-anchor-view'],
+          baseContract: {
+            classification: {
+              referenceUniverse: 'question',
+            },
+            policy: {
+              effectiveBaseMode: 'table_mask_then_row_observed_n',
+              rebasePolicy: 'exclude_non_substantive_tail',
+            },
+          },
+          baseDisclosure: {
+            referenceBaseN: 150,
+            itemBaseRange: [120, 150],
+            defaultBaseText: 'Those who were shown Q1',
+            defaultNoteTokens: ['anchor-base-varies-by-item', 'anchor-base-range', 'rebased-exclusion'],
+            rangeDisclosure: { min: 120, max: 150 },
+            source: 'contract',
+          },
+          rows: [
+            { variable: 'Q1r1', label: 'A', filterValue: '1', rowKind: 'value', isNet: false, netComponents: [] },
+          ],
+        },
+      ],
+    });
+    const profile = buildDefaultWinCrossPreferenceProfile();
+    expect(() => serializeWinCrossJob(artifacts, profile)).toThrow(
+      /legacy base disclosure text/i,
+    );
+  });
+
+  it('does not reject simplified-contract tables only because userNote carries Excel-only legacy disclosure text', () => {
     const artifacts = createArtifacts({
       tables: [
         {
@@ -1462,9 +1508,8 @@ describe('WinCross serializer', () => {
       ],
     });
     const profile = buildDefaultWinCrossPreferenceProfile();
-    expect(() => serializeWinCrossJob(artifacts, profile)).toThrow(
-      /legacy base disclosure text/i,
-    );
+
+    expect(() => serializeWinCrossJob(artifacts, profile)).not.toThrow();
   });
 
   it('marks parity only when reuse is actually proven via USE=', () => {

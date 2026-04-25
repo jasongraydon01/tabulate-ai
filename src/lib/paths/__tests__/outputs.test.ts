@@ -1,7 +1,12 @@
 import path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { getOutputsBaseDir, getWorkspaceRoot, isPathInsideOutputsBase } from '@/lib/paths/outputs';
+import {
+  getOutputsBaseDir,
+  getWorkspaceRoot,
+  isPathInsideOutputsBase,
+  resolvePipelineOutputDir,
+} from '@/lib/paths/outputs';
 
 describe('outputs path helpers', () => {
   afterEach(() => {
@@ -36,5 +41,18 @@ describe('outputs path helpers', () => {
         path.join('/Users/jasongraydon01/tabulate-ai', 'tmp', 'pipeline-1'),
       ),
     ).toBe(false);
+  });
+
+  it('derives pipeline output paths from dataset and pipeline identity', () => {
+    vi.stubEnv('INIT_CWD', '/Users/jasongraydon01/tabulate-ai');
+
+    expect(
+      resolvePipelineOutputDir({
+        datasetName: 'cambridge-savings-bank-w3-data-4-22-26',
+        pipelineId: 'pipeline-2026-04-25T18-27-23-737Z',
+      }),
+    ).toBe(
+      '/Users/jasongraydon01/tabulate-ai/outputs/cambridge-savings-bank-w3-data-4-22-26/pipeline-2026-04-25T18-27-23-737Z',
+    );
   });
 });

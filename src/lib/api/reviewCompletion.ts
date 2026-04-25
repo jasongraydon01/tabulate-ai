@@ -69,6 +69,7 @@ import {
 import { sendPipelineNotification } from '@/lib/notifications/email';
 import { evaluateAndPersistRunQuality } from '@/lib/evaluation/runEvaluationService';
 import { parseRunResult, type RunResultPostProcessing, type RunResultShape } from '@/schemas/runResultSchema';
+import { getOutputsBaseDir } from '@/lib/paths/outputs';
 
 // -------------------------------------------------------------------------
 // Types
@@ -183,7 +184,7 @@ export async function findPipelineDir(pipelineId: string): Promise<{ path: strin
     return null;
   }
 
-  const outputsDir = path.join(process.cwd(), 'outputs');
+  const outputsDir = getOutputsBaseDir();
 
   try {
     await fs.access(outputsDir);

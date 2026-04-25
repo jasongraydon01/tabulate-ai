@@ -78,7 +78,7 @@ function applyToTable(
     updated.baseText = aiResult.baseText;
   }
   if (aiResult.userNote) {
-    updated.userNote = aiResult.userNote;
+    updated.userNote = sanitizeUserNoteOverride(table, aiResult.userNote);
   }
 
   // Apply row label overrides
@@ -110,6 +110,25 @@ function shouldApplyBaseTextOverride(suggestedBaseText: string): boolean {
   return !/(base varies|rebased|qualified respondents|substantive|\(n\s*varies\))/i.test(
     suggestedBaseText,
   );
+}
+
+function sanitizeUserNoteOverride(table: CanonicalTable, suggestedUserNote: string): string {
+  const trimmed = suggestedUserNote.trim();
+  if (!trimmed) return trimmed;
+
+  if (!table.resolvedBaseValidation?.requiresSharedDisplayedBase) {
+    return trimmed;
+  }
+
+  const legacyDisclosurePattern = /(base varies|item base varies|question base\s*=|base n\s*=|qualified respondents|rebased|substantive|\(n\s*varies\)|interpret low n|interpret small n|low bases? should be interpreted with caution)/i;
+  const segments = trimmed
+    .split(/(?<=[.;])\s+/)
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+
+  const keptSegments = segments.filter((segment) => !legacyDisclosurePattern.test(segment));
+
+  return keptSegments.join(' ').trim();
 }
 
 function shouldApplySubtitleOverride(table: CanonicalTable, suggestedSubtitle: string): boolean {

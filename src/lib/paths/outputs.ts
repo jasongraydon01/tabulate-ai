@@ -48,6 +48,13 @@ export function getOutputsBaseDir(): string {
   return path.join(getWorkspaceRoot(), 'outputs');
 }
 
+export function resolvePipelineOutputDir(params: {
+  datasetName: string;
+  pipelineId: string;
+}): string {
+  return path.join(getOutputsBaseDir(), params.datasetName, params.pipelineId);
+}
+
 export function isPathInsideOutputsBase(targetPath: string): boolean {
   const resolvedTarget = path.resolve(targetPath);
   const outputsBase = getOutputsBaseDir();

@@ -134,6 +134,37 @@ describe('applyTableContextResults', () => {
     expect(result.tables[0].baseText).toBe('All Survey Respondents');
   });
 
+  it('strips legacy base-disclosure prose from AI userNote under the simplified base contract', () => {
+    const table = makeTable({
+      baseText: 'Respondents shown this item',
+      resolvedBaseValidation: {
+        tautologicalSplitForbidden: false,
+        substantiveRebasingForbidden: true,
+        requiresSharedDisplayedBase: true,
+      },
+    });
+    const output = makeCanonicalOutput([table]);
+    const aiResults: TableContextOutput[] = [
+      {
+        tables: [
+          {
+            tableId: 'Q1_overview',
+            tableSubtitle: '',
+            userNote: 'Multiple answers accepted. Item base varies by bank (example n=55); interpret low n with caution.',
+            baseText: 'Respondents shown this item',
+            noChangesNeeded: false,
+            reasoning: 'Added context for item-level routing.',
+            rowLabelOverrides: [],
+          },
+        ],
+      },
+    ];
+
+    const result = applyTableContextResults(output, aiResults);
+
+    expect(result.tables[0].userNote).toBe('Multiple answers accepted.');
+  });
+
   it('skips when noChangesNeeded is true', () => {
     const table = makeTable({
       tableSubtitle: 'Original subtitle',

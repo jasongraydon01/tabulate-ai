@@ -56,6 +56,16 @@ interface ResultsTablesArtifact {
   tables: Record<string, ResultsTableEntry>;
 }
 
+const NULLABLE_RESULT_NUMBER_KEYS = [
+  "n",
+  "count",
+  "pct",
+  "mean",
+  "median",
+  "sd",
+  "std_err",
+] as const;
+
 interface ComputeRow {
   label?: string;
   rowKind?: string;
@@ -149,6 +159,52 @@ function normalizeText(value: string | null | undefined): string {
 
 function isResultsRowValue(value: unknown): value is ResultsRowValue {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function isNullLikeStatString(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const normalized = value.trim().toUpperCase();
+  return normalized === "NA" || normalized === "N/A";
+}
+
+function normalizeResultsRowValue(resultRow: ResultsRowValue): ResultsRowValue {
+  const normalizedRow: ResultsRowValue = { ...resultRow };
+
+  for (const key of NULLABLE_RESULT_NUMBER_KEYS) {
+    const rawValue = normalizedRow[key];
+    if (isNullLikeStatString(rawValue)) {
+      normalizedRow[key] = null;
+    }
+  }
+
+  return normalizedRow;
+}
+
+function normalizeResultsCutData(cut: ResultsCutData): ResultsCutData {
+  const normalizedCut: ResultsCutData = { ...cut };
+
+  if (isNullLikeStatString(normalizedCut.table_base_n)) {
+    normalizedCut.table_base_n = null;
+  }
+
+  for (const [key, value] of Object.entries(normalizedCut)) {
+    if (key === "stat_letter" || key === "table_base_n") continue;
+    if (!isResultsRowValue(value)) continue;
+    normalizedCut[key] = normalizeResultsRowValue(value);
+  }
+
+  return normalizedCut;
+}
+
+function normalizeResultsTableEntry(table: ResultsTableEntry): ResultsTableEntry {
+  if (!table.data) return { ...table };
+
+  return {
+    ...table,
+    data: Object.fromEntries(
+      Object.entries(table.data).map(([cutName, cut]) => [cutName, normalizeResultsCutData(cut)]),
+    ),
+  };
 }
 
 function isTotalCut(cutName: string, cut: ResultsCutData): boolean {
@@ -533,21 +589,22 @@ export function buildFinalTableContractEntry(
   metadata: ResultsMetadata | undefined,
   computeInput: FinalTableContractComputeInput,
 ): FinalTableContractEntry {
+  const normalizedTable = normalizeResultsTableEntry(table);
   const computeTables = new Map(
     (computeInput.tables ?? [])
       .filter((entry): entry is ComputeTable & { tableId: string } => typeof entry.tableId === "string")
       .map((entry) => [entry.tableId, entry]),
   );
   const computeTable = computeTables.get(tableId);
-  const columns = buildFinalTableColumns(table, metadata, computeInput);
-  const rows = buildFinalTableRows(tableId, table, computeTable, computeInput)
+  const columns = buildFinalTableColumns(normalizedTable, metadata, computeInput);
+  const rows = buildFinalTableRows(tableId, normalizedTable, computeTable, computeInput)
     .map((row) => ({
       ...row,
-      cells: buildFinalRowCells(columns, table, row),
+      cells: buildFinalRowCells(columns, normalizedTable, row),
     }));
 
   return {
-    ...table,
+    ...normalizedTable,
     columns,
     rows,
   };

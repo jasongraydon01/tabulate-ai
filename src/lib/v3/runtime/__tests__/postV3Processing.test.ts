@@ -268,4 +268,58 @@ describe('finalizeResultsTablesArtifact', () => {
     expect(weighted.tables.q5_mean_rows.rows.map((row) => row.valueType)).toEqual(['mean', 'mean']);
     expect(unweighted.tables.q5_mean_rows.rows.map((row) => row.valueType)).toEqual(['mean', 'mean']);
   });
+
+  it('normalizes R NA placeholders in results/tables mean stats during finalization', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'tabulate-post-v3-'));
+    tempDirs.push(dir);
+
+    const jsonPath = await writeJson(dir, 'tables.json', {
+      metadata: {},
+      tables: {
+        c8__scale_overview_rollup_mean: {
+          tableId: 'c8__scale_overview_rollup_mean',
+          questionId: 'C8',
+          questionText: 'Brand familiarity',
+          tableType: 'mean_rows',
+          data: {
+            'Non-binary': {
+              stat_letter: 'C',
+              C8r6: {
+                label: 'Salem Five',
+                n: 2,
+                mean: 0,
+                median: 'NA',
+                sd: 'NA',
+                std_err: 'NA',
+              },
+            },
+          },
+        },
+      },
+    });
+
+    await finalizeResultsTablesArtifact(jsonPath, {
+      cuts: [{ name: 'Non-binary', statLetter: 'C', groupName: 'Gender' }],
+      tables: [
+        {
+          tableId: 'c8__scale_overview_rollup_mean',
+          tableType: 'mean_rows',
+          rows: [{ label: 'Salem Five', rowKind: 'value', isNet: false, indent: 0 }],
+        },
+      ],
+    });
+
+    const finalized = await readJson<{
+      tables: Record<string, { data: Record<string, Record<string, { median: number | null; sd: number | null; std_err: number | null }>> }>;
+    }>(jsonPath);
+
+    expect(finalized.tables.c8__scale_overview_rollup_mean.data['Non-binary'].C8r6).toEqual({
+      label: 'Salem Five',
+      n: 2,
+      mean: 0,
+      median: null,
+      sd: null,
+      std_err: null,
+    });
+  });
 });

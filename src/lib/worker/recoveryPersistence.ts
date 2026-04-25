@@ -2,7 +2,10 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 import { mutateInternal } from '@/lib/convex';
-import { isPathInsideOutputsBase } from '@/lib/paths/outputs';
+import {
+  isPathInsideOutputsBase,
+  resolvePipelineOutputDir,
+} from '@/lib/paths/outputs';
 import { uploadRunOutputArtifact, downloadToTemp } from '@/lib/r2/R2FileManager';
 import { internal } from '../../../convex/_generated/api';
 import type { Id } from '../../../convex/_generated/dataModel';
@@ -93,6 +96,10 @@ export async function persistDurableRecoveryBoundary(params: {
   boundary: WorkerRecoveryBoundary;
   artifactRefOverrides?: WorkerRecoveryArtifactRefs;
 }): Promise<WorkerRecoveryManifest> {
+  const canonicalPipelineContext: WorkerPipelineContext = {
+    ...params.pipelineContext,
+    outputDir: resolveCanonicalOutputDir(params.pipelineContext),
+  };
   const artifactRefs: WorkerRecoveryArtifactRefs = {
     ...(params.artifactRefOverrides ?? {}),
   };
@@ -122,7 +129,7 @@ export async function persistDurableRecoveryBoundary(params: {
 
   let manifest = buildWorkerRecoveryManifest({
     boundary: params.boundary,
-    pipelineContext: params.pipelineContext,
+    pipelineContext: canonicalPipelineContext,
     artifactRefs,
   });
 
@@ -160,16 +167,24 @@ function ensureOutputDirIsSafe(outputDir: string): void {
   }
 }
 
+function resolveCanonicalOutputDir(pipelineContext: WorkerPipelineContext): string {
+  const outputDir = resolvePipelineOutputDir({
+    datasetName: pipelineContext.datasetName,
+    pipelineId: pipelineContext.pipelineId,
+  });
+  ensureOutputDirIsSafe(outputDir);
+  return outputDir;
+}
+
 export async function restoreDurableRecoveryWorkspace(
   manifest: WorkerRecoveryManifest,
-): Promise<void> {
+): Promise<string> {
   const recoveryFailure = getRecoveryFailureReason(manifest);
   if (recoveryFailure) {
     throw new Error(recoveryFailure);
   }
 
-  const outputDir = manifest.pipelineContext.outputDir;
-  ensureOutputDirIsSafe(outputDir);
+  const outputDir = resolveCanonicalOutputDir(manifest.pipelineContext);
   await fs.mkdir(outputDir, { recursive: true });
 
   const downloads = Object.entries(manifest.artifactRefs).map(async ([field, key]) => {
@@ -195,4 +210,6 @@ export async function restoreDurableRecoveryWorkspace(
       );
     }
   }
+
+  return outputDir;
 }

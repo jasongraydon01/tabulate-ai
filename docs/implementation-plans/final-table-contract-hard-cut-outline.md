@@ -4,7 +4,7 @@
 
 ## Current State
 
-The hard cut itself is implemented. The main contract decisions are settled:
+The hard cut itself is implemented and the stabilization pass is now complete. The main contract decisions are settled:
 
 - `results/tables.json` is the intended final-table artifact.
 - ordered `columns`, ordered `rows`, and ordered `rows[].cells` are the contract shape.
@@ -12,7 +12,7 @@ The hard cut itself is implemented. The main contract decisions are settled:
 - analysis grounding, rendered analysis tables, and citation flows have already been moved onto the settled contract.
 - downstream cleanup work landed and stale `getTableCard` helper language was removed from the live analysis workflow.
 
-This document is now mainly a **post-implementation stabilization tracker**, not an active slice plan.
+This document is now mainly a **completion/status record**, not an active slice plan.
 
 ### Stabilization Status
 
@@ -27,6 +27,18 @@ This document is now mainly a **post-implementation stabilization tracker**, not
 - **Slice 3 complete on `dev`**: export readiness now validates the exact resolved `resultsTables` artifact against the final contract schema and fails closed when that artifact is missing or invalid.
 - the Phase 1 export manifest now includes the resolved `resultsTables` input in local artifact integrity checks, so tampering or stale raw-table artifacts invalidate readiness before Q / WinCross generation.
 - local demo Q / WinCross generation now respects the same fail-closed readiness gate instead of letting serializer paths be the first strict consumer.
+- **Slice 4 complete on `dev`**: the settled contract has now been validated on the real run path, not only helper seams.
+- deterministic regression coverage now spans post-R finalization -> export readiness -> fresh Q/WinCross consumer parsing and generation.
+- live end-to-end validation has now passed for:
+  - pipeline execution through review-resume
+  - Excel download
+  - Q export generation
+  - WinCross export generation
+  - analysis session usage on the completed run
+- the final E2E pass also closed three follow-up issues that surfaced only in live flow:
+  - durable review-resume recovery now derives local output paths from `datasetName + pipelineId + outputs base` instead of trusting persisted absolute paths
+  - final-table materialization now normalizes R `"NA"` stat placeholders in mean-table results to `null` before strict final-contract validation
+  - simplified-base tables now reject/strip AI-introduced legacy base-disclosure prose in `userNote`, and WinCross no longer treats `userNote` as export-authoritative base-contract input
 
 ## What The Hard Cut Already Achieved
 
@@ -38,9 +50,9 @@ This document is now mainly a **post-implementation stabilization tracker**, not
 
 ## Where We Actually Are Now
 
-The remaining work is not “finish the hard cut design.” It is **finish stabilization after implementation**.
+The remaining work is no longer “finish stabilization after implementation.” That work has now been completed on `dev`.
 
-The first upstream blocker is now addressed. The remaining work is mostly about making pipeline state and export readiness describe that contract truthfully and fail closed when it is not satisfied.
+The hard cut is implemented, downstream consumers are aligned to the settled contract, and the run/export/analysis path has now been validated end to end.
 
 ## Confirmed Bug Stack
 
@@ -99,72 +111,22 @@ We already fixed one export metadata path issue on `dev` so dual-output runs poi
 
 That fix was necessary, but it is not the current root cause for the failing unweighted run we inspected. The main blocker remains upstream finalization.
 
-## Remaining Work
+## Final Validation Outcome
 
-### Priority 1 — Fix upstream final-table materialization
+The hard cut can now be treated as operationally validated on `dev`.
 
-Status:
+What is now true:
 
-- **Done on `dev`**
-
-Delivered result:
-
-- successful runs now materialize finalized `results/tables.json` (and weighted variants where relevant) from the settled stage-22 compute shape before downstream consumers read those artifacts
-
-### Priority 2 — Separate pipeline statuses and error labeling
-
-Status:
-
-- **Done on `dev`**
-
-Delivered result:
-
-- post-R processing now tracks `rExecution`, `finalTableContract`, and `excelExport` separately
-- the pipeline uses a dedicated `finalizing_tables` stage before export-contract work
-- runs can now truthfully report `R succeeded but final table contract materialization failed`
-- persisted errors and summaries no longer collapse final-table materialization failures into `"R Execution"`
-
-### Priority 3 — Tighten export readiness around `resultsTables`
-
-Status:
-
-- **Done on `dev`**
-
-Delivered result:
-
-- export readiness now validates the exact resolved `resultsTables` artifact against the final contract schema
-- bad final-table artifacts are blocked earlier in readiness instead of surfacing first inside Q / WinCross
-- the same fail-closed gate now applies to local demo export generation
-
-### Priority 4 — Add end-to-end regression coverage for the settled contract
-
-Primary target:
-
-- add deterministic coverage that exercises the real path from post-R finalization through export-readiness and export-consumer parsing
-
-Expected result:
-
-- we prove the hard cut works on real artifact flow, not only in isolated helper tests
-
-What is left at a high level:
-
-- add end-to-end coverage that spans post-R finalization, export readiness, and export-consumer parsing on fresh runs
-- explicitly verify Q and WinCross consume finalized artifacts end-to-end rather than relying on helper-only fixtures or pre-baked manifest state
-
-## Working Diagnosis
-
-The hard cut is conceptually right and the settled contract should remain in place. The current problem is that some live runs are not reliably making it all the way onto that contract before downstream consumers read the artifact.
-
-So the current phase is:
-
-1. upstream finalization fixed
-2. status labeling fixed
-3. readiness validation fixed
-4. re-run end-to-end verification for Q and WinCross
+1. successful runs materialize `results/tables*.json` into the settled final contract before downstream consumers read those artifacts
+2. the pipeline distinguishes `R execution`, `final table contract materialization`, and `Excel export` as separate states
+3. export readiness fails closed when `resultsTables` is missing or invalid
+4. Q and WinCross consume the finalized artifact on fresh runs
+5. review-resume uses the same downstream seam and has now been proven on a live resumed run
+6. the analysis surface works on the completed run after the same artifact chain is produced
 
 ## Done Means
 
-We can treat the hard cut as fully stabilized when all of the following are true:
+We can now treat the hard cut as fully stabilized when all of the following are true, and they have now been satisfied on `dev`:
 
 - successful runs reliably materialize `results/tables.json` into the settled final contract
 - the pipeline distinguishes R success from post-R finalization success

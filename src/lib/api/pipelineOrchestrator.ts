@@ -81,6 +81,10 @@ import { MaxDiffWarnings } from '@/lib/maxdiff/warnings';
 import { getFlaggedCrosstabColumns } from './hitlManager';
 import type { BannerProcessingResult } from '@/agents/BannerAgent';
 import { buildAgentDataMapForCrosstab } from './buildAgentDataMapForCrosstab';
+import {
+  getPendingReviewMessage,
+  getPreparingReviewMessage,
+} from './reviewStatusMessages';
 
 // Pipeline infrastructure
 import { sanitizeDatasetName } from './fileHandler';
@@ -110,6 +114,7 @@ import type { RunResultShape } from '@/schemas/runResultSchema';
 import type { LoopGroupMapping } from '@/lib/validation/LoopCollapser';
 import type { WorkerPipelineContext } from '@/lib/worker/recovery';
 import { persistDurableRecoveryBoundary } from '@/lib/worker/recoveryPersistence';
+import { resolvePipelineOutputDir } from '@/lib/paths/outputs';
 
 import { promises as fs } from 'fs';
 import * as path from 'path';
@@ -487,7 +492,7 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
   const pipelineId = pipelineContext?.pipelineId
     ?? `pipeline-${new Date().toISOString().replace(/[:.]/g, '-')}`;
   const outputDir = pipelineContext?.outputDir
-    ?? path.join(process.cwd(), 'outputs', datasetName, pipelineId);
+    ?? resolvePipelineOutputDir({ datasetName, pipelineId });
   const durablePipelineContext: WorkerPipelineContext = {
     pipelineId,
     datasetName,
@@ -894,7 +899,7 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
         status: 'in_progress',
         stage: 'v3_fork_join',
         progress: 40,
-        message: `Review required (${flaggedCrosstabColumns.length} columns) — completing table assembly...`,
+        message: getPreparingReviewMessage(flaggedCrosstabColumns.length),
       });
 
       const canonicalResult = await canonicalPromise;
@@ -987,7 +992,7 @@ export async function runPipelineFromUpload(params: PipelineRunParams): Promise<
         status: 'pending_review',
         stage: 'crosstab_review_required',
         progress: 50,
-        message: `Review required - ${flaggedCrosstabColumns.length} columns pending confirmation`,
+        message: getPendingReviewMessage(flaggedCrosstabColumns.length),
         result: pendingReviewResult,
       });
 

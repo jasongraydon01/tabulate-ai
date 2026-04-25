@@ -34,7 +34,7 @@ describe('restoreDurableRecoveryWorkspace', () => {
   });
 
   it('accepts a normal repo-scoped outputs directory', async () => {
-    await restoreDurableRecoveryWorkspace({
+    await expect(restoreDurableRecoveryWorkspace({
       schemaVersion: 1,
       boundary: 'fork_join',
       resumeStage: 'v3_compute',
@@ -48,7 +48,9 @@ describe('restoreDurableRecoveryWorkspace', () => {
       missingArtifacts: [],
       isComplete: true,
       createdAt: Date.now(),
-    });
+    })).resolves.toBe(
+      `${process.cwd()}/outputs/cambridge-savings-bank-w3-data-3-31-26/pipeline-2026-04-17T04-28-08-972Z`,
+    );
 
     expect(mocks.mkdir).toHaveBeenCalledWith(
       `${process.cwd()}/outputs/cambridge-savings-bank-w3-data-3-31-26/pipeline-2026-04-17T04-28-08-972Z`,
@@ -56,25 +58,46 @@ describe('restoreDurableRecoveryWorkspace', () => {
     );
   });
 
-  it('rejects output directories outside outputs/', async () => {
-    await expect(
-      restoreDurableRecoveryWorkspace({
-        schemaVersion: 1,
-        boundary: 'fork_join',
-        resumeStage: 'v3_compute',
-        pipelineContext: {
-          pipelineId: 'pipeline-1',
-          datasetName: 'dataset',
-          outputDir: `${process.cwd()}/tmp/dataset/pipeline-1`,
-        },
-        artifactRefs: {},
-        requiredArtifacts: ['checkpoint', 'questionIdFinal', 'tableEnriched', 'crosstabPlan'],
-        missingArtifacts: [],
-        isComplete: true,
-        createdAt: Date.now(),
-      }),
-    ).rejects.toThrow('Invalid recovery output path');
+  it('restores into the canonical outputs directory even if the manifest carries a stale absolute path', async () => {
+    await expect(restoreDurableRecoveryWorkspace({
+      schemaVersion: 1,
+      boundary: 'fork_join',
+      resumeStage: 'v3_compute',
+      pipelineContext: {
+        pipelineId: 'pipeline-1',
+        datasetName: 'dataset',
+        outputDir: `${process.cwd()}/tmp/dataset/pipeline-1`,
+      },
+      artifactRefs: {},
+      requiredArtifacts: ['checkpoint', 'questionIdFinal', 'tableEnriched', 'crosstabPlan'],
+      missingArtifacts: [],
+      isComplete: true,
+      createdAt: Date.now(),
+    })).resolves.toBe(
+      `${process.cwd()}/outputs/dataset/pipeline-1`,
+    );
 
-    expect(mocks.mkdir).not.toHaveBeenCalled();
+    expect(mocks.mkdir).toHaveBeenCalledWith(
+      `${process.cwd()}/outputs/dataset/pipeline-1`,
+      { recursive: true },
+    );
+  });
+
+  it('rejects derived output directories that escape outputs/', async () => {
+    await expect(restoreDurableRecoveryWorkspace({
+      schemaVersion: 1,
+      boundary: 'fork_join',
+      resumeStage: 'v3_compute',
+      pipelineContext: {
+        pipelineId: 'pipeline-1',
+        datasetName: '../tmp',
+        outputDir: `${process.cwd()}/outputs/../tmp/pipeline-1`,
+      },
+      artifactRefs: {},
+      requiredArtifacts: ['checkpoint', 'questionIdFinal', 'tableEnriched', 'crosstabPlan'],
+      missingArtifacts: [],
+      isComplete: true,
+      createdAt: Date.now(),
+    })).rejects.toThrow('Invalid recovery output path');
   });
 });

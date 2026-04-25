@@ -473,4 +473,93 @@ describe("buildFinalTablesContract", () => {
       { cutKey: "group:gender::male", value: 0 },
     ]);
   });
+
+  it("normalizes R NA placeholders in mean-row stats to null before final-contract validation", () => {
+    const rawResultsTables = {
+        metadata: {
+          generatedAt: "2026-04-24T00:00:00.000Z",
+          tableCount: 1,
+          cutCount: 1,
+        },
+        tables: {
+          c8__scale_overview_rollup_mean: {
+            tableId: "c8__scale_overview_rollup_mean",
+            questionId: "C8",
+            questionText: "Brand familiarity",
+            tableType: "mean_rows",
+            data: {
+              "Non-binary": {
+                stat_letter: "C",
+                C8r6: {
+                  label: "Salem Five",
+                  n: 2,
+                  mean: 0,
+                  median: "NA",
+                  sd: "NA",
+                  std_err: "NA",
+                },
+                C8r8: {
+                  label: "Chime",
+                  n: 2,
+                  mean: 1,
+                  median: 1,
+                  sd: "NA",
+                  std_err: "NA",
+                },
+              },
+            },
+          },
+        },
+      } as unknown as Parameters<typeof buildFinalTablesContract>[0];
+
+    const result = buildFinalTablesContract(
+      rawResultsTables,
+      {
+        cuts: [
+          { name: "Non-binary", statLetter: "C", groupName: "Gender" },
+        ],
+        tables: [
+          {
+            tableId: "c8__scale_overview_rollup_mean",
+            tableType: "mean_rows",
+            rows: [
+              { label: "Salem Five", rowKind: "value", isNet: false, indent: 0 },
+              { label: "Chime", rowKind: "value", isNet: false, indent: 0 },
+            ],
+          },
+        ],
+      },
+    );
+
+    const table = result.tables.c8__scale_overview_rollup_mean;
+    expect(table.data?.["Non-binary"]?.C8r6).toMatchObject({
+      median: null,
+      sd: null,
+      std_err: null,
+    });
+    expect(table.rows[0]?.cells[0]).toEqual({
+      cutKey: "group:gender::non binary",
+      value: 0,
+      metrics: {
+        pct: null,
+        count: null,
+        n: 2,
+        mean: 0,
+        median: null,
+        stddev: null,
+        stderr: null,
+      },
+      sigHigherThan: [],
+      sigVsTotal: null,
+    });
+    expect(table.rows[1]?.cells[0]?.metrics).toEqual({
+      pct: null,
+      count: null,
+      n: 2,
+      mean: 1,
+      median: 1,
+      stddev: null,
+      stderr: null,
+    });
+  });
 });

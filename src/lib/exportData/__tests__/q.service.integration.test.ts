@@ -19,11 +19,19 @@ import { generateQExportPackage } from '@/lib/exportData/q/service';
 import { QExportServiceError, Q_EXPORT_RUNTIME_CONTRACT } from '@/lib/exportData/q/types';
 import type { ExportManifestMetadata } from '@/lib/exportData/types';
 
-function createArtifacts() {
+function createArtifacts(options?: {
+  resultsTablesPath?: string;
+  weightingMode?: 'unweighted' | 'weighted' | 'both';
+  weightVariable?: string | null;
+}) {
+  const resultsTablesPath = options?.resultsTablesPath ?? 'results/tables.json';
+  const weightingMode = options?.weightingMode ?? 'unweighted';
+  const weightVariable = options?.weightVariable ?? null;
+
   const metadata = {
     manifestVersion: 'phase1.v1',
     generatedAt: '2026-02-27T00:00:00.000Z',
-    weighting: { weightVariable: null, mode: 'unweighted' },
+    weighting: { weightVariable, mode: weightingMode },
     sourceSavNames: { uploaded: 'input.sav', runtime: 'dataFile.sav' },
     availableDataFiles: [
       {
@@ -37,7 +45,7 @@ function createArtifacts() {
     artifactPaths: {
       inputs: {
         sortedFinal: 'tables/07-sorted-final.json',
-        resultsTables: 'results/tables.json',
+        resultsTables: resultsTablesPath,
         crosstabRaw: 'crosstab/crosstab-output-raw.json',
         loopSummary: 'stages/loop-summary.json',
         loopPolicy: 'agents/loop-semantics/loop-semantics-policy.json',
@@ -206,7 +214,14 @@ function createArtifacts() {
 function createRunResult(
   ready: boolean,
   reasonCodes: string[] = ready ? ['ready'] : ['r2_not_finalized'],
+  options?: {
+    resultsTablesPath?: string;
+    resultsTablesKey?: string;
+  },
 ): Record<string, unknown> {
+  const resultsTablesPath = options?.resultsTablesPath ?? 'results/tables.json';
+  const resultsTablesKey = options?.resultsTablesKey ?? 'r2/results';
+
   return {
     exportReadiness: {
       reexport: {
@@ -225,7 +240,7 @@ function createRunResult(
     r2Files: {
       outputs: {
         'tables/07-sorted-final.json': 'r2/sorted-final',
-        'results/tables.json': 'r2/results',
+        [resultsTablesPath]: resultsTablesKey,
         'crosstab/crosstab-output-raw.json': 'r2/crosstab',
         'stages/loop-summary.json': 'r2/loop-summary',
       },
@@ -420,6 +435,39 @@ describe('Q export service integration', () => {
     expect(second.cached).toBe(true);
     expect(second.descriptor.packageId).toBe(first.descriptor.packageId);
     expect(mocks.uploadQExportPackageArtifacts).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the weighted finalized artifact when export metadata resolves resultsTables to the weighted path', async () => {
+    const artifacts = createArtifacts({
+      resultsTablesPath: 'results/tables-weighted.json',
+      weightingMode: 'both',
+      weightVariable: 'wt',
+    });
+    payloadByKey.set('r2/meta', artifacts.metadata);
+    payloadByKey.set('r2/table-routing', artifacts.tableRouting);
+    payloadByKey.set('r2/job-routing', artifacts.jobRouting);
+    payloadByKey.set('r2/loop-policy', artifacts.loopPolicy);
+    payloadByKey.set('r2/support', artifacts.support);
+    payloadByKey.set('r2/sorted-final', artifacts.sortedFinal);
+    payloadByKey.set('r2/results-weighted', artifacts.results);
+    payloadByKey.set('r2/crosstab', artifacts.crosstab);
+    payloadByKey.set('r2/loop-summary', artifacts.loopSummary);
+    payloadByKey.set('r2/wide', Buffer.from('SAVDATA_WIDE'));
+
+    const runResult = createRunResult(true, ['ready'], {
+      resultsTablesPath: 'results/tables-weighted.json',
+      resultsTablesKey: 'r2/results-weighted',
+    });
+
+    const result = await generateQExportPackage({
+      runId: 'run-1',
+      orgId: 'org-1',
+      projectId: 'proj-1',
+      runResult,
+    });
+
+    expect(result.cached).toBe(false);
+    expect(result.manifest.artifacts.resultsTablesPath).toBe('results/tables-weighted.json');
   });
 
   it('rebuilds when cached descriptor is missing new zip/data artifacts', async () => {

@@ -5,7 +5,6 @@ import { createAbortController } from '@/lib/abortStore';
 import { runPipelineFromUpload, type PipelineRunParams } from '@/lib/api/pipelineOrchestrator';
 import { runQueuedReviewResume } from '@/lib/api/reviewCompletion';
 import type { ProjectConfig } from '@/schemas/projectConfigSchema';
-
 import { hydrateRunInputsToSession } from './hydrateRunInputs';
 import { restoreDurableRecoveryWorkspace } from './recoveryPersistence';
 import type { ClaimedWorkerRun } from './types';
@@ -23,16 +22,25 @@ export async function runClaimedWorkerRun(
       );
     }
 
+    let resumedOutputDir = claimedRun.executionPayload.pipelineContext.outputDir;
     if (claimedRun.recoveryManifest?.isComplete) {
-      await restoreDurableRecoveryWorkspace(claimedRun.recoveryManifest);
+      resumedOutputDir = await restoreDurableRecoveryWorkspace(claimedRun.recoveryManifest);
     }
+
+    const effectivePipelineContext = claimedRun.recoveryManifest?.isComplete
+      ? {
+          ...claimedRun.executionPayload.pipelineContext,
+          ...claimedRun.recoveryManifest.pipelineContext,
+          outputDir: resumedOutputDir,
+        }
+      : claimedRun.executionPayload.pipelineContext;
 
     if (claimedRun.recoveryManifest?.boundary === 'review_checkpoint') {
       await runQueuedReviewResume({
         runId: claimedRun.runId,
         workerId,
-        outputDir: claimedRun.executionPayload.pipelineContext.outputDir,
-        pipelineId: claimedRun.executionPayload.pipelineContext.pipelineId,
+        outputDir: resumedOutputDir,
+        pipelineId: effectivePipelineContext.pipelineId,
         projectId: claimedRun.projectId,
         orgId: claimedRun.orgId,
         abortSignal,
@@ -48,7 +56,7 @@ export async function runClaimedWorkerRun(
       convexOrgId: claimedRun.orgId,
       convexProjectId: claimedRun.projectId,
       launchedBy: claimedRun.launchedBy,
-      pipelineContext: claimedRun.executionPayload.pipelineContext,
+      pipelineContext: effectivePipelineContext,
       fileNames: {
         dataMap: claimedRun.executionPayload.fileNames.dataMap,
         bannerPlan: claimedRun.executionPayload.fileNames.bannerPlan,

@@ -20,12 +20,19 @@ import { generateWinCrossExportPackage } from '@/lib/exportData/wincross/service
 import { WinCrossExportServiceError, WINCROSS_SERIALIZER_CONTRACT_VERSION } from '@/lib/exportData/wincross/types';
 import type { ExportDataFileRef, ExportManifestMetadata } from '@/lib/exportData/types';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function createArtifacts(): any {
+function createArtifacts(options?: {
+  resultsTablesPath?: string;
+  weightingMode?: 'unweighted' | 'weighted' | 'both';
+  weightVariable?: string | null;
+}) {
+  const resultsTablesPath = options?.resultsTablesPath ?? 'results/tables.json';
+  const weightingMode = options?.weightingMode ?? 'unweighted';
+  const weightVariable = options?.weightVariable ?? null;
+
   const metadata = {
     manifestVersion: 'phase1.v1',
     generatedAt: '2026-03-19T00:00:00.000Z',
-    weighting: { weightVariable: null, mode: 'unweighted' },
+    weighting: { weightVariable, mode: weightingMode },
     sourceSavNames: { uploaded: 'input.sav', runtime: 'dataFile.sav' },
     availableDataFiles: [
       {
@@ -39,7 +46,7 @@ function createArtifacts(): any {
     artifactPaths: {
       inputs: {
         sortedFinal: 'tables/13e-table-enriched.json',
-        resultsTables: 'results/tables.json',
+        resultsTables: resultsTablesPath,
         crosstabRaw: 'planning/21-crosstab-plan.json',
         loopSummary: 'enrichment/loop-summary.json',
         loopPolicy: 'agents/loop-semantics/loop-semantics-policy.json',
@@ -73,26 +80,68 @@ function createArtifacts(): any {
     },
   };
 
+  const tableRouting: {
+    generatedAt: string;
+    totalTables: number;
+    tableToDataFrameRef: Record<string, string>;
+    countsByDataFrameRef: Record<string, number>;
+  } = {
+    generatedAt: '2026-03-19T00:00:00.000Z',
+    totalTables: 1,
+    tableToDataFrameRef: { t1: 'wide' },
+    countsByDataFrameRef: { wide: 1 },
+  };
+
+  const jobRouting: {
+    generatedAt: string;
+    totalJobs: number;
+    totalTables: number;
+    jobs: Array<{
+      jobId: string;
+      dataFrameRef: string;
+      dataFileRelativePath: string;
+      tableIds: string[];
+    }>;
+    tableToJobId: Record<string, string>;
+  } = {
+    generatedAt: '2026-03-19T00:00:00.000Z',
+    totalJobs: 1,
+    totalTables: 1,
+    jobs: [{
+      jobId: 'wide.job',
+      dataFrameRef: 'wide',
+      dataFileRelativePath: 'export/data/wide.sav',
+      tableIds: ['t1'],
+    }],
+    tableToJobId: { t1: 'wide.job' },
+  };
+
+  const loopSummary: {
+    totalLoopGroups: number;
+    totalIterationVars: number;
+    totalBaseVars: number;
+    groups: Array<{
+      stackedFrameName: string;
+      skeleton: string;
+      iterations: string[];
+      variableCount: number;
+      variables: Array<{
+        baseName: string;
+        label: string;
+        iterationColumns: Record<string, string>;
+      }>;
+    }>;
+  } = {
+    totalLoopGroups: 0,
+    totalIterationVars: 0,
+    totalBaseVars: 0,
+    groups: [],
+  };
+
   return {
     metadata,
-    tableRouting: {
-      generatedAt: '2026-03-19T00:00:00.000Z',
-      totalTables: 1,
-      tableToDataFrameRef: { t1: 'wide' },
-      countsByDataFrameRef: { wide: 1 },
-    },
-    jobRouting: {
-      generatedAt: '2026-03-19T00:00:00.000Z',
-      totalJobs: 1,
-      totalTables: 1,
-      jobs: [{
-        jobId: 'wide.job',
-        dataFrameRef: 'wide',
-        dataFileRelativePath: 'export/data/wide.sav',
-        tableIds: ['t1'],
-      }],
-      tableToJobId: { t1: 'wide.job' },
-    },
+    tableRouting,
+    jobRouting,
     loopPolicy: {
       policyVersion: '1.0',
       bannerGroups: [],
@@ -136,19 +185,21 @@ function createArtifacts(): any {
         { groupName: 'Demo', columns: [{ name: 'Male', adjusted: 'SEX == 1' }] },
       ],
     },
-    loopSummary: {
-      totalLoopGroups: 0,
-      totalIterationVars: 0,
-      totalBaseVars: 0,
-      groups: [],
-    },
+    loopSummary,
   };
 }
 
 function createRunResult(
   ready: boolean,
   reasonCodes: string[] = ready ? ['ready'] : ['r2_not_finalized'],
+  options?: {
+    resultsTablesPath?: string;
+    resultsTablesKey?: string;
+  },
 ): Record<string, unknown> {
+  const resultsTablesPath = options?.resultsTablesPath ?? 'results/tables.json';
+  const resultsTablesKey = options?.resultsTablesKey ?? 'r2/results';
+
   return {
     exportReadiness: {
       reexport: {
@@ -167,7 +218,7 @@ function createRunResult(
     r2Files: {
       outputs: {
         'tables/13e-table-enriched.json': 'r2/sorted-final',
-        'results/tables.json': 'r2/results',
+        [resultsTablesPath]: resultsTablesKey,
         'planning/21-crosstab-plan.json': 'r2/crosstab',
         'enrichment/loop-summary.json': 'r2/loop-summary',
       },
@@ -307,6 +358,41 @@ describe('WinCross export service integration', () => {
     expect(second.cached).toBe(true);
     expect(second.descriptor.packageId).toBe(first.descriptor.packageId);
     expect(mocks.uploadWinCrossExportPackageArtifacts).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the weighted finalized artifact when export metadata resolves resultsTables to the weighted path', async () => {
+    const artifacts = createArtifacts({
+      resultsTablesPath: 'results/tables-weighted.json',
+      weightingMode: 'both',
+      weightVariable: 'wt',
+    });
+    payloadByKey.set('r2/meta', artifacts.metadata);
+    payloadByKey.set('r2/table-routing', artifacts.tableRouting);
+    payloadByKey.set('r2/job-routing', artifacts.jobRouting);
+    payloadByKey.set('r2/loop-policy', artifacts.loopPolicy);
+    payloadByKey.set('r2/support', artifacts.support);
+    payloadByKey.set('r2/sorted-final', artifacts.sortedFinal);
+    payloadByKey.set('r2/results-weighted', artifacts.results);
+    payloadByKey.set('r2/crosstab', artifacts.crosstab);
+    payloadByKey.set('r2/loop-summary', artifacts.loopSummary);
+    payloadByKey.set('r2/wide', Buffer.from('SAVDATA_WIDE'));
+
+    const runResult = createRunResult(true, ['ready'], {
+      resultsTablesPath: 'results/tables-weighted.json',
+      resultsTablesKey: 'r2/results-weighted',
+    });
+
+    const result = await generateWinCrossExportPackage({
+      runId: 'run-1',
+      orgId: 'org-1',
+      projectId: 'proj-1',
+      runResult,
+      preferenceSource: { kind: 'default' },
+    });
+
+    expect(result.cached).toBe(false);
+    expect(result.manifest.sourceManifestVersion).toBe('phase1.v1');
+    expect(result.descriptor.files['wincross/export.job']).toBeDefined();
   });
 
   it('recovers when R2 metadata is stale but run-level refs still point to the data file', async () => {

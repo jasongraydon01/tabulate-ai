@@ -1,7 +1,5 @@
-import path from 'path';
-
 import { sanitizeDatasetName } from '@/lib/api/fileHandler';
-import { getOutputsBaseDir } from '@/lib/paths/outputs';
+import { resolvePipelineOutputDir } from '@/lib/paths/outputs';
 
 import type { WorkerExecutionPayload, WorkerFileNames, WorkerInputRefs } from './types';
 import type { WorkerPipelineContext } from './recovery';
@@ -17,7 +15,7 @@ export function buildWorkerPipelineContext(params: {
   return {
     pipelineId,
     datasetName,
-    outputDir: path.join(getOutputsBaseDir(), datasetName, pipelineId),
+    outputDir: resolvePipelineOutputDir({ datasetName, pipelineId }),
   };
 }
 
