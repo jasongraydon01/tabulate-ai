@@ -6,9 +6,7 @@ import { Streamdown } from "streamdown";
 import { toast } from "sonner";
 import {
   isReasoningUIPart,
-  isTextUIPart,
   isToolUIPart,
-  type UIMessage,
 } from "ai";
 import { Check, ChevronDown, Copy, Link2, Pencil, ThumbsDown, ThumbsUp } from "lucide-react";
 
@@ -21,19 +19,24 @@ import {
 } from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  getAnalysisMessageFollowUpSuggestions,
   getAnalysisMessageMetadata,
+  getAnalysisMessageFollowUpSuggestions,
   getAnalysisUIMessageText,
 } from "@/lib/analysis/messages";
 import {
-  buildAnalysisCiteSegments,
-  extractAnalysisCiteMarkers,
-} from "@/lib/analysis/citeAnchors";
+  getAnalysisCellAnchorId,
+  getAnalysisEvidenceAnchorId,
+} from "@/lib/analysis/anchors";
 import {
   buildAnalysisRenderableBlocks,
+  type AnalysisRenderableInlineSegment,
   type AnalysisRenderableBlock,
 } from "@/lib/analysis/renderAnchors";
 import { getAnalysisToolActivityLabel } from "@/lib/analysis/toolLabels";
+import {
+  isAnalysisCiteDataUIPart,
+  type AnalysisUIMessage,
+} from "@/lib/analysis/ui";
 import {
   buildAnalysisCellId,
   isAnalysisCellSummary,
@@ -100,13 +103,13 @@ interface AnalysisStableTextWindow {
 }
 
 type AnalysisRevealEntry =
-  | { kind: "text"; blockIndex: number; textDelta: string }
+  | { kind: "text"; blockIndex: number; segmentsDelta: AnalysisRenderableInlineSegment[] }
   | { kind: "table"; blockIndex: number }
   | { kind: "missing"; blockIndex: number }
   | { kind: "placeholder"; blockIndex: number };
 
 type AnalysisDisplayBlock =
-  | { kind: "text"; key: string; text: string }
+  | { kind: "text"; key: string; segments: AnalysisRenderableInlineSegment[] }
   | (Extract<AnalysisRenderableBlock, { kind: "table" }> & { displayState: "ready" | "shell" })
   | Extract<AnalysisRenderableBlock, { kind: "missing" | "placeholder" }>;
 
@@ -115,78 +118,24 @@ const ANALYSIS_REVEAL_TEXT_DELAY_MS = 145;
 const ANALYSIS_REVEAL_PARAGRAPH_DELAY_MS = 220;
 const ANALYSIS_REVEAL_TABLE_HOLD_DELAY_MS = 240;
 const ANALYSIS_REVEAL_POST_TABLE_DELAY_MS = 160;
-const INCOMPLETE_MARKER_PREFIXES = ["[[render", "[[cite"] as const;
-
-function getLastIncompleteMarkerStart(text: string): number {
-  let lastStart = -1;
-
-  for (const prefix of INCOMPLETE_MARKER_PREFIXES) {
-    const index = text.lastIndexOf(prefix);
-    if (index > lastStart) {
-      lastStart = index;
-    }
-  }
-
-  if (lastStart === -1) {
-    return -1;
-  }
-
-  const trailingCandidate = text.slice(lastStart);
-  return trailingCandidate.includes("]]") ? -1 : lastStart;
-}
 
 export function splitAnalysisStableTextWindow(
   text: string,
-  isStreaming: boolean,
+  _isStreaming: boolean,
 ): AnalysisStableTextWindow {
-  if (!isStreaming || text.length === 0) {
-    return {
-      stableText: text,
-      unstableTail: "",
-    };
-  }
-
-  const incompleteMarkerStart = getLastIncompleteMarkerStart(text);
-  if (incompleteMarkerStart === -1) {
-    return {
-      stableText: text,
-      unstableTail: "",
-    };
-  }
-
   return {
-    stableText: text.slice(0, incompleteMarkerStart),
-    unstableTail: text.slice(incompleteMarkerStart),
+    stableText: text,
+    unstableTail: "",
   };
-}
-
-function appendOrPushTextChunk(chunks: string[], chunk: string) {
-  if (chunk.length === 0) return;
-
-  if (/^\s*\[\[cite\s/i.test(chunk) && chunks.length > 0) {
-    chunks[chunks.length - 1] = `${chunks[chunks.length - 1]}${chunk}`;
-    return;
-  }
-
-  chunks.push(chunk);
 }
 
 function splitParagraphForReveal(paragraph: string): string[] {
   if (!paragraph) return [];
   const chunks: string[] = [];
-  const citeMarkers = extractAnalysisCiteMarkers(paragraph);
-  let citeMarkerIndex = 0;
   let sentenceStart = 0;
   let cursor = 0;
 
   while (cursor < paragraph.length) {
-    const activeMarker = citeMarkers[citeMarkerIndex];
-    if (activeMarker && cursor >= activeMarker.start && cursor < activeMarker.end) {
-      cursor = activeMarker.end;
-      citeMarkerIndex += 1;
-      continue;
-    }
-
     const char = paragraph[cursor];
     if (!char || !/[.!?]/.test(char)) {
       cursor += 1;
@@ -199,22 +148,19 @@ function splitParagraphForReveal(paragraph: string): string[] {
       sentenceEnd += 1;
     }
 
-    while (citeMarkers[citeMarkerIndex]?.start === sentenceEnd) {
-      sentenceEnd = citeMarkers[citeMarkerIndex]!.end;
-      citeMarkerIndex += 1;
-    }
-
     while (sentenceEnd < paragraph.length && /\s/.test(paragraph[sentenceEnd] ?? "")) {
       sentenceEnd += 1;
     }
 
-    appendOrPushTextChunk(chunks, paragraph.slice(sentenceStart, sentenceEnd));
+    if (sentenceEnd > sentenceStart) {
+      chunks.push(paragraph.slice(sentenceStart, sentenceEnd));
+    }
     sentenceStart = sentenceEnd;
     cursor = sentenceEnd;
   }
 
   if (sentenceStart < paragraph.length) {
-    appendOrPushTextChunk(chunks, paragraph.slice(sentenceStart));
+    chunks.push(paragraph.slice(sentenceStart));
   }
 
   return chunks.length > 0 ? chunks : [paragraph];
@@ -239,8 +185,37 @@ export function splitAnalysisTextForReveal(text: string): string[] {
     }
 
     for (const paragraphChunk of splitParagraphForReveal(segment)) {
-      appendOrPushTextChunk(chunks, paragraphChunk);
+      chunks.push(paragraphChunk);
     }
+  }
+
+  return chunks;
+}
+
+function splitAnalysisInlineSegmentsForReveal(
+  segments: AnalysisRenderableInlineSegment[],
+): AnalysisRenderableInlineSegment[][] {
+  const chunks: AnalysisRenderableInlineSegment[][] = [];
+
+  for (const segment of segments) {
+    if (segment.kind === "text") {
+      const textChunks = splitAnalysisTextForReveal(segment.text);
+      for (const textChunk of textChunks) {
+        if (textChunk.length === 0) continue;
+        chunks.push([{ kind: "text", text: textChunk }]);
+      }
+      continue;
+    }
+
+    if (chunks.length === 0) {
+      chunks.push([{ kind: "cite", cellIds: [...segment.cellIds] }]);
+      continue;
+    }
+
+    chunks[chunks.length - 1]!.push({
+      kind: "cite",
+      cellIds: [...segment.cellIds],
+    });
   }
 
   return chunks;
@@ -251,11 +226,11 @@ export function buildAnalysisRevealEntries(
 ): AnalysisRevealEntry[] {
   return blocks.flatMap((block, blockIndex): AnalysisRevealEntry[] => {
     if (block.kind === "text") {
-      const chunks = splitAnalysisTextForReveal(block.text);
-      return chunks.map((textDelta) => ({
+      const chunks = splitAnalysisInlineSegmentsForReveal(block.segments);
+      return chunks.map((segmentsDelta) => ({
         kind: "text",
         blockIndex,
-        textDelta,
+        segmentsDelta,
       }));
     }
 
@@ -271,7 +246,7 @@ export function buildAnalysisDisplayBlocks(
   entries: AnalysisRevealEntry[],
   releasedEntryCount: number,
 ): AnalysisDisplayBlock[] {
-  const releasedTextByBlockIndex = new Map<number, string>();
+  const releasedTextByBlockIndex = new Map<number, AnalysisRenderableInlineSegment[]>();
   const readyBlockIndexes = new Set<number>();
   const nextEntry = entries[Math.min(releasedEntryCount, entries.length)];
   const nextTableShellBlockIndex = nextEntry?.kind === "table" ? nextEntry.blockIndex : null;
@@ -280,7 +255,14 @@ export function buildAnalysisDisplayBlocks(
     if (entry.kind === "text") {
       releasedTextByBlockIndex.set(
         entry.blockIndex,
-        `${releasedTextByBlockIndex.get(entry.blockIndex) ?? ""}${entry.textDelta}`,
+        [
+          ...(releasedTextByBlockIndex.get(entry.blockIndex) ?? []),
+          ...entry.segmentsDelta.map<AnalysisRenderableInlineSegment>((segment) => (
+            segment.kind === "text"
+              ? { kind: "text", text: segment.text }
+              : { kind: "cite", cellIds: [...segment.cellIds] }
+          )),
+        ],
       );
       continue;
     }
@@ -292,12 +274,12 @@ export function buildAnalysisDisplayBlocks(
 
   blocks.forEach((block, blockIndex) => {
     if (block.kind === "text") {
-      const text = releasedTextByBlockIndex.get(blockIndex);
-      if (text && text.length > 0) {
+      const segments = releasedTextByBlockIndex.get(blockIndex);
+      if (segments && segments.length > 0) {
         displayBlocks.push({
           kind: "text",
           key: block.key,
-          text,
+          segments,
         });
       }
       return;
@@ -374,7 +356,10 @@ export function getNextAnalysisRevealDelayMs(params: {
     return ANALYSIS_REVEAL_POST_TABLE_DELAY_MS;
   }
 
-  if (previousEntry?.kind === "text" && previousEntry.textDelta.includes("\n\n")) {
+  if (
+    previousEntry?.kind === "text"
+    && previousEntry.segmentsDelta.some((segment) => segment.kind === "text" && segment.text.includes("\n\n"))
+  ) {
     return ANALYSIS_REVEAL_PARAGRAPH_DELAY_MS;
   }
 
@@ -412,7 +397,7 @@ function getEvidenceItemCellId(item: AnalysisEvidenceItem): string | null {
   });
 }
 
-function buildCitationChipLookup(message: UIMessage): CitationChipLookup {
+function buildCitationChipLookup(message: AnalysisUIMessage): CitationChipLookup {
   const exactMetaByCellId = new Map<string, CitationChipMeta>();
   const chipLabelByTableId = new Map<string, string>();
   const evidenceItems = getAnalysisMessageEvidenceItems(message);
@@ -501,14 +486,12 @@ function resolveCitationChipMeta(
 }
 
 function InlineCitationText({
-  text,
+  segments,
   citeLookup,
 }: {
-  text: string;
+  segments: AnalysisRenderableInlineSegment[];
   citeLookup: CitationChipLookup;
 }) {
-  const segments = buildAnalysisCiteSegments(text);
-
   return (
     <p className="min-w-0 whitespace-pre-wrap break-words text-[0.9375rem] leading-[1.65] [overflow-wrap:anywhere]">
       {segments.map((segment, segmentIndex) => {
@@ -625,7 +608,7 @@ type TraceEntry =
   | { kind: "reasoning"; id: string; text: string }
   | { kind: "tool"; id: string; label: string; state: string };
 
-export function getAnalysisTraceEntries(message: UIMessage): TraceEntry[] {
+export function getAnalysisTraceEntries(message: AnalysisUIMessage): TraceEntry[] {
   if (message.role === "user") {
     return [];
   }
@@ -672,21 +655,20 @@ export function getAnalysisTraceHeaderLabel(
   return isExpanded ? "Analysis steps" : (collapsedSummary ?? "Analysis steps");
 }
 
-export function getAnalysisMessageEvidenceItems(message: UIMessage): AnalysisEvidenceItem[] {
+export function getAnalysisMessageEvidenceItems(message: AnalysisUIMessage): AnalysisEvidenceItem[] {
   return getAnalysisMessageMetadata(message)?.evidence ?? [];
 }
 
-export function getAnalysisMessageFollowUpItems(message: UIMessage): string[] {
+export function getAnalysisMessageFollowUpItems(message: AnalysisUIMessage): string[] {
   return getAnalysisMessageFollowUpSuggestions(message);
 }
 
-function getInlineCitedCellIds(message: Pick<UIMessage, "parts">): Set<string> {
+function getInlineCitedCellIds(message: Pick<AnalysisUIMessage, "parts">): Set<string> {
   const citedCellIds = new Set<string>();
-  const text = getAnalysisUIMessageText(message);
 
-  for (const segment of buildAnalysisCiteSegments(text)) {
-    if (segment.kind !== "cite") continue;
-    for (const cellId of segment.cellIds) {
+  for (const part of message.parts) {
+    if (!isAnalysisCiteDataUIPart(part)) continue;
+    for (const cellId of part.data.cellIds) {
       citedCellIds.add(cellId);
     }
   }
@@ -695,7 +677,7 @@ function getInlineCitedCellIds(message: Pick<UIMessage, "parts">): Set<string> {
 }
 
 export function getVisibleEvidenceItems(
-  message: UIMessage,
+  message: AnalysisUIMessage,
   evidenceItems: AnalysisEvidenceItem[],
 ): AnalysisEvidenceItem[] {
   if (evidenceItems.length === 0) return [];
@@ -712,10 +694,6 @@ export function getVisibleEvidenceItems(
   });
 }
 
-function getAnalysisEvidenceAnchorId(anchorId: string): string {
-  return `analysis-evidence-${anchorId.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
-}
-
 function scrollToEvidenceAnchor(anchorId: string) {
   const target = document.getElementById(getAnalysisEvidenceAnchorId(anchorId));
   if (!target) return;
@@ -725,12 +703,6 @@ function scrollToEvidenceAnchor(anchorId: string) {
   window.setTimeout(() => {
     target.classList.remove("ring-2", "ring-tab-teal/40", "ring-offset-2", "ring-offset-background");
   }, 1200);
-}
-
-// Cell anchors live on each rendered cell `<td>` in GroundedTableCard. cellIds
-// contain `|`, `%`, and URL-encoded punctuation; sanitize to CSS-safe chars.
-export function getAnalysisCellAnchorId(cellId: string): string {
-  return `analysis-cell-${cellId.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
 }
 
 function highlightAnchor(target: HTMLElement) {
@@ -803,7 +775,7 @@ export function AnalysisMessage({
   onRevealProgress,
   onEditUserMessage,
 }: {
-  message: UIMessage;
+  message: AnalysisUIMessage;
   isStreaming?: boolean;
   // Only passed when the thread is idle AND this is the tail assistant
   // message — so this prop doubles as the "show chips" signal.
@@ -855,35 +827,16 @@ export function AnalysisMessage({
   }
 
   const shouldUseRevealController = !isUser && hasEverStreamedRef.current;
-  const { stableText, unstableTail } = useMemo(
+  const { unstableTail } = useMemo(
     () => splitAnalysisStableTextWindow(rawAssistantText, shouldUseRevealController && isStreaming),
     [isStreaming, rawAssistantText, shouldUseRevealController],
   );
 
-  const stableRenderableMessage = useMemo<Pick<UIMessage, "id" | "parts">>(() => {
-    if (!shouldUseRevealController) {
-      return message;
-    }
-
-    const parts = message.parts.filter((part) => !isTextUIPart(part)) as UIMessage["parts"];
-    if (stableText.length > 0) {
-      parts.push({
-        type: "text",
-        text: stableText,
-      } as UIMessage["parts"][number]);
-    }
-
-    return {
-      id: message.id,
-      parts,
-    };
-  }, [message, shouldUseRevealController, stableText]);
-
   const renderableBlocks = useMemo(
-    () => buildAnalysisRenderableBlocks(stableRenderableMessage, {
+    () => buildAnalysisRenderableBlocks(message, {
       isStreaming: shouldUseRevealController && (isStreaming || unstableTail.length > 0),
     }),
-    [isStreaming, shouldUseRevealController, stableRenderableMessage, unstableTail.length],
+    [isStreaming, message, shouldUseRevealController, unstableTail.length],
   );
   const revealEntries = useMemo(
     () => buildAnalysisRevealEntries(renderableBlocks),
@@ -1151,7 +1104,7 @@ export function AnalysisMessage({
           ) : (
             <div className="flex flex-col items-end gap-0.5">
               <p className="min-w-0 whitespace-pre-wrap break-words rounded-2xl bg-primary/10 px-4 py-2 text-sm leading-6 [overflow-wrap:anywhere]">
-                {message.parts.filter(isTextUIPart).map((part) => part.text).join("")}
+                {getAnalysisUIMessageText(message)}
               </p>
               <div className="flex items-center gap-0.5">
                 {onEditUserMessage ? (
@@ -1233,8 +1186,7 @@ export function AnalysisMessage({
 
             {displayBlocks.map((block) => {
               if (block.kind === "text") {
-                const segments = buildAnalysisCiteSegments(block.text);
-                const hasCiteMarkers = segments.some((segment) => segment.kind === "cite");
+                const hasCiteMarkers = block.segments.some((segment) => segment.kind === "cite");
 
                 if (!hasCiteMarkers) {
                   return (
@@ -1243,7 +1195,10 @@ export function AnalysisMessage({
                       className="prose-analysis min-w-0 max-w-none break-words [overflow-wrap:anywhere]"
                     >
                       <StreamingMarkdown
-                        text={block.text}
+                        text={block.segments
+                          .filter((segment): segment is Extract<AnalysisRenderableInlineSegment, { kind: "text" }> => segment.kind === "text")
+                          .map((segment) => segment.text)
+                          .join("")}
                         isStreaming={shouldUseRevealController && revealPhase !== "settled"}
                       />
                     </div>
@@ -1259,7 +1214,7 @@ export function AnalysisMessage({
                     className="prose-analysis min-w-0 max-w-none break-words [overflow-wrap:anywhere]"
                   >
                     <InlineCitationText
-                      text={block.text}
+                      segments={block.segments}
                       citeLookup={citeLookup}
                     />
                   </div>
@@ -1342,9 +1297,12 @@ export function AnalysisMessage({
                       <div className="space-y-1.5">
                         {visibleEvidenceItems.map((item) => {
                           const cellAnchorCellId = getEvidenceItemCellId(item);
+                          const canScrollToRenderedCell = Boolean(
+                            item.renderedInCurrentMessage && cellAnchorCellId,
+                          );
 
                           const handleClick = () => {
-                            if (cellAnchorCellId) {
+                            if (canScrollToRenderedCell && cellAnchorCellId) {
                               scrollToCellAnchors([cellAnchorCellId]);
                               return;
                             }
@@ -1353,7 +1311,7 @@ export function AnalysisMessage({
                             }
                           };
 
-                          const clickable = Boolean(cellAnchorCellId || item.anchorId);
+                          const clickable = Boolean(canScrollToRenderedCell || item.anchorId);
 
                           return (
                             <button

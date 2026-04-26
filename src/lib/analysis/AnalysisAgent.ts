@@ -1,4 +1,4 @@
-import { convertToModelMessages, stepCountIs, streamText, tool, type UIMessage } from "ai";
+import { convertToModelMessages, stepCountIs, streamText, tool } from "ai";
 import { z } from "zod";
 
 import {
@@ -27,6 +27,7 @@ import {
 } from "@/lib/analysis/grounding";
 import type { AnalysisTurnGroundingEvent } from "@/lib/analysis/claimCheck";
 import type { AnalysisTraceRetryEvent } from "@/lib/analysis/trace";
+import type { AnalysisUIMessage } from "@/lib/analysis/ui";
 import {
   isAnalysisCellSummary,
   type AnalysisCellSummary,
@@ -49,7 +50,7 @@ export async function streamAnalysisResponse({
   groundingContext,
   abortSignal,
 }: {
-  messages: UIMessage[];
+  messages: AnalysisUIMessage[];
   groundingContext: AnalysisGroundingContext;
   abortSignal?: AbortSignal;
 }) {

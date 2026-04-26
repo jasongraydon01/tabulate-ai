@@ -1,5 +1,10 @@
-import { isTextUIPart, isToolUIPart, type UIMessage } from "ai";
+import { isToolUIPart } from "ai";
 
+import {
+  isAnalysisCiteDataUIPart,
+  isAnalysisRenderDataUIPart,
+  type AnalysisUIMessage,
+} from "@/lib/analysis/ui";
 import {
   isAnalysisTableCard,
   type AnalysisFetchTableCutGroups,
@@ -12,7 +17,7 @@ const MAX_RENDER_GROUP_FOCUS = 3;
 const TOTAL_GROUP_KEY = "__total__";
 const RENDER_MARKER_PREFIX = "[[render";
 
-type FetchTableUIPart = UIMessage["parts"][number] & {
+type FetchTableUIPart = AnalysisUIMessage["parts"][number] & {
   type: "tool-fetchTable";
   toolCallId: string;
   state: "output-available";
@@ -28,8 +33,12 @@ export interface AnalysisRenderFocus {
   focusedGroupKeys: string[];
 }
 
+export type AnalysisRenderableInlineSegment =
+  | { kind: "text"; text: string }
+  | { kind: "cite"; cellIds: string[] };
+
 export type AnalysisRenderableBlock =
-  | { kind: "text"; key: string; text: string }
+  | { kind: "text"; key: string; segments: AnalysisRenderableInlineSegment[] }
   | { kind: "placeholder"; key: string }
   | { kind: "missing"; key: string; tableId: string }
   | { kind: "table"; key: string; part: FetchTableUIPart; focus: AnalysisRenderFocus };
@@ -202,8 +211,8 @@ export function extractAnalysisRenderMarkerOccurrences(text: string): AnalysisRe
   return markers;
 }
 
-function getRenderableTableParts(parts: UIMessage["parts"]): FetchTableUIPart[] {
-  function isFetchTableUIPart(part: UIMessage["parts"][number]): part is FetchTableUIPart {
+function getRenderableTableParts(parts: AnalysisUIMessage["parts"]): FetchTableUIPart[] {
+  function isFetchTableUIPart(part: AnalysisUIMessage["parts"][number]): part is FetchTableUIPart {
     return (
       isToolUIPart(part)
       && part.type === "tool-fetchTable"
@@ -245,14 +254,22 @@ function getFetchedGroupKeys(part: FetchTableUIPart): Set<string> {
   );
 }
 
-function resolveRenderFocus(part: FetchTableUIPart, marker: ParsedRenderMarker): AnalysisRenderFocus {
+function resolveRenderFocus(
+  part: FetchTableUIPart,
+  focus?: {
+    rowLabels?: string[];
+    rowRefs?: string[];
+    groupNames?: string[];
+    groupRefs?: string[];
+  },
+): AnalysisRenderFocus {
   const focusedRowKeys: string[] = [];
   const focusedGroupKeys: string[] = [];
   const rows = part.output.rows;
   const groups = (part.output.columnGroups ?? []).filter((group) => group.groupKey !== TOTAL_GROUP_KEY);
   const fetchedGroupKeys = getFetchedGroupKeys(part);
 
-  for (const rowLabel of marker.rowLabels) {
+  for (const rowLabel of focus?.rowLabels ?? []) {
     if (focusedRowKeys.length >= MAX_RENDER_ROW_FOCUS) break;
     const matches = rows.filter((row) => normalizeText(row.label) === normalizeText(rowLabel));
     if (matches.length !== 1) continue;
@@ -262,7 +279,7 @@ function resolveRenderFocus(part: FetchTableUIPart, marker: ParsedRenderMarker):
     }
   }
 
-  for (const rowRef of marker.rowRefs) {
+  for (const rowRef of focus?.rowRefs ?? []) {
     if (focusedRowKeys.length >= MAX_RENDER_ROW_FOCUS) break;
     if (!rows.some((row) => row.rowKey === rowRef)) continue;
     if (!focusedRowKeys.includes(rowRef)) {
@@ -270,7 +287,7 @@ function resolveRenderFocus(part: FetchTableUIPart, marker: ParsedRenderMarker):
     }
   }
 
-  for (const groupName of marker.groupNames) {
+  for (const groupName of focus?.groupNames ?? []) {
     if (focusedGroupKeys.length >= MAX_RENDER_GROUP_FOCUS) break;
     const matches = groups.filter((group) => normalizeText(group.groupName) === normalizeText(groupName));
     if (matches.length !== 1) continue;
@@ -279,7 +296,7 @@ function resolveRenderFocus(part: FetchTableUIPart, marker: ParsedRenderMarker):
     focusedGroupKeys.push(groupKey);
   }
 
-  for (const groupRef of marker.groupRefs) {
+  for (const groupRef of focus?.groupRefs ?? []) {
     if (focusedGroupKeys.length >= MAX_RENDER_GROUP_FOCUS) break;
     if (!groups.some((group) => group.groupKey === groupRef)) continue;
     if (!fetchedGroupKeys.has(groupRef) || focusedGroupKeys.includes(groupRef)) continue;
@@ -315,96 +332,82 @@ export function stripAnalysisRenderAnchors(text: string): string {
 }
 
 export function buildAnalysisRenderableBlocks(
-  message: Pick<UIMessage, "id" | "parts">,
+  message: Pick<AnalysisUIMessage, "id" | "parts">,
   options?: {
     isStreaming?: boolean;
   },
 ): AnalysisRenderableBlock[] {
-  const text = message.parts
-    .filter(isTextUIPart)
-    .map((part) => part.text)
-    .join("");
   const tableParts = getRenderableTableParts(message.parts);
   const tableMap = buildTableIdMap(tableParts);
 
-  const markers = extractAnalysisRenderMarkerOccurrences(text);
+  const blocks: AnalysisRenderableBlock[] = [];
+  let inlineSegments: AnalysisRenderableInlineSegment[] = [];
+  let textBlockIndex = 0;
+  let renderBlockIndex = 0;
 
-  const referencedTableIds = new Set(markers.map((marker) => marker.tableId));
-
-  if (markers.length === 0) {
-    if (text.trim().length === 0 && options?.isStreaming && tableParts.length > 0) {
-      return [];
-    }
-
-    const blocks: AnalysisRenderableBlock[] = [];
-    const cleanedText = normalizeRenderableText(text);
-    if (cleanedText) {
-      blocks.push({ kind: "text", key: `${message.id}-text-0`, text: cleanedText });
-    }
-    tableParts.forEach((part, index) => {
-      blocks.push({
-        kind: "table",
-        key: `${message.id}-table-${part.toolCallId ?? index}`,
-        part,
-        focus: { focusedRowKeys: [], focusedGroupKeys: [] },
-      });
+  function flushInlineSegments() {
+    if (inlineSegments.length === 0) return;
+    blocks.push({
+      kind: "text",
+      key: `${message.id}-text-${textBlockIndex}`,
+      segments: inlineSegments,
     });
-    return blocks;
+    inlineSegments = [];
+    textBlockIndex += 1;
   }
 
-  const blocks: AnalysisRenderableBlock[] = [];
-  let cursor = 0;
-  markers.forEach((marker, index) => {
-    const segment = text.slice(cursor, marker.start);
-    const cleanedSegment = normalizeRenderableText(segment);
-    if (cleanedSegment) {
-      blocks.push({
-        kind: "text",
-        key: `${message.id}-text-${index}`,
-        text: cleanedSegment,
-      });
+  for (const part of message.parts) {
+    if (part.type === "text") {
+      const cleanedText = part.text.replace(/\n{3,}/g, "\n\n");
+      if (cleanedText.trim().length > 0) {
+        const previous = inlineSegments.at(-1);
+        if (previous?.kind === "text") {
+          previous.text = `${previous.text}${cleanedText}`;
+        } else {
+          inlineSegments.push({ kind: "text", text: cleanedText });
+        }
+      }
+      continue;
     }
 
-    const part = tableMap.get(marker.tableId);
-    if (part) {
+    if (isAnalysisCiteDataUIPart(part)) {
+      if (part.data.cellIds.length > 0) {
+        inlineSegments.push({
+          kind: "cite",
+          cellIds: [...part.data.cellIds],
+        });
+      }
+      continue;
+    }
+
+    if (!isAnalysisRenderDataUIPart(part)) {
+      continue;
+    }
+
+    flushInlineSegments();
+
+    const matchedTablePart = tableMap.get(part.data.tableId);
+    if (matchedTablePart) {
       blocks.push({
         kind: "table",
-        key: `${message.id}-table-${part.toolCallId}-${index}`,
-        part,
-        focus: resolveRenderFocus(part, marker),
+        key: `${message.id}-table-${matchedTablePart.toolCallId}-${renderBlockIndex}`,
+        part: matchedTablePart,
+        focus: resolveRenderFocus(matchedTablePart, part.data.focus),
       });
     } else if (options?.isStreaming) {
-      blocks.push({ kind: "placeholder", key: `${message.id}-placeholder-${index}` });
+      blocks.push({ kind: "placeholder", key: `${message.id}-placeholder-${renderBlockIndex}` });
     } else {
       blocks.push({
         kind: "missing",
-        key: `${message.id}-missing-${index}-${marker.tableId}`,
-        tableId: marker.tableId,
+        key: `${message.id}-missing-${renderBlockIndex}-${part.data.tableId}`,
+        tableId: part.data.tableId,
       });
     }
 
-    cursor = marker.end;
-  });
-
-  const tail = text.slice(cursor);
-  const cleanedTail = normalizeRenderableText(tail);
-  if (cleanedTail) {
-    blocks.push({
-      kind: "text",
-      key: `${message.id}-text-tail`,
-      text: cleanedTail,
-    });
+    renderBlockIndex += 1;
   }
 
-  tableParts.forEach((part, index) => {
-    if (part.output.tableId && referencedTableIds.has(part.output.tableId)) return;
-    blocks.push({
-      kind: "table",
-      key: `${message.id}-table-fallback-${part.toolCallId ?? index}`,
-      part,
-      focus: { focusedRowKeys: [], focusedGroupKeys: [] },
-    });
-  });
+  flushInlineSegments();
 
   return blocks;
 }

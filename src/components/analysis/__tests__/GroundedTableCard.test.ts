@@ -10,7 +10,7 @@ import {
   normalizeGroundedTableCardGroups,
 } from "@/components/analysis/GroundedTableCard";
 import type { AnalysisTableCard } from "@/lib/analysis/types";
-import { getAnalysisCellAnchorId } from "@/components/analysis/AnalysisMessage";
+import { getAnalysisCellAnchorId } from "@/lib/analysis/anchors";
 
 const groupedCard: AnalysisTableCard = {
   status: "available",

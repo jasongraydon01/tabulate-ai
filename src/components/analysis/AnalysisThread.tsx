@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DefaultChatTransport, type UIMessage } from "ai";
+import { DefaultChatTransport, isDataUIPart } from "ai";
 import { useChat } from "@ai-sdk/react";
 import { AlertCircle } from "lucide-react";
 
@@ -15,13 +15,15 @@ import {
 import { PromptComposer } from "@/components/analysis/PromptComposer";
 import { GridLoader } from "@/components/ui/grid-loader";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import type { AnalysisUIMessage } from "@/lib/analysis/ui";
 import type { AnalysisMessageFeedbackRecord, AnalysisMessageFeedbackVote } from "@/lib/analysis/types";
 
 interface AnalysisThreadProps {
   runId: string;
   sessionId: string;
   sessionTitle: string;
-  initialMessages: UIMessage[];
+  initialMessages: AnalysisUIMessage[];
+  persistedMessages: AnalysisUIMessage[];
   persistedAssistantMessageIds: string[];
   persistedUserMessageIds: string[];
   // Full message id list in the order Convex holds them for this session.
@@ -40,7 +42,7 @@ interface AnalysisThreadProps {
 }
 
 export function shouldShowAnalysisMessageActions(
-  messages: UIMessage[],
+  messages: AnalysisUIMessage[],
   messageIndex: number,
 ): boolean {
   const message = messages[messageIndex];
@@ -56,10 +58,14 @@ export function shouldShowAnalysisMessageActions(
   return !messages.slice(messageIndex + 1).some((entry) => entry.role === "user");
 }
 
-export function hasVisibleAnalysisMessageParts(message: UIMessage): boolean {
+export function hasVisibleAnalysisMessageParts(message: AnalysisUIMessage): boolean {
   return message.parts.some((part) => {
     if (part.type === "text" || part.type === "reasoning") {
       return part.text.trim().length > 0;
+    }
+
+    if (isDataUIPart(part)) {
+      return true;
     }
 
     return part.type.startsWith("tool-");
@@ -67,7 +73,7 @@ export function hasVisibleAnalysisMessageParts(message: UIMessage): boolean {
 }
 
 export function shouldShowAnalysisPendingState(
-  messages: UIMessage[],
+  messages: AnalysisUIMessage[],
   status: "submitted" | "streaming" | "ready" | "error",
 ): boolean {
   if (status !== "submitted" && status !== "streaming") {
@@ -106,6 +112,7 @@ export function AnalysisThread({
   sessionId,
   sessionTitle,
   initialMessages,
+  persistedMessages,
   persistedAssistantMessageIds,
   persistedUserMessageIds,
   persistedMessageIdsInOrder,
@@ -127,7 +134,7 @@ export function AnalysisThread({
     [persistedUserMessageIds],
   );
   const transport = useMemo(
-    () => new DefaultChatTransport<UIMessage>({
+    () => new DefaultChatTransport<AnalysisUIMessage>({
       api: `/api/runs/${encodeURIComponent(runId)}/analysis`,
     }),
     [runId],
@@ -140,7 +147,7 @@ export function AnalysisThread({
     status,
     error,
     stop,
-  } = useChat<UIMessage>({
+  } = useChat<AnalysisUIMessage>({
     id: sessionId,
     messages: initialMessages,
     transport,
@@ -149,27 +156,25 @@ export function AnalysisThread({
   const isBusy = status === "submitted" || status === "streaming";
   const shouldShowPendingState = shouldShowAnalysisPendingState(messages, status);
 
-  // Reconcile useChat's client-generated message ids against the Convex
-  // authoritative list after a turn persists. Only acts when both lists are
-  // the same length and the chat is idle — if anything's off, we leave the
-  // ids alone so the edit affordance simply stays hidden until the next
-  // safe reconciliation point. Never fires mid-stream.
+  // Once the turn is settled and Convex has replayed the canonical message
+  // shape, snap the chat state to the persisted session so current-turn and
+  // reload behavior stay aligned.
   useEffect(() => {
     if (status !== "ready") return;
-    if (persistedMessageIdsInOrder.length === 0) return;
+    if (persistedMessages.length === 0 || persistedMessageIdsInOrder.length === 0) return;
 
     setMessages((current) => {
-      if (current.length !== persistedMessageIdsInOrder.length) return current;
-      const needsReconciliation = current.some(
-        (msg, i) => msg.id !== persistedMessageIdsInOrder[i],
-      );
-      if (!needsReconciliation) return current;
-      return current.map((msg, i) => ({
-        ...msg,
-        id: persistedMessageIdsInOrder[i] ?? msg.id,
-      }));
+      if (current.length !== persistedMessages.length) return current;
+
+      const currentSnapshot = JSON.stringify(current);
+      const persistedSnapshot = JSON.stringify(persistedMessages);
+      if (currentSnapshot === persistedSnapshot) {
+        return current;
+      }
+
+      return persistedMessages;
     });
-  }, [status, persistedMessageIdsInOrder, setMessages]);
+  }, [persistedMessageIdsInOrder, persistedMessages, setMessages, status]);
 
   useEffect(() => {
     const viewport = viewportRef.current;

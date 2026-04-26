@@ -1,4 +1,4 @@
-import { convertToModelMessages, generateText, type ModelMessage, type UIMessage } from "ai";
+import { convertToModelMessages, generateText, type ModelMessage } from "ai";
 
 import type { AnalysisCiteMarkerValidationIssue } from "@/lib/analysis/citeAnchors";
 import type { AnalysisGroundingContext } from "@/lib/analysis/grounding";
@@ -6,6 +6,7 @@ import { getSanitizedConversationMessagesForModel } from "@/lib/analysis/message
 import { getAnalysisModel, getAnalysisProviderOptions } from "@/lib/analysis/model";
 import { buildAnalysisSystemMessage } from "@/lib/analysis/promptPrefix";
 import type { AnalysisRenderMarkerValidationIssue } from "@/lib/analysis/renderAnchors";
+import type { AnalysisUIMessage } from "@/lib/analysis/ui";
 
 // One-shot model repair when the assistant response carries invalid markers.
 // Combines both marker families (render + cite) into a single instruction so
@@ -23,7 +24,7 @@ export async function attemptAnalysisMarkerRepair(params: {
     | "bannerPlanGroups"
     | "projectContext"
   >;
-  conversationMessages: UIMessage[];
+  conversationMessages: AnalysisUIMessage[];
   failedAssistantText: string;
   renderIssues: AnalysisRenderMarkerValidationIssue[];
   citeIssues: AnalysisCiteMarkerValidationIssue[];

@@ -1,10 +1,12 @@
 import { isToolUIPart, type UIMessage } from "ai";
 
 import { extractAnalysisCiteMarkers } from "@/lib/analysis/citeAnchors";
+import { extractAnalysisRenderMarkers } from "@/lib/analysis/renderAnchors";
 import { serializeAnalysisStructuredAssistantPartsToText } from "@/lib/analysis/structuredParts";
 import { FETCH_TABLE_TOOL_TYPE } from "@/lib/analysis/toolLabels";
 import {
   isAnalysisStructuredCitePart,
+  isAnalysisStructuredRenderPart,
   isAnalysisStructuredTextPart,
   type AnalysisStructuredAssistantPart,
   parseAnalysisCellId,
@@ -95,7 +97,7 @@ function stripPlaceholderCitationsFromAssistantParts(
   return cleanedParts;
 }
 
-function collectRenderedTableCardsByTableId(
+function collectFetchedTableCardsByTableId(
   parts: UIMessage["parts"],
 ): Map<string, { toolCallId: string; card: AnalysisTableCard }> {
   const byTableId = new Map<string, { toolCallId: string; card: AnalysisTableCard }>();
@@ -112,6 +114,29 @@ function collectRenderedTableCardsByTableId(
     byTableId.set(card.tableId, { toolCallId: part.toolCallId, card });
   }
   return byTableId;
+}
+
+function collectExplicitlyRenderedTablesByTableId(params: {
+  assistantParts: AnalysisStructuredAssistantPart[];
+  assistantText: string;
+  responseParts: UIMessage["parts"];
+}): Map<string, { toolCallId: string; card: AnalysisTableCard }> {
+  const fetchedTablesByTableId = collectFetchedTableCardsByTableId(params.responseParts);
+  const explicitlyRenderedTableIds = new Set(
+    params.assistantParts.length > 0
+      ? params.assistantParts.flatMap((part) => (isAnalysisStructuredRenderPart(part) ? [part.tableId] : []))
+      : extractAnalysisRenderMarkers(params.assistantText).map((marker) => marker.tableId),
+  );
+
+  const renderedTablesByTableId = new Map<string, { toolCallId: string; card: AnalysisTableCard }>();
+  for (const tableId of explicitlyRenderedTableIds) {
+    const fetchedTable = fetchedTablesByTableId.get(tableId);
+    if (fetchedTable) {
+      renderedTablesByTableId.set(tableId, fetchedTable);
+    }
+  }
+
+  return renderedTablesByTableId;
 }
 
 function buildCellRef(params: {
@@ -217,11 +242,14 @@ export function resolveAssistantMessageTrust(params: {
     }
   }
 
-  const renderedTablesByTableId = collectRenderedTableCardsByTableId(params.responseParts);
-
   const citedCellIds = cleanedAssistantParts.length > 0
     ? cleanedAssistantParts.flatMap((part) => (isAnalysisStructuredCitePart(part) ? part.cellIds : []))
     : extractAnalysisCiteMarkers(cleanedAssistantText).flatMap((marker) => marker.cellIds);
+  const renderedTablesByTableId = collectExplicitlyRenderedTablesByTableId({
+    assistantParts: cleanedAssistantParts,
+    assistantText: cleanedAssistantText,
+    responseParts: params.responseParts,
+  });
 
   const cellRefs: AnalysisGroundingRef[] = [];
   for (const cellId of citedCellIds) {

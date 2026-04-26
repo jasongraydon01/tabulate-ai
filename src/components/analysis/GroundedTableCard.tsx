@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { getAnalysisCellAnchorId } from "@/lib/analysis/anchors";
 import { buildAnalysisCellId } from "@/lib/analysis/types";
 import type {
   AnalysisTableCard,
@@ -27,12 +28,6 @@ import type {
   AnalysisTableCardRowFormat,
   AnalysisTableCardRow,
 } from "@/lib/analysis/types";
-
-// Kept in sync with getAnalysisCellAnchorId in AnalysisMessage.tsx. Both
-// sanitize cellId to CSS-safe chars (`|`, `%`, `:`, `.` → `-`).
-function cellAnchorId(cellId: string): string {
-  return `analysis-cell-${cellId.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
-}
 
 const TOTAL_GROUP_KEY = "__total__";
 
@@ -536,7 +531,7 @@ export function GroundedTableCard({
                     return (
                       <td
                         key={`${row.rowKey}-${resolvedCutKey}`}
-                        id={cellAnchorId(anchorCellId)}
+                        id={getAnalysisCellAnchorId(anchorCellId)}
                         className={cn("scroll-mt-24 align-middle transition-shadow duration-300", isCompact ? "px-2.5 py-1.5" : "px-3 py-3")}
                       >
                         {cell ? (

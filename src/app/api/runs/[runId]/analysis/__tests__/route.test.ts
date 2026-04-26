@@ -440,7 +440,22 @@ describe("analysis chat route", () => {
             },
             {
               type: "text",
-              text: 'Prior answer.\n\n[[render tableId=q1 rowLabels=["CSB"]]]\n\nValue.[[cite cellIds=q1|row|cut]]',
+              text: "Prior answer.",
+            },
+            {
+              type: "data-analysis-render",
+              data: {
+                tableId: "q1",
+                focus: { rowLabels: ["CSB"] },
+              },
+            },
+            {
+              type: "text",
+              text: "Value.",
+            },
+            {
+              type: "data-analysis-cite",
+              data: { cellIds: ["q1|row|cut"] },
             },
           ],
         },
@@ -690,7 +705,7 @@ describe("analysis chat route", () => {
     );
 
     expect(response.status).toBe(200);
-    await response.text();
+    const body = await response.text();
     expect(mocks.mutateInternal.mock.calls[2][1]).toEqual(expect.objectContaining({
       parts: expect.arrayContaining([
         { type: "text", text: "Overall satisfaction is 45%." },
@@ -703,16 +718,16 @@ describe("analysis chat route", () => {
           evidenceKind: "cell",
           refType: "table",
           refId: "q1",
-          anchorId: "tool-1",
-          artifactId: "artifact-1",
           rowKey: "row_0_1",
           cutKey: "__total__::total",
           sourceTableId: "q1",
           sourceQuestionId: "Q1",
-          renderedInCurrentMessage: true,
+          renderedInCurrentMessage: false,
         }),
       ]),
     }));
+    expect(body).toContain("data-analysis-cite");
+    expect(body).not.toContain(`[[cite cellIds=${cellId}]]`);
   });
 
   it("persists no grounding refs when the assistant quotes a number without a cite marker (freelancing)", async () => {
@@ -953,7 +968,7 @@ describe("analysis chat route", () => {
     });
   });
 
-  it("persists structured render parts while leaving the current streamed text behavior unchanged", async () => {
+  it("persists structured render parts and emits structured client parts in the settled response", async () => {
     mocks.loadAnalysisGroundingContext.mockResolvedValueOnce({
       availability: "available",
       missingArtifacts: [],
@@ -1064,12 +1079,14 @@ describe("analysis chat route", () => {
     );
 
     expect(response.status).toBe(200);
-    await response.text();
+    const body = await response.text();
     expect(mocks.mutateInternal.mock.calls[2][1]).toEqual(expect.objectContaining({
       content: "Intro.\n\nClose.",
       parts: expect.arrayContaining([
         { type: "render", tableId: "q1" },
       ]),
     }));
+    expect(body).toContain("data-analysis-render");
+    expect(body).not.toContain("[[render tableId=q1]]");
   });
 });

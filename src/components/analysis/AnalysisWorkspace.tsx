@@ -99,6 +99,13 @@ export function AnalysisWorkspace({
     () => (messages ?? []).map((message) => String(message._id)),
     [messages],
   );
+  const persistedUIMessages = useMemo(
+    () => persistedAnalysisMessagesToUIMessages(
+      (messages ?? []).map((message) => normalizePersistedAnalysisMessageRecord(message)),
+      (artifacts ?? []).map((artifact) => normalizePersistedAnalysisArtifactRecord(artifact)),
+    ),
+    [artifacts, messages],
+  );
 
   async function handleCreateSession() {
     setIsCreatingSession(true);
@@ -263,6 +270,7 @@ export function AnalysisWorkspace({
         runId={runId}
         sessionId={String(selectedSession._id)}
         sessionTitle={selectedSession.title}
+        persistedMessages={persistedUIMessages}
         persistedAssistantMessageIds={messages
           .filter((message) => message.role === "assistant")
           .map((message) => String(message._id))}
@@ -291,10 +299,7 @@ export function AnalysisWorkspace({
             throw error;
           }
         }}
-        initialMessages={persistedAnalysisMessagesToUIMessages(
-          messages.map((message) => normalizePersistedAnalysisMessageRecord(message)),
-          artifacts.map((artifact) => normalizePersistedAnalysisArtifactRecord(artifact)),
-        )}
+        initialMessages={persistedUIMessages}
       />
     );
   }

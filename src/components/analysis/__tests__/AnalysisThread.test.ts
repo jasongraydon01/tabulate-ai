@@ -1,7 +1,6 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { UIMessage } from "ai";
 
 import {
   hasVisibleAnalysisMessageParts,
@@ -9,6 +8,7 @@ import {
   shouldShowAnalysisMessageActions,
   shouldShowAnalysisPendingState,
 } from "@/components/analysis/AnalysisThread";
+import type { AnalysisUIMessage as UIMessage } from "@/lib/analysis/ui";
 
 describe("AnalysisThread action visibility", () => {
   it("shows actions for the latest assistant turn when nothing follows it", () => {
@@ -84,6 +84,22 @@ describe("AnalysisThread pending state", () => {
     expect(hasVisibleAnalysisMessageParts(toolMessage)).toBe(true);
     expect(shouldShowAnalysisPendingState([reasoningMessage], "streaming")).toBe(false);
     expect(shouldShowAnalysisPendingState([toolMessage], "streaming")).toBe(false);
+  });
+
+  it("treats structured analysis data parts as visible", () => {
+    const message: UIMessage = {
+      id: "assistant-structured",
+      role: "assistant",
+      parts: [
+        {
+          type: "data-analysis-render",
+          id: "render-1",
+          data: { tableId: "q1" },
+        },
+      ],
+    };
+
+    expect(hasVisibleAnalysisMessageParts(message)).toBe(true);
   });
 
   it("treats whitespace-only text and reasoning parts as not yet visible", () => {

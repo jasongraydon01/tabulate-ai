@@ -1,9 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { UIMessage } from "ai";
 
-import { buildAnalysisCiteMarker } from "@/lib/analysis/citeAnchors";
 import {
   AnalysisMessage,
   buildAnalysisDisplayBlocks,
@@ -18,11 +16,9 @@ import {
   splitAnalysisTextForReveal,
   getVisibleEvidenceItems,
 } from "@/components/analysis/AnalysisMessage";
-import {
-  buildAnalysisRenderMarker,
-  buildAnalysisRenderableBlocks,
-} from "@/lib/analysis/renderAnchors";
+import { buildAnalysisRenderableBlocks } from "@/lib/analysis/renderAnchors";
 import type { AnalysisTableCard } from "@/lib/analysis/types";
+import type { AnalysisUIMessage as UIMessage } from "@/lib/analysis/ui";
 
 function makeTablePart(toolCallId: string, tableId: string = "q1"): UIMessage["parts"][number] {
   const output: AnalysisTableCard = {
@@ -63,6 +59,31 @@ function makeTablePart(toolCallId: string, tableId: string = "q1"): UIMessage["p
       valueMode: "pct",
     },
     output,
+  } as UIMessage["parts"][number];
+}
+
+function makeRenderPart(
+  tableId: string,
+  focus?: {
+    rowLabels?: string[];
+    groupNames?: string[];
+  },
+): UIMessage["parts"][number] {
+  return {
+    type: "data-analysis-render",
+    id: `render-${tableId}`,
+    data: {
+      tableId,
+      ...(focus ? { focus } : {}),
+    },
+  } as UIMessage["parts"][number];
+}
+
+function makeCitePart(cellIds: string[]): UIMessage["parts"][number] {
+  return {
+    type: "data-analysis-cite",
+    id: `cite-${cellIds.join("-")}`,
+    data: { cellIds },
   } as UIMessage["parts"][number];
 }
 
@@ -273,8 +294,9 @@ describe("AnalysisMessage trace presentation", () => {
         } as UIMessage["parts"][number],
         {
           type: "text",
-          text: `Overall satisfaction is **45%**.${buildAnalysisCiteMarker([cellId])}`,
+          text: "Overall satisfaction is **45%**.",
         },
+        makeCitePart([cellId]),
       ],
     };
 
@@ -443,8 +465,9 @@ describe("AnalysisMessage trace presentation", () => {
         } as UIMessage["parts"][number],
         {
           type: "text",
-          text: `Overall satisfaction is **45%**.${buildAnalysisCiteMarker([cellId])}`,
+          text: "Overall satisfaction is **45%**.",
         },
+        makeCitePart([cellId]),
       ],
     };
 
@@ -598,8 +621,10 @@ describe("AnalysisMessage trace presentation", () => {
         } as UIMessage["parts"][number],
         {
           type: "text",
-          text: `Overall satisfaction is **45%**.${buildAnalysisCiteMarker([cellId])}\n\n${buildAnalysisRenderMarker("q1")}`,
+          text: "Overall satisfaction is **45%**.\n\n",
         },
+        makeCitePart([cellId]),
+        makeRenderPart("q1"),
       ],
     };
 
@@ -621,8 +646,9 @@ describe("AnalysisMessage trace presentation", () => {
       parts: [
         {
           type: "text",
-          text: `Overall satisfaction is 45%.${buildAnalysisCiteMarker([cellId])}`,
+          text: "Overall satisfaction is 45%.",
         },
+        makeCitePart([cellId]),
       ],
     };
 
@@ -660,8 +686,9 @@ describe("AnalysisMessage trace presentation", () => {
       parts: [
         {
           type: "text",
-          text: `Cambridge Savings Bank is at 33%.${buildAnalysisCiteMarker([cellId])}`,
+          text: "Cambridge Savings Bank is at 33%.",
         },
+        makeCitePart([cellId]),
       ],
     };
 
@@ -723,8 +750,9 @@ describe("AnalysisMessage trace presentation", () => {
       parts: [
         {
           type: "text",
-          text: `Overall satisfaction is 45%.${buildAnalysisCiteMarker([citedCellId])}`,
+          text: "Overall satisfaction is 45%.",
         },
+        makeCitePart([citedCellId]),
       ],
     };
 
@@ -739,6 +767,43 @@ describe("AnalysisMessage trace presentation", () => {
 
     expect(markup).toContain("Evidence (2)");
     expect(markup).toContain("aria-label=\"Citation Q1\"");
+  });
+
+  it("keeps cited cell evidence visible when the supporting table was not rendered inline", () => {
+    const citedCellId = "q1|row_0_1|__total__%3A%3Atotal";
+    const message: UIMessage = {
+      id: "assistant-unrendered-cite-evidence",
+      role: "assistant",
+      metadata: {
+        hasGroundedClaims: true,
+        evidence: [
+          {
+            key: "cell::q1-cited-unrendered",
+            claimType: "cell",
+            evidenceKind: "cell",
+            refType: "table",
+            refId: "q1",
+            label: "Q1 overall — Very satisfied / Total",
+            sourceTableId: "q1",
+            sourceQuestionId: "Q1",
+            rowKey: "row_0_1",
+            cutKey: "__total__::total",
+            renderedInCurrentMessage: false,
+          },
+        ],
+      },
+      parts: [
+        {
+          type: "text",
+          text: "Overall satisfaction is 45%.",
+        },
+        makeCitePart([citedCellId]),
+      ],
+    };
+
+    expect(getVisibleEvidenceItems(message, getAnalysisMessageEvidenceItems(message))).toEqual([
+      expect.objectContaining({ key: "cell::q1-cited-unrendered" }),
+    ]);
   });
 
   it("renders an edit affordance on user messages when an edit handler is provided", () => {
@@ -794,23 +859,21 @@ describe("AnalysisMessage trace presentation", () => {
 describe("AnalysisMessage reveal helpers", () => {
   it("holds incomplete render markers out of the stable text window while streaming", () => {
     expect(splitAnalysisStableTextWindow("Intro [[render tableId=q1", true)).toEqual({
-      stableText: "Intro ",
-      unstableTail: "[[render tableId=q1",
+      stableText: "Intro [[render tableId=q1",
+      unstableTail: "",
     });
   });
 
   it("holds incomplete cite markers out of the stable text window while streaming", () => {
     expect(splitAnalysisStableTextWindow("Overall is 45%.[[cite cellIds=q1|r|c", true)).toEqual({
-      stableText: "Overall is 45%.",
-      unstableTail: "[[cite cellIds=q1|r|c",
+      stableText: "Overall is 45%.[[cite cellIds=q1|r|c",
+      unstableTail: "",
     });
   });
 
-  it("keeps citation markers attached to the sentence they support", () => {
-    const cite = buildAnalysisCiteMarker(["q1|row_1|__total__%3A%3Atotal"]);
-
-    expect(splitAnalysisTextForReveal(`Overall is 45%.${cite} Next sentence.`)).toEqual([
-      `Overall is 45%.${cite} `,
+  it("keeps sentence boundaries intact for reveal chunking", () => {
+    expect(splitAnalysisTextForReveal("Overall is 45%. Next sentence.")).toEqual([
+      "Overall is 45%. ",
       "Next sentence.",
     ]);
   });
@@ -820,7 +883,9 @@ describe("AnalysisMessage reveal helpers", () => {
       id: "assistant-shell",
       parts: [
         makeTablePart("tool-1", "q1"),
-        { type: "text", text: "Intro.\n\n[[render tableId=q1]]\n\nClose." },
+        { type: "text", text: "Intro.\n\n" },
+        makeRenderPart("q1"),
+        { type: "text", text: "\n\nClose." },
       ],
     });
 
@@ -828,7 +893,10 @@ describe("AnalysisMessage reveal helpers", () => {
     const displayBlocks = buildAnalysisDisplayBlocks(blocks, entries, 1);
 
     expect(displayBlocks).toEqual([
-      expect.objectContaining({ kind: "text", text: "Intro." }),
+      expect.objectContaining({
+        kind: "text",
+        segments: [{ kind: "text", text: "Intro.\n\n" }],
+      }),
       expect.objectContaining({ kind: "table", displayState: "shell" }),
     ]);
   });
@@ -872,17 +940,16 @@ describe("AnalysisMessage reveal helpers", () => {
       id: "assistant-delays",
       parts: [
         makeTablePart("tool-1", "q1"),
-        {
-          type: "text",
-          text: "First sentence.\n\nSecond paragraph.\n\n[[render tableId=q1]]\n\nWrap up.",
-        },
+        { type: "text", text: "First sentence.\n\nSecond paragraph.\n\n" },
+        makeRenderPart("q1"),
+        { type: "text", text: "\n\nWrap up." },
       ],
     });
     const entries = buildAnalysisRevealEntries(blocks);
 
     expect(getNextAnalysisRevealDelayMs({ releasedEntryCount: 0, entries })).toBe(260);
     expect(getNextAnalysisRevealDelayMs({ releasedEntryCount: 1, entries })).toBe(220);
-    expect(getNextAnalysisRevealDelayMs({ releasedEntryCount: 2, entries })).toBe(240);
+    expect(getNextAnalysisRevealDelayMs({ releasedEntryCount: 2, entries })).toBe(220);
     expect(getNextAnalysisRevealDelayMs({ releasedEntryCount: 3, entries })).toBe(160);
   });
 });

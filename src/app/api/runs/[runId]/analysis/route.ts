@@ -2,8 +2,7 @@ import {
   createUIMessageStream,
   createUIMessageStreamResponse,
   type FinishReason,
-  type UIMessage,
-  type UIMessageChunk,
+  type InferUIMessageChunk,
   type UIMessageStreamWriter,
 } from "ai";
 import { NextRequest, NextResponse } from "next/server";
@@ -58,6 +57,7 @@ import {
   type AnalysisGroundingRef,
   type AnalysisMessageMetadata,
 } from "@/lib/analysis/types";
+import { type AnalysisUIMessage } from "@/lib/analysis/ui";
 import { getConvexClient, mutateInternal } from "@/lib/convex";
 import { requireConvexAuth, AuthenticationError } from "@/lib/requireConvexAuth";
 import { applyRateLimit } from "@/lib/withRateLimit";
@@ -66,7 +66,7 @@ import type { Id } from "../../../../../../convex/_generated/dataModel";
 
 const CONVEX_ID_RE = /^[a-zA-Z0-9_.-]+$/;
 
-function isAnalysisMessageCandidate(value: unknown): value is UIMessage[] {
+function isAnalysisMessageCandidate(value: unknown): value is AnalysisUIMessage[] {
   return Array.isArray(value);
 }
 
@@ -79,7 +79,7 @@ interface PersistAssistantPartsResult {
   artifactIdsByToolCallId: Record<string, Id<"analysisArtifacts">>;
 }
 
-function summarizeAssistantResponseForTitle(parts: UIMessage["parts"]): string {
+function summarizeAssistantResponseForTitle(parts: AnalysisUIMessage["parts"]): string {
   const segments: string[] = [];
 
   for (const part of parts) {
@@ -111,9 +111,12 @@ function summarizeAssistantResponseForTitle(parts: UIMessage["parts"]): string {
 
 
 function filterUIStreamForTrustLayer(
-  stream: ReadableStream<UIMessageChunk>,
-): ReadableStream<UIMessageChunk> {
-  return stream.pipeThrough(new TransformStream<UIMessageChunk, UIMessageChunk>({
+  stream: ReadableStream<InferUIMessageChunk<AnalysisUIMessage>>,
+): ReadableStream<InferUIMessageChunk<AnalysisUIMessage>> {
+  return stream.pipeThrough(new TransformStream<
+  InferUIMessageChunk<AnalysisUIMessage>,
+  InferUIMessageChunk<AnalysisUIMessage>
+  >({
     transform(chunk, controller) {
       if (
         chunk.type === "text-start"
@@ -130,11 +133,14 @@ function filterUIStreamForTrustLayer(
   }));
 }
 
-function emitTextPart(writer: UIMessageStreamWriter<UIMessage>, text: string) {
+function emitTextPart(
+  writer: UIMessageStreamWriter<AnalysisUIMessage>,
+  text: string,
+  id: string,
+) {
   if (!text) return;
 
-  const textPartId = "analysis-final-text";
-  writer.write({ type: "text-start", id: textPartId });
+  writer.write({ type: "text-start", id });
 
   const deltas = text
     .split(/(\n{2,})/)
@@ -142,18 +148,18 @@ function emitTextPart(writer: UIMessageStreamWriter<UIMessage>, text: string) {
     .filter((segment) => segment.length > 0);
 
   if (deltas.length === 0) {
-    writer.write({ type: "text-delta", id: textPartId, delta: text });
+    writer.write({ type: "text-delta", id, delta: text });
   } else {
     for (const delta of deltas) {
-      writer.write({ type: "text-delta", id: textPartId, delta });
+      writer.write({ type: "text-delta", id, delta });
     }
   }
 
-  writer.write({ type: "text-end", id: textPartId });
+  writer.write({ type: "text-end", id });
 }
 
 function emitInjectedTableCards(
-  writer: UIMessageStreamWriter<UIMessage>,
+  writer: UIMessageStreamWriter<AnalysisUIMessage>,
   injectedTableCards: InjectedAnalysisTableCard[],
 ) {
   for (const injected of injectedTableCards) {
@@ -172,6 +178,38 @@ function emitInjectedTableCards(
       output: injected.card,
     });
   }
+}
+
+function emitStructuredAssistantParts(
+  writer: UIMessageStreamWriter<AnalysisUIMessage>,
+  structuredAssistantParts: AnalysisStructuredAssistantPart[],
+) {
+  structuredAssistantParts.forEach((part, index) => {
+    if (part.type === "text") {
+      emitTextPart(writer, part.text, `analysis-final-text-${index}`);
+      return;
+    }
+
+    if (part.type === "render") {
+      writer.write({
+        type: "data-analysis-render",
+        id: `analysis-render-${index}`,
+        data: {
+          tableId: part.tableId,
+          ...(part.focus ? { focus: part.focus } : {}),
+        },
+      });
+      return;
+    }
+
+    writer.write({
+      type: "data-analysis-cite",
+      id: `analysis-cite-${index}`,
+      data: {
+        cellIds: [...part.cellIds],
+      },
+    });
+  });
 }
 
 function toStreamMetadata(
@@ -246,12 +284,12 @@ function applyArtifactIdsToGroundingRefsForPersistence(
 }
 
 function buildFinalAssistantParts(params: {
-  originalParts: UIMessage["parts"];
+  originalParts: AnalysisUIMessage["parts"];
   assistantText: string;
   injectedTableCards: InjectedAnalysisTableCard[];
-}): UIMessage["parts"] {
+}): AnalysisUIMessage["parts"] {
   const nonTextParts = params.originalParts.filter((part) => part.type !== "text");
-  const injectedParts = params.injectedTableCards.map<UIMessage["parts"][number]>((entry) => ({
+  const injectedParts = params.injectedTableCards.map<AnalysisUIMessage["parts"][number]>((entry) => ({
     type: FETCH_TABLE_TOOL_TYPE,
     toolCallId: entry.toolCallId,
     state: "output-available",
@@ -265,12 +303,12 @@ function buildFinalAssistantParts(params: {
   return [
     ...nonTextParts,
     ...injectedParts,
-    ...(params.assistantText ? [{ type: "text", text: params.assistantText } satisfies UIMessage["parts"][number]] : []),
+    ...(params.assistantText ? [{ type: "text", text: params.assistantText } satisfies AnalysisUIMessage["parts"][number]] : []),
   ];
 }
 
 async function persistAssistantMessageParts(params: {
-  parts: UIMessage["parts"];
+  parts: AnalysisUIMessage["parts"];
   structuredAssistantParts: AnalysisStructuredAssistantPart[];
   sessionId: Id<"analysisSessions">;
   orgId: Id<"organizations">;
@@ -449,12 +487,12 @@ export async function POST(
     let errorTraceWritten = false;
     let settledFinalEvent = false;
     let resolveFinalEvent: ((event: {
-      responseMessage: UIMessage;
+      responseMessage: AnalysisUIMessage;
       isAborted: boolean;
       finishReason?: FinishReason;
     } | null) => void) | null = null;
     const finalEventPromise = new Promise<{
-      responseMessage: UIMessage;
+      responseMessage: AnalysisUIMessage;
       isAborted: boolean;
       finishReason?: FinishReason;
     } | null>((resolve) => {
@@ -462,7 +500,7 @@ export async function POST(
     });
 
     const settleFinalEvent = (event: {
-      responseMessage: UIMessage;
+      responseMessage: AnalysisUIMessage;
       isAborted: boolean;
       finishReason?: FinishReason;
     } | null) => {
@@ -496,7 +534,7 @@ export async function POST(
       return "Analysis response failed. Please try again.";
     };
 
-    const uiMessageStream = streamResult.toUIMessageStream({
+    const uiMessageStream = streamResult.toUIMessageStream<AnalysisUIMessage>({
       originalMessages: conversationMessages,
       sendReasoning: true,
       sendFinish: false,
@@ -511,7 +549,7 @@ export async function POST(
     });
 
     return createUIMessageStreamResponse({
-      stream: createUIMessageStream<UIMessage>({
+      stream: createUIMessageStream<AnalysisUIMessage>({
         originalMessages: conversationMessages,
         onError: handleStreamError,
         execute: async ({ writer }) => {
@@ -648,7 +686,7 @@ export async function POST(
 
           const streamMetadata = toStreamMetadata(trustResult.groundingRefs, followUpSuggestions);
           emitInjectedTableCards(writer, trustResult.injectedTableCards);
-          emitTextPart(writer, trustResult.assistantText);
+          emitStructuredAssistantParts(writer, trustResult.assistantParts);
           if (streamMetadata) {
             writer.write({
               type: "message-metadata",

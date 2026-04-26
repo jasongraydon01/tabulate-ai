@@ -156,12 +156,12 @@ describe("resolveAssistantMessageTrust (cite-driven)", () => {
     expect(result.groundingRefs.filter((ref) => ref.claimType === "cell")).toHaveLength(2);
   });
 
-  it("marks refs renderedInCurrentMessage=true when the cited table was rendered this turn", () => {
-    const marker = buildAnalysisCiteMarker([TOTAL_CELL_ID]);
-    const assistantText = `Awareness is 58%.${marker}`;
-
+  it("does not mark refs renderedInCurrentMessage=true when the table was only fetched", () => {
     const result = resolveAssistantMessageTrust({
-      assistantText,
+      assistantParts: [
+        { type: "text", text: "Awareness is 58%." },
+        { type: "cite", cellIds: [TOTAL_CELL_ID] },
+      ],
       responseParts: [
         {
           type: "tool-fetchTable",
@@ -170,7 +170,40 @@ describe("resolveAssistantMessageTrust (cite-driven)", () => {
           input: { tableId: "q1" },
           output: makeTableCard(),
         },
-        { type: "text", text: assistantText },
+        { type: "text", text: "Awareness is 58%." },
+      ],
+      groundingEvents: [
+        {
+          toolName: "confirmCitation",
+          toolCallId: "confirm-1",
+          sourceRefs: [],
+          cellSummary: makeCellSummary(),
+        },
+      ],
+    });
+
+    const cellRef = result.groundingRefs.find((ref) => ref.claimType === "cell");
+    expect(cellRef).toBeDefined();
+    expect(cellRef!.renderedInCurrentMessage).toBe(false);
+    expect(cellRef!.anchorId).toBeNull();
+  });
+
+  it("marks refs renderedInCurrentMessage=true when the cited table was explicitly rendered this turn", () => {
+    const result = resolveAssistantMessageTrust({
+      assistantParts: [
+        { type: "text", text: "Awareness is 58%." },
+        { type: "cite", cellIds: [TOTAL_CELL_ID] },
+        { type: "render", tableId: "q1" },
+      ],
+      responseParts: [
+        {
+          type: "tool-fetchTable",
+          toolCallId: "tool-1",
+          state: "output-available",
+          input: { tableId: "q1" },
+          output: makeTableCard(),
+        },
+        { type: "text", text: `Awareness is 58%.${buildAnalysisCiteMarker([TOTAL_CELL_ID])}\n\n[[render tableId=q1]]` },
       ],
       groundingEvents: [
         {

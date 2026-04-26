@@ -1,18 +1,22 @@
 import {
+  isDataUIPart,
   isReasoningUIPart,
   isTextUIPart,
   isToolUIPart,
-  type UIMessage,
 } from "ai";
 
+import { buildAnalysisStructuredAssistantPartsFromText } from "@/lib/analysis/structuredParts";
 import { stripAnalysisCiteAnchors } from "@/lib/analysis/citeAnchors";
 import { buildFetchTableModelMarkdown } from "@/lib/analysis/grounding";
 import { stripAnalysisRenderAnchors } from "@/lib/analysis/renderAnchors";
-import { serializeAnalysisStructuredAssistantPartsToText } from "@/lib/analysis/structuredParts";
 import {
   CONFIRM_CITATION_TOOL_TYPE,
   FETCH_TABLE_TOOL_TYPE,
 } from "@/lib/analysis/toolLabels";
+import {
+  type AnalysisUIMessage,
+  isAnalysisRenderDataUIPart,
+} from "@/lib/analysis/ui";
 import type { AnalysisFetchTableCutGroups } from "@/lib/analysis/types";
 import {
   type AnalysisStructuredAssistantPart,
@@ -291,7 +295,7 @@ export function buildAnalysisEvidenceItems(
 }
 
 export function getAnalysisMessageMetadata(
-  message: Pick<UIMessage, "metadata">,
+  message: Pick<AnalysisUIMessage, "metadata">,
 ): AnalysisMessageMetadata | null {
   if (!message.metadata || typeof message.metadata !== "object") {
     return null;
@@ -309,16 +313,40 @@ export function getAnalysisMessageMetadata(
   return candidate;
 }
 
-export function getAnalysisMessageFollowUpSuggestions(message: Pick<UIMessage, "metadata">): string[] {
+export function getAnalysisMessageFollowUpSuggestions(message: Pick<AnalysisUIMessage, "metadata">): string[] {
   return getAnalysisMessageMetadata(message)?.followUpSuggestions ?? [];
 }
 
-export function getAnalysisUIMessageText(message: Pick<UIMessage, "parts">): string {
-  return message.parts
-    .filter(isTextUIPart)
-    .map((part) => part.text)
-    .join("")
-    .trim();
+function appendRenderBoundaryText(accumulator: string): string {
+  if (accumulator.trim().length === 0) {
+    return accumulator;
+  }
+
+  return `${accumulator}\n\n`;
+}
+
+export function getAnalysisUIMessageText(message: Pick<AnalysisUIMessage, "parts">): string {
+  let output = "";
+  let hasPendingRenderBoundary = false;
+
+  for (const part of message.parts) {
+    if (isTextUIPart(part)) {
+      const text = part.text;
+      if (!text) continue;
+      if (hasPendingRenderBoundary) {
+        output = appendRenderBoundaryText(output);
+        hasPendingRenderBoundary = false;
+      }
+      output += text;
+      continue;
+    }
+
+    if (isAnalysisRenderDataUIPart(part)) {
+      hasPendingRenderBoundary = true;
+    }
+  }
+
+  return output.trim();
 }
 
 function getRequestedCutGroupsFromToolInput(
@@ -409,7 +437,7 @@ function extractStructuredAssistantPart(
 export function persistedAnalysisMessagesToUIMessages(
   messages: PersistedAnalysisMessageRecord[],
   artifacts: PersistedAnalysisArtifactRecord[] = [],
-): UIMessage[] {
+): AnalysisUIMessage[] {
   const artifactLookup = new Map(
     artifacts.map((artifact) => [String(artifact._id), artifact] as const),
   );
@@ -434,28 +462,65 @@ export function persistedAnalysisMessagesToUIMessages(
         }
       : {}),
     parts: (() => {
-      const parts: UIMessage["parts"] = [];
-      const structuredAssistantParts: AnalysisStructuredAssistantPart[] = [];
+      const parts: AnalysisUIMessage["parts"] = [];
 
-      function flushStructuredAssistantParts() {
-        if (structuredAssistantParts.length === 0) return;
-        const text = serializeAnalysisStructuredAssistantPartsToText(structuredAssistantParts);
-        structuredAssistantParts.length = 0;
-        if (!text) return;
-        parts.push({
-          type: "text",
-          text,
-        });
+      function appendStructuredAssistantPart(part: AnalysisStructuredAssistantPart) {
+        if (part.type === "text") {
+          parts.push({
+            type: "text",
+            text: part.text,
+          });
+          return;
+        }
+
+        if (part.type === "render") {
+          parts.push({
+            type: "data-analysis-render",
+            data: {
+              tableId: part.tableId,
+              ...(part.focus ? { focus: part.focus } : {}),
+            },
+          });
+          return;
+        }
+
+        if (part.cellIds.length > 0) {
+          parts.push({
+            type: "data-analysis-cite",
+            data: {
+              cellIds: [...part.cellIds],
+            },
+          });
+        }
+      }
+
+      function appendLegacyMarkerFallback(text: string) {
+        const structuredAssistantParts = buildAnalysisStructuredAssistantPartsFromText(text);
+        const hasStructuredNonTextParts = structuredAssistantParts.some((part) => part.type !== "text");
+        if (!hasStructuredNonTextParts) {
+          parts.push({
+            type: "text",
+            text,
+          });
+          return;
+        }
+
+        for (const structuredAssistantPart of structuredAssistantParts) {
+          appendStructuredAssistantPart(structuredAssistantPart);
+        }
       }
 
       for (const part of message.parts ?? []) {
         const structuredAssistantPart = extractStructuredAssistantPart(part);
         if (structuredAssistantPart) {
-          structuredAssistantParts.push(structuredAssistantPart);
+          appendStructuredAssistantPart(structuredAssistantPart);
           continue;
         }
 
-        flushStructuredAssistantParts();
+        if (part.type === "text" && message.role === "assistant" && typeof part.text === "string") {
+          appendLegacyMarkerFallback(part.text);
+          continue;
+        }
 
         if (part.type === "reasoning" && part.text) {
           parts.push({
@@ -498,17 +563,19 @@ export function persistedAnalysisMessagesToUIMessages(
                     : part.output,
                 }
               : {}),
-          } as UIMessage["parts"][number]);
+          } as AnalysisUIMessage["parts"][number]);
         }
       }
 
-      flushStructuredAssistantParts();
-
       if (parts.length === 0 && message.content) {
-        parts.push({
-          type: "text",
-          text: message.content,
-        });
+        if (message.role === "assistant") {
+          appendLegacyMarkerFallback(message.content);
+        } else {
+          parts.push({
+            type: "text",
+            text: message.content,
+          });
+        }
       }
 
       return parts;
@@ -517,21 +584,30 @@ export function persistedAnalysisMessagesToUIMessages(
 }
 
 export function getSanitizedConversationMessagesForModel(
-  messages: UIMessage[],
-): UIMessage[] {
+  messages: AnalysisUIMessage[],
+): AnalysisUIMessage[] {
   return messages.map((message) => {
-    const sanitizedParts = (message.parts ?? []).reduce<UIMessage["parts"]>((acc, part) => {
+    let hasPendingRenderBoundary = false;
+
+    function appendSanitizedText(
+      acc: AnalysisUIMessage["parts"],
+      text: string,
+    ) {
+      const prefix = hasPendingRenderBoundary && acc.some(isTextUIPart) ? "\n\n" : "";
+      hasPendingRenderBoundary = false;
+      const markerFree = stripAnalysisCiteAnchors(stripAnalysisRenderAnchors(`${prefix}${text}`));
+      const sanitizedText = sanitizeAnalysisMessageContent(markerFree);
+      if (sanitizedText.length > 0) {
+        acc.push({
+          type: "text",
+          text: sanitizedText,
+        });
+      }
+    }
+
+    const sanitizedParts = (message.parts ?? []).reduce<AnalysisUIMessage["parts"]>((acc, part) => {
       if (isTextUIPart(part)) {
-        // Keep historical prose, but strip marker syntax whose trust contract
-        // is scoped to the turn where it was emitted.
-        const markerFree = stripAnalysisCiteAnchors(stripAnalysisRenderAnchors(part.text));
-        const text = sanitizeAnalysisMessageContent(markerFree);
-        if (text.length > 0) {
-          acc.push({
-            type: "text",
-            text,
-          });
-        }
+        appendSanitizedText(acc, part.text);
         return acc;
       }
 
@@ -547,6 +623,13 @@ export function getSanitizedConversationMessagesForModel(
         return acc;
       }
 
+      if (isDataUIPart(part)) {
+        if (isAnalysisRenderDataUIPart(part)) {
+          hasPendingRenderBoundary = true;
+        }
+        return acc;
+      }
+
       if (isToolUIPart(part)) {
         if (
           part.type === FETCH_TABLE_TOOL_TYPE
@@ -558,7 +641,7 @@ export function getSanitizedConversationMessagesForModel(
             output: buildFetchTableModelMarkdown(part.output, {
               requestedCutGroups: getRequestedCutGroupsFromToolInput("input" in part ? part.input : null),
             }),
-          } as UIMessage["parts"][number]);
+          } as AnalysisUIMessage["parts"][number]);
           return acc;
         }
         acc.push(part);

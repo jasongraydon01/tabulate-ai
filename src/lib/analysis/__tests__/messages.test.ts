@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { UIMessage } from "ai";
 
 import {
   MAX_ANALYSIS_ASSISTANT_MESSAGE_CHARS,
@@ -13,6 +12,7 @@ import {
   sanitizeAnalysisAssistantMessageContent,
   sanitizeAnalysisMessageContent,
 } from "@/lib/analysis/messages";
+import type { AnalysisUIMessage as UIMessage } from "@/lib/analysis/ui";
 
 describe("analysis message helpers", () => {
   it("sanitizes angle brackets and trims to the configured maximum", () => {
@@ -195,7 +195,7 @@ describe("analysis message helpers", () => {
     ]);
   });
 
-  it("rehydrates persisted structured assistant parts into legacy marker text for the current renderer", () => {
+  it("rehydrates persisted structured assistant parts into explicit structured UI parts", () => {
     const messages = persistedAnalysisMessagesToUIMessages([
       {
         _id: "msg-1",
@@ -211,10 +211,38 @@ describe("analysis message helpers", () => {
     ]);
 
     expect(messages[0].parts).toEqual([
+      { type: "text", text: "Intro." },
       {
-        type: "text",
-        text: 'Intro.\n\n[[render tableId=q1 rowLabels=["CSB"]]]\n\nValue.[[cite cellIds=q1|row|cut]]',
+        type: "data-analysis-render",
+        data: {
+          tableId: "q1",
+          focus: { rowLabels: ["CSB"] },
+        },
       },
+      { type: "text", text: "Value." },
+      { type: "data-analysis-cite", data: { cellIds: ["q1|row|cut"] } },
+    ]);
+  });
+
+  it("rehydrates content-only legacy assistant messages with markers into structured UI parts", () => {
+    const messages = persistedAnalysisMessagesToUIMessages([
+      {
+        _id: "msg-legacy",
+        role: "assistant",
+        content: "Intro.\n\n[[render tableId=q1]]\n\nValue.[[cite cellIds=q1|row|cut]]",
+      },
+    ]);
+
+    expect(messages[0].parts).toEqual([
+      { type: "text", text: "Intro." },
+      {
+        type: "data-analysis-render",
+        data: {
+          tableId: "q1",
+        },
+      },
+      { type: "text", text: "Value." },
+      { type: "data-analysis-cite", data: { cellIds: ["q1|row|cut"] } },
     ]);
   });
 
@@ -274,7 +302,22 @@ describe("analysis message helpers", () => {
       parts: [
         {
           type: "text",
-          text: 'Intro.\n\n[[render tableId=q1 rowLabels=["CSB"] groupRefs=["group:age"]]]\n\nValue.[[cite cellIds=q1|row|cut]]',
+          text: "Intro.",
+        },
+        {
+          type: "data-analysis-render",
+          data: {
+            tableId: "q1",
+            focus: { rowLabels: ["CSB"], groupRefs: ["group:age"] },
+          },
+        },
+        {
+          type: "text",
+          text: "Value.",
+        },
+        {
+          type: "data-analysis-cite",
+          data: { cellIds: ["q1|row|cut"] },
         },
         {
           type: "tool-searchRunCatalog",
@@ -509,30 +552,24 @@ describe("analysis message helpers", () => {
     ]);
   });
 
-  it("strips render and cite markers from prior-turn assistant text", () => {
+  it("drops structured render and cite parts from prior-turn assistant history while preserving prose", () => {
     const sanitized = getSanitizedConversationMessagesForModel([
       {
         id: "assistant-hist",
         role: "assistant",
         parts: [
-          {
-            type: "text",
-            text: [
-              "Awareness is 58%.[[cite cellIds=q1%7Crow_1_csb%7C__total__%3A%3Atotal%7Cpct]]",
-              "",
-              "[[render tableId=A3]]",
-              "",
-              "End.",
-            ].join("\n"),
-          },
+          { type: "text", text: "Awareness is 58%." },
+          { type: "data-analysis-cite", id: "cite-1", data: { cellIds: ["q1|row_1_csb|__total__%3A%3Atotal|pct"] } },
+          { type: "text", text: "\n\n" },
+          { type: "data-analysis-render", id: "render-1", data: { tableId: "A3" } },
+          { type: "text", text: "\n\nEnd." },
         ],
       },
     ]);
 
-    const text = (sanitized[0].parts[0] as { type: "text"; text: string }).text;
-    expect(text).not.toContain("[[render");
-    expect(text).not.toContain("[[cite");
-    expect(text).toContain("Awareness is 58%.");
-    expect(text).toContain("End.");
+    expect(sanitized[0].parts).toEqual([
+      { type: "text", text: "Awareness is 58%." },
+      { type: "text", text: "End." },
+    ]);
   });
 });

@@ -1,12 +1,11 @@
 import "../src/lib/loadEnv";
 
-import type { UIMessage } from "ai";
-
 import { streamAnalysisResponse } from "../src/lib/analysis/AnalysisAgent";
 import { persistedAnalysisMessagesToUIMessages } from "../src/lib/analysis/messages";
 import { buildPersistedAnalysisParts } from "../src/lib/analysis/persistence";
 import type { AnalysisGroundingContext } from "../src/lib/analysis/grounding";
 import { FETCH_TABLE_TOOL_TYPE } from "../src/lib/analysis/toolLabels";
+import type { AnalysisUIMessage } from "../src/lib/analysis/ui";
 
 type SupportedProvider = "anthropic" | "openai";
 
@@ -119,10 +118,10 @@ function buildVerificationContext(): AnalysisGroundingContext {
 }
 
 async function runTurn(
-  messages: UIMessage[],
+  messages: AnalysisUIMessage[],
   groundingContext: AnalysisGroundingContext,
 ): Promise<{
-  responseMessage: UIMessage;
+  responseMessage: AnalysisUIMessage;
   traceCapture: ReturnType<Awaited<ReturnType<typeof streamAnalysisResponse>>["getTraceCapture"]>;
 }> {
   const { streamResult, getTraceCapture } = await streamAnalysisResponse({
@@ -130,8 +129,8 @@ async function runTurn(
     groundingContext,
   });
 
-  let responseMessage: UIMessage | null = null;
-  const uiStream = streamResult.toUIMessageStream({
+  let responseMessage: AnalysisUIMessage | null = null;
+  const uiStream = streamResult.toUIMessageStream<AnalysisUIMessage>({
     originalMessages: messages,
     sendReasoning: true,
     sendFinish: false,
@@ -158,7 +157,7 @@ async function runTurn(
   };
 }
 
-function roundTripMessages(firstTurnUserText: string, assistantMessage: UIMessage): UIMessage[] {
+function roundTripMessages(firstTurnUserText: string, assistantMessage: AnalysisUIMessage): AnalysisUIMessage[] {
   const pending = buildPersistedAnalysisParts(assistantMessage.parts);
   const artifacts: Array<{ _id: string; artifactType: "table_card"; payload: unknown }> = [];
   const persistedParts = pending.map((entry, index) => {
@@ -226,7 +225,7 @@ async function verifyProvider(provider: SupportedProvider) {
     "Then mention whether Female is higher than Male if the table shows that.",
   ].join(" ");
 
-  const firstTurnMessages: UIMessage[] = [
+  const firstTurnMessages: AnalysisUIMessage[] = [
     {
       id: "turn-1-user",
       role: "user",
@@ -244,7 +243,7 @@ async function verifyProvider(provider: SupportedProvider) {
   }
 
   const reloadedMessages = roundTripMessages(firstTurnUserText, firstTurn.responseMessage);
-  const secondTurnMessages: UIMessage[] = [
+  const secondTurnMessages: AnalysisUIMessage[] = [
     ...reloadedMessages,
     {
       id: "turn-2-user",

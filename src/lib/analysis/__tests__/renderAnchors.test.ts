@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { UIMessage } from "ai";
 import type { AnalysisTableCard } from "@/lib/analysis/types";
+import type { AnalysisUIMessage as UIMessage } from "@/lib/analysis/ui";
 
 import {
   buildAnalysisRenderableBlocks,
@@ -63,6 +63,31 @@ function makeTablePart(toolCallId: string, tableId: string = "q1"): FetchTablePa
   };
 }
 
+function makeRenderPart(
+  tableId: string,
+  focus?: {
+    rowLabels?: string[];
+    groupNames?: string[];
+  },
+): UIMessage["parts"][number] {
+  return {
+    type: "data-analysis-render",
+    id: `render-${tableId}`,
+    data: {
+      tableId,
+      ...(focus ? { focus } : {}),
+    },
+  } as UIMessage["parts"][number];
+}
+
+function textBlockText(block: ReturnType<typeof buildAnalysisRenderableBlocks>[number]): string | null {
+  if (block.kind !== "text") return null;
+  return block.segments
+    .filter((segment): segment is Extract<typeof block.segments[number], { kind: "text" }> => segment.kind === "text")
+    .map((segment) => segment.text)
+    .join("");
+}
+
 describe("analysis render markers", () => {
   it("builds the expected marker form", () => {
     expect(buildAnalysisRenderMarker("A3")).toBe("[[render tableId=A3]]");
@@ -77,28 +102,32 @@ describe("analysis render markers", () => {
       id: "assistant-1",
       parts: [
         makeTablePart("tool-1", "A3"),
-        { type: "text", text: "Intro\n\n[[render tableId=A3]]\n\nClose" },
+        { type: "text", text: "Intro\n\n" },
+        makeRenderPart("A3"),
+        { type: "text", text: "\n\nClose" },
       ],
     });
 
     expect(blocks.map((block) => block.kind)).toEqual(["text", "table", "text"]);
-    expect(blocks[0]).toEqual(expect.objectContaining({ kind: "text", text: "Intro" }));
+    expect(textBlockText(blocks[0])).toBe("Intro\n\n");
     expect(blocks[1]).toEqual(expect.objectContaining({ kind: "table" }));
-    expect(blocks[2]).toEqual(expect.objectContaining({ kind: "text", text: "Close" }));
+    expect(textBlockText(blocks[2])).toBe("\n\nClose");
   });
 
-  it("accepts quoted tableIds in markers", () => {
+  it("renders the table at the position of an explicit render data part", () => {
     const blocks = buildAnalysisRenderableBlocks({
       id: "assistant-1q",
       parts: [
         makeTablePart("tool-q", "A3"),
-        { type: "text", text: `Before\n\n[[render tableId="A3"]]\n\nAfter` },
+        { type: "text", text: "Before\n\n" },
+        makeRenderPart("A3"),
+        { type: "text", text: "\n\nAfter" },
       ],
     });
     expect(blocks.map((block) => block.kind)).toEqual(["text", "table", "text"]);
   });
 
-  it("appends unreferenced table cards after the prose when no marker points at them", () => {
+  it("does not append unreferenced fetched tables when no explicit render part points at them", () => {
     const blocks = buildAnalysisRenderableBlocks({
       id: "assistant-2",
       parts: [
@@ -107,14 +136,16 @@ describe("analysis render markers", () => {
       ],
     });
 
-    expect(blocks.map((block) => block.kind)).toEqual(["text", "table"]);
+    expect(blocks.map((block) => block.kind)).toEqual(["text"]);
   });
 
-  it("emits a missing block when the marker's tableId was not fetched this turn (stream settled)", () => {
+  it("emits a missing block when the render part's tableId was not fetched this turn (stream settled)", () => {
     const blocks = buildAnalysisRenderableBlocks({
       id: "assistant-m",
       parts: [
-        { type: "text", text: "Ref\n\n[[render tableId=Z9]]\n\nEnd" },
+        { type: "text", text: "Ref\n\n" },
+        makeRenderPart("Z9"),
+        { type: "text", text: "\n\nEnd" },
       ],
     });
 
@@ -122,11 +153,13 @@ describe("analysis render markers", () => {
     expect(blocks[1]).toEqual(expect.objectContaining({ kind: "missing", tableId: "Z9" }));
   });
 
-  it("emits a placeholder (not missing) for unresolved markers while still streaming", () => {
+  it("emits a placeholder (not missing) for unresolved render parts while still streaming", () => {
     const blocks = buildAnalysisRenderableBlocks({
       id: "assistant-s",
       parts: [
-        { type: "text", text: "Ref\n\n[[render tableId=A3]]\n\nEnd" },
+        { type: "text", text: "Ref\n\n" },
+        makeRenderPart("A3"),
+        { type: "text", text: "\n\nEnd" },
       ],
     }, { isStreaming: true });
 
@@ -175,7 +208,7 @@ describe("analysis render markers", () => {
             ],
           },
         } as UIMessage["parts"][number],
-        { type: "text", text: '[[render tableId=A3 rowLabels=["Aware"] groupNames=["Gender"]]]' },
+        makeRenderPart("A3", { rowLabels: ["Aware"], groupNames: ["Gender"] }),
       ],
     });
 
@@ -208,7 +241,7 @@ describe("analysis render markers", () => {
             ],
           },
         } as UIMessage["parts"][number],
-        { type: "text", text: '[[render tableId=A3 rowLabels=["Aware"] groupNames=["Gender"]]]' },
+        makeRenderPart("A3", { rowLabels: ["Aware"], groupNames: ["Gender"] }),
       ],
     });
 
@@ -262,7 +295,10 @@ describe("analysis render markers", () => {
       parts: [
         makeTablePart("tool-1", "A3"),
         makeTablePart("tool-2", "B4"),
-        { type: "text", text: "First:\n\n[[render tableId=A3]]\n\nSecond:\n\n[[render tableId=B4]]" },
+        { type: "text", text: "First:\n\n" },
+        makeRenderPart("A3"),
+        { type: "text", text: "\n\nSecond:\n\n" },
+        makeRenderPart("B4"),
       ],
     });
 
