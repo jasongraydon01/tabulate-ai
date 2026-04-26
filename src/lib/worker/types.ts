@@ -4,6 +4,7 @@ import type {
   WorkerPipelineContext,
   WorkerRecoveryManifest,
 } from './recovery';
+import type { AnalysisBannerExtensionPayload } from '@/lib/analysis/computeLane/types';
 
 export type WorkerExecutionState =
   | 'queued'
@@ -90,6 +91,7 @@ export interface WorkerExecutionPayload {
   fileNames: WorkerFileNames;
   inputRefs: WorkerInputRefs;
   loopStatTestingMode?: 'suppress' | 'complement';
+  analysisExtension?: AnalysisBannerExtensionPayload;
 }
 
 export interface ClaimedWorkerRun {

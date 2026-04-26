@@ -3,6 +3,7 @@ import { resolvePipelineOutputDir } from '@/lib/paths/outputs';
 
 import type { WorkerExecutionPayload, WorkerFileNames, WorkerInputRefs } from './types';
 import type { WorkerPipelineContext } from './recovery';
+import type { AnalysisBannerExtensionPayload } from '@/lib/analysis/computeLane/types';
 
 export function buildWorkerPipelineContext(params: {
   dataFileName: string;
@@ -41,6 +42,7 @@ export function buildWorkerExecutionPayload(params: {
   fileNames: WorkerFileNames;
   inputRefs: WorkerInputRefs;
   loopStatTestingMode?: 'suppress' | 'complement';
+  analysisExtension?: AnalysisBannerExtensionPayload;
 }): WorkerExecutionPayload {
   return {
     sessionId: params.sessionId,
@@ -48,5 +50,6 @@ export function buildWorkerExecutionPayload(params: {
     fileNames: params.fileNames,
     inputRefs: params.inputRefs,
     ...(params.loopStatTestingMode ? { loopStatTestingMode: params.loopStatTestingMode } : {}),
+    ...(params.analysisExtension ? { analysisExtension: params.analysisExtension } : {}),
   };
 }

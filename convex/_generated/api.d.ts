@@ -10,6 +10,7 @@
 
 import type * as accessRequests from "../accessRequests.js";
 import type * as analysisArtifacts from "../analysisArtifacts.js";
+import type * as analysisComputeJobs from "../analysisComputeJobs.js";
 import type * as analysisMessageFeedback from "../analysisMessageFeedback.js";
 import type * as analysisMessages from "../analysisMessages.js";
 import type * as analysisSessions from "../analysisSessions.js";
@@ -37,6 +38,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   accessRequests: typeof accessRequests;
   analysisArtifacts: typeof analysisArtifacts;
+  analysisComputeJobs: typeof analysisComputeJobs;
   analysisMessageFeedback: typeof analysisMessageFeedback;
   analysisMessages: typeof analysisMessages;
   analysisSessions: typeof analysisSessions;

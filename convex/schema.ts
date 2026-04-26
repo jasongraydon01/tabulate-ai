@@ -127,6 +127,32 @@ const analysisAgentMetricsValidator = v.object({
   estimatedCostUsd: v.optional(v.number()),
 });
 
+const analysisComputeJobStatusValidator = v.union(
+  v.literal("drafting"),
+  v.literal("proposed"),
+  v.literal("needs_clarification"),
+  v.literal("confirmed"),
+  v.literal("queued"),
+  v.literal("running"),
+  v.literal("success"),
+  v.literal("failed"),
+  v.literal("cancelled"),
+  v.literal("expired"),
+);
+
+const analysisComputeJobTypeValidator = v.union(
+  v.literal("banner_extension_recompute"),
+);
+
+const analysisComputeReviewFlagsValidator = v.object({
+  requiresClarification: v.boolean(),
+  requiresReview: v.boolean(),
+  reasons: v.array(v.string()),
+  averageConfidence: v.number(),
+  policyFallbackDetected: v.boolean(),
+  draftConfidence: v.optional(v.number()),
+});
+
 const analysisMessagePartValidator = v.object({
   type: v.string(),
   text: v.optional(v.string()),
@@ -258,6 +284,14 @@ export default defineSchema({
     artifactsPurgedAt: v.optional(v.number()),
     lastArtifactCleanupAttemptAt: v.optional(v.number()),
     artifactCleanupError: v.optional(v.string()),
+    origin: v.optional(v.union(
+      v.literal("project"),
+      v.literal("demo"),
+      v.literal("analysis_compute"),
+    )),
+    parentRunId: v.optional(v.id("runs")),
+    analysisComputeJobId: v.optional(v.id("analysisComputeJobs")),
+    lineageKind: v.optional(v.literal("banner_extension")),
   })
     .index("by_project", ["projectId"])
     .index("by_org", ["orgId"])
@@ -450,6 +484,33 @@ export default defineSchema({
   })
     .index("by_session", ["sessionId"])
     .index("by_run", ["runId"]),
+
+  analysisComputeJobs: defineTable({
+    orgId: v.id("organizations"),
+    projectId: v.id("projects"),
+    parentRunId: v.id("runs"),
+    childRunId: v.optional(v.id("runs")),
+    sessionId: v.id("analysisSessions"),
+    requestedBy: v.id("users"),
+    jobType: analysisComputeJobTypeValidator,
+    status: analysisComputeJobStatusValidator,
+    requestText: v.string(),
+    frozenBannerGroup: v.optional(v.any()),
+    frozenValidatedGroup: v.optional(v.any()),
+    reviewFlags: v.optional(analysisComputeReviewFlagsValidator),
+    fingerprint: v.optional(v.string()),
+    promptSummary: v.optional(v.string()),
+    r2Keys: v.optional(v.any()),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    confirmedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_session", ["sessionId"])
+    .index("by_parent_run", ["parentRunId"])
+    .index("by_child_run", ["childRunId"])
+    .index("by_org_status", ["orgId", "status"]),
 
   demoRuns: defineTable({
     name: v.string(),

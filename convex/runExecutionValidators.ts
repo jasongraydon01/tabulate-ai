@@ -55,6 +55,18 @@ export const workerInputRefsValidator = v.object({
   messageList: v.union(v.string(), v.null()),
 });
 
+export const analysisExtensionPayloadValidator = v.object({
+  kind: v.literal("banner_extension"),
+  jobId: v.string(),
+  parentRunId: v.string(),
+  parentPipelineId: v.string(),
+  parentDatasetName: v.string(),
+  parentR2Outputs: v.record(v.string(), v.string()),
+  frozenBannerGroup: v.any(),
+  frozenValidatedGroup: v.any(),
+  fingerprint: v.string(),
+});
+
 export const recoveryArtifactRefsValidator = v.object({
   checkpoint: v.optional(v.string()),
   questionIdFinal: v.optional(v.string()),
@@ -88,6 +100,7 @@ export const executionPayloadValidator = v.object({
   loopStatTestingMode: v.optional(
     v.union(v.literal("suppress"), v.literal("complement"))
   ),
+  analysisExtension: v.optional(analysisExtensionPayloadValidator),
 });
 
 export const enqueueForWorkerArgsValidator = v.object({

@@ -3,6 +3,7 @@ import { internal } from '../../../convex/_generated/api';
 import type { Id } from '../../../convex/_generated/dataModel';
 import { createAbortController } from '@/lib/abortStore';
 import { runPipelineFromUpload, type PipelineRunParams } from '@/lib/api/pipelineOrchestrator';
+import { runAnalysisBannerExtensionRun } from '@/lib/api/analysisExtensionCompletion';
 import { runQueuedReviewResume } from '@/lib/api/reviewCompletion';
 import type { ProjectConfig } from '@/schemas/projectConfigSchema';
 import { hydrateRunInputsToSession } from './hydrateRunInputs';
@@ -34,6 +35,23 @@ export async function runClaimedWorkerRun(
           outputDir: resumedOutputDir,
         }
       : claimedRun.executionPayload.pipelineContext;
+
+    if (claimedRun.executionPayload.analysisExtension) {
+      await runAnalysisBannerExtensionRun({
+        runId: claimedRun.runId,
+        workerId,
+        orgId: claimedRun.orgId,
+        projectId: claimedRun.projectId,
+        launchedBy: claimedRun.launchedBy,
+        sessionId: claimedRun.executionPayload.sessionId,
+        pipelineContext: effectivePipelineContext,
+        config: claimedRun.config as ProjectConfig,
+        extension: claimedRun.executionPayload.analysisExtension,
+        loopStatTestingMode: claimedRun.executionPayload.loopStatTestingMode,
+        abortSignal,
+      });
+      return;
+    }
 
     if (claimedRun.recoveryManifest?.boundary === 'review_checkpoint') {
       await runQueuedReviewResume({

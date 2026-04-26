@@ -190,6 +190,140 @@ export const create = internalMutation({
   },
 });
 
+/**
+ * @deprecated Use confirmAndEnqueueAnalysisChild so child creation and queueing
+ * happen in one Convex transaction.
+ */
+export const createAnalysisChild = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+    orgId: v.id("organizations"),
+    parentRunId: v.id("runs"),
+    analysisComputeJobId: v.id("analysisComputeJobs"),
+    config: configValidator,
+    launchedBy: v.optional(v.id("users")),
+  },
+  handler: async (ctx, args) => {
+    const [project, parentRun, job] = await Promise.all([
+      ctx.db.get(args.projectId),
+      ctx.db.get(args.parentRunId),
+      ctx.db.get(args.analysisComputeJobId),
+    ]);
+
+    if (!project || project.orgId !== args.orgId) throw new Error("Project not found");
+    if (!parentRun || parentRun.orgId !== args.orgId || parentRun.projectId !== args.projectId) {
+      throw new Error("Parent run not found");
+    }
+    if (!job || job.orgId !== args.orgId || job.parentRunId !== args.parentRunId) {
+      throw new Error("Analysis compute job not found");
+    }
+
+    return await ctx.db.insert("runs", {
+      projectId: args.projectId,
+      orgId: args.orgId,
+      status: "in_progress",
+      stage: "uploading",
+      progress: 0,
+      message: "Starting analysis compute run...",
+      config: args.config,
+      cancelRequested: false,
+      lastHeartbeat: Date.now(),
+      attemptCount: 0,
+      origin: "analysis_compute",
+      parentRunId: args.parentRunId,
+      analysisComputeJobId: args.analysisComputeJobId,
+      lineageKind: "banner_extension",
+      ...(args.launchedBy && { launchedBy: args.launchedBy }),
+    });
+  },
+});
+
+export const confirmAndEnqueueAnalysisChild = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+    orgId: v.id("organizations"),
+    parentRunId: v.id("runs"),
+    analysisComputeJobId: v.id("analysisComputeJobs"),
+    expectedFingerprint: v.string(),
+    config: configValidator,
+    launchedBy: v.optional(v.id("users")),
+    queueClass: workerQueueClassValidator,
+    executionPayload: executionPayloadValidator,
+  },
+  handler: async (ctx, args) => {
+    const [project, parentRun, job] = await Promise.all([
+      ctx.db.get(args.projectId),
+      ctx.db.get(args.parentRunId),
+      ctx.db.get(args.analysisComputeJobId),
+    ]);
+
+    if (!project || project.orgId !== args.orgId) throw new Error("Project not found");
+    if (!parentRun || parentRun.orgId !== args.orgId || parentRun.projectId !== args.projectId) {
+      throw new Error("Parent run not found");
+    }
+    if (parentRun.status !== "success" && parentRun.status !== "partial") {
+      throw new Error("Analysis compute requires a completed parent run");
+    }
+    if (!job || job.orgId !== args.orgId || job.parentRunId !== args.parentRunId || job.projectId !== args.projectId) {
+      throw new Error("Analysis compute job not found");
+    }
+    if (job.fingerprint !== args.expectedFingerprint) {
+      throw new Error("Analysis compute job fingerprint mismatch");
+    }
+    if (job.reviewFlags?.requiresClarification || job.reviewFlags?.requiresReview) {
+      throw new Error("Analysis compute job requires clarification before compute");
+    }
+    if (job.status !== "proposed" && job.status !== "confirmed" && job.status !== "queued") {
+      throw new Error(`Analysis compute job cannot be confirmed from status ${job.status}`);
+    }
+
+    if (job.childRunId) {
+      const existingChild = await ctx.db.get(job.childRunId);
+      if (!existingChild || existingChild.orgId !== args.orgId || existingChild.parentRunId !== args.parentRunId) {
+        throw new Error("Analysis compute job child run lineage is invalid");
+      }
+      return { childRunId: job.childRunId, alreadyQueued: true };
+    }
+
+    const now = Date.now();
+    const childRunId = await ctx.db.insert("runs", {
+      projectId: args.projectId,
+      orgId: args.orgId,
+      status: "in_progress",
+      stage: "uploading",
+      progress: 0,
+      message: "Queued for worker pickup...",
+      config: args.config,
+      cancelRequested: false,
+      lastHeartbeat: now,
+      attemptCount: 0,
+      origin: "analysis_compute",
+      parentRunId: args.parentRunId,
+      analysisComputeJobId: args.analysisComputeJobId,
+      lineageKind: "banner_extension",
+      executionState: "queued",
+      queueClass: args.queueClass,
+      executionPayload: args.executionPayload,
+      workerId: undefined,
+      claimedAt: undefined,
+      heartbeatAt: undefined,
+      resumeFromStage: undefined,
+      recoveryStatus: "none",
+      recoveryManifest: undefined,
+      ...(args.launchedBy && { launchedBy: args.launchedBy }),
+    });
+
+    await ctx.db.patch(args.analysisComputeJobId, {
+      childRunId,
+      status: "queued",
+      confirmedAt: job.confirmedAt ?? now,
+      updatedAt: now,
+    });
+
+    return { childRunId, alreadyQueued: false };
+  },
+});
+
 export const get = query({
   args: {
     runId: v.id("runs"),
