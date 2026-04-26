@@ -42,8 +42,7 @@ describe("analysis agent production prompt", () => {
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).not.toContain("confirmCitation(tableId, rowLabel, columnLabel, rowRef?, columnRef?, valueMode?)");
   });
 
-  it("keeps the production selector aligned with the live alternative prompt contract", () => {
-    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toBe(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE);
+  it("selects production and alternative prompt variants independently", () => {
     expect(getAnalysisPrompt()).toBe(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION);
     expect(getAnalysisPrompt("production")).toBe(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION);
     expect(getAnalysisPrompt("alternative")).toBe(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE);
