@@ -47,3 +47,5 @@ Before the analysis surface moves to production, remove the temporary backward-c
 - Remove `rowFilter` / `cutFilter` compatibility handling from replay / persistence paths once old history no longer needs to be rehydrated.
 - Simplify type/back-compat fields on persisted table-card artifacts after the migration window closes.
 - Keep prompt text and tests aligned to the native structured-answer contract; do not reintroduce marker-era guidance into active surfaces.
+
+## Smoothen Chat Experience / High-Fidelity Polish
