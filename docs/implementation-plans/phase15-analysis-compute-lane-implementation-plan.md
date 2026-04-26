@@ -1,483 +1,310 @@
 # Phase 15 Sub-Plan — Analysis Compute Lane
 
-**Status:** Design specified, not implemented.
+**Status:** active design, not implemented.
 
-**Goal:** add a safe compute lane to the Phase 15 analysis surface so users can request new cuts, NETs, and derived views without weakening the trust contract or mutating the processor-deliverable artifacts from the original run.
+**Purpose:** define the compute-lane architecture for Phase 15 so the analysis surface can extend a completed run without mutating the original run or re-litigating banner work that is already settled.
 
-**Relationship to the main Phase 15 plan:** this is the implementation sub-plan for the analytical-layer items in [phase15-chat-with-your-data-v1-implementation-plan.md](/Users/jasongraydon01/tabulate-ai/docs/implementation-plans/phase15-chat-with-your-data-v1-implementation-plan.md). The main plan stays focused on surface-level scope; this document translates that scope into codebase-level decisions.
-
----
-
-## What this must achieve
-
-The analysis compute lane exists to let the analysis surface ask for new computed numbers while preserving the product's central promise:
-
-- the assistant may propose a computation, but it does not invent dataset-specific numbers
-- any new percentages, counts, means, or significance calls must come from backend compute
-- the original run's `results/tables.json` remains immutable
-- historical analysis messages keep pointing at the artifact set they cited at the time
-- the analysis surface does not become a shadow pipeline with ad hoc behavior
-
-There are two supported job classes:
-
-1. **Tier A: `single_table_derivation`**
-   One table, or a very small related set, with an added cut, NET, or derived view.
-
-2. **Tier B: `banner_extension_recompute`**
-   A run-level extension where a new banner cut is applied across the tab set.
+This document is intentionally tighter than a full implementation plan. Slice 1 is described as a guided technical overview. Later slices stay higher level and will be expanded into implementation plans only after Slice 1 is locked.
 
 ---
 
-## Recommendation
+## Current state
 
-**Ship Tier B first.**
+Today the analysis surface is read-only with respect to pipeline artifacts.
 
-That recommendation is driven by the current codebase, not by abstract product preference:
+- `src/app/api/runs/[runId]/analysis/route.ts` streams grounded answers over settled run artifacts.
+- `src/lib/analysis/grounding.ts` reads:
+  - `results/tables.json`
+  - `enrichment/12-questionid-final.json`
+  - `planning/20-banner-plan.json`
+  - `planning/21-crosstab-plan.json`
+- Stage 20 is the banner-planning step:
+  - `BannerAgent` extracts groups and cuts from an uploaded banner document
+  - `BannerGenerateAgent` generates groups and cuts when the banner route falls back
+  - output is `planning/20-banner-plan.json`
+- Stage 21 is the crosstab-validation step:
+  - `CrosstabAgentV2` validates banner groups against the dataset
+  - output is `planning/21-crosstab-plan.json`
+- The worker runtime knows how to do:
+  - full pipeline runs
+  - review resumes
+- It does **not** yet know how to run an analysis-triggered extension.
 
-- The existing worker queue and recovery model already know how to execute run-scoped work through `runs.enqueueForWorker`, `claimNextQueuedRun`, `runClaimedWorkerRun`, and the V3 compute boundary.
-- `runComputePipeline` is already the clean reusable seam for planning/compute continuation.
-- The current analysis persistence model (`analysisSessions`, `analysisMessages`, `analysisArtifacts`) does not yet have a first-class lineage model for persistent derived tables.
-- Tier A has the better in-chat UX, but it introduces the harder problems first: artifact identity, citation lineage, and canonical-vs-derived table discovery.
-
-The safe sequence is:
-
-1. build the shared analysis compute job substrate
-2. ship Tier B child-run recompute on top of that substrate
-3. add Tier A derived-table persistence after lineage and citation rules are explicit
-
----
-
-## Current code constraints
-
-The implementation needs to respect the actual shape of the current system:
-
-- `src/app/api/runs/[runId]/analysis/route.ts` is currently a grounded retrieval route, not a compute launcher.
-- `src/lib/analysis/grounding.ts` reads run artifacts from R2 and assumes the run's artifact set is already settled.
-- `analysisArtifacts` currently supports only `table_card` and `note`, with `sourceClass` values intended for v1 rendering, not durable compute lineage.
-- `runs.executionPayload` and `convex/runExecutionValidators.ts` are still shaped around the upload-driven pipeline flow:
-  - `sessionId`
-  - `pipelineContext`
-  - input file names
-  - input R2 refs
-  - optional `loopStatTestingMode`
-- `runClaimedWorkerRun` currently dispatches either:
-  - full pipeline execution via `runPipelineFromUpload`
-  - review resume via `runQueuedReviewResume`
-
-That means analysis compute should **not** be squeezed into the current payload format as a disguised upload run. It needs a small, explicit execution model of its own.
+The most important limitation is this: analysis can inspect the settled banner and settled tables, but it cannot yet walk the user from "I want gender added" through "here are the exact cuts I found" and then freeze that aligned result for recompute.
 
 ---
 
-## Hard architectural decisions
+## Where we need to be
 
-### 1. Original run artifacts are immutable
+For Tier B, the target workflow is:
 
-Do not patch or rewrite the source run's `results/tables.json`.
+1. User asks in analysis for a new cut across the dataset.
+2. Analysis asks whether this is:
+   - a table-only request
+   - or a full rerun / banner extension
+3. For a full rerun, analysis stays in chat and runs a **preflight**.
+4. Preflight inspects:
+   - the parent run's stage 20 banner plan
+   - the parent run's stage 21 crosstab plan
+   - the parent run's question/variable context
+5. Preflight drafts **one appended banner group**.
+6. Preflight immediately validates **only that one appended group** with the same single-group validation logic stage 21 uses.
+7. Analysis shows the user the exact proposed group and cuts it found.
+8. The user confirms yes or no in chat.
+9. After final confirmation, backend creates a child run and moves into pipeline-in-progress.
+10. The child run reuses the parent run's settled planning artifacts for all previously approved groups and appends the confirmed new group.
+11. The child run recomputes outputs under a new run id. The original run remains unchanged.
 
-- Tier A adds a sibling derived artifact on top of the source run
-- Tier B creates a child run / run revision
-
-This preserves provenance and avoids citation drift.
-
-### 2. Analysis compute is backend-owned
-
-The model can identify a useful extension and explain it, but the authoritative transition into compute happens in backend code after explicit user confirmation.
-
-The analysis prompt should not be treated as the enforcement layer.
-
-### 3. Tier B is a child run, not a mutated run
-
-The recomputed tab set should live under a new `runId` with explicit lineage back to the parent run.
-
-This lets:
-
-- the original thread remain historically correct
-- the child run receive normal progress, recovery, and artifact handling
-- the resumed analysis session target the new run once artifacts are ready
-
-### 4. Tier A needs first-class lineage, not just a rendered card
-
-`analysisArtifacts` can continue to hold renderable table-card payloads, but it is not enough on its own to model durable computed derivations.
-
-Tier A needs a persistent record that says:
-
-- what was derived
-- from which run
-- from which source table(s)
-- by which compute job
-- where the computed artifact lives in R2
+The critical property is: **what the user aligned on in chat is what the child run actually consumes**.
 
 ---
 
-## Proposed persistent model
+## Why we chose this architecture
 
-### A. New table: `analysisComputeJobs`
+### 1. It preserves the good UX without weakening the trust model
 
-Purpose: track every analysis-triggered compute request, regardless of whether it becomes a child run or a derived artifact.
+The user should be able to stay in the chat window while the system finds the proposed cuts, shows them, and gets confirmation. That is a better experience than immediately kicking them into pipeline progress or a separate review screen.
 
-Recommended fields:
+But chat should not be the place where final dataset numbers are invented or where finished artifacts are patched in place. Backend compute still owns the actual rerun.
 
-- `orgId`
-- `projectId`
-- `sourceRunId`
-- `sessionId`
-- `requestedBy`
-- `jobType: 'single_table_derivation' | 'banner_extension_recompute'`
-- `status: 'draft' | 'confirmed' | 'queued' | 'running' | 'success' | 'error' | 'cancelled'`
-- `requestSummary`
-- `requestPayload`
-- `startedAt`
-- `completedAt`
-- `error`
-- `resultKind: 'derived_artifact' | 'child_run' | null`
-- `resultRunId`
-- `resultDerivationId`
+### 2. It avoids re-litigating settled groups
 
-Why this table exists:
+This is the main architectural decision.
 
-- chat needs its own durable request object
-- not every job maps cleanly to a run
-- Tier A and Tier B should share one lifecycle model
+We do **not** want a child run to hand the entire extended banner back to `CrosstabAgentV2` and let it revisit previously approved groups. That creates exactly the hesitation we surfaced in design: the user aligns on one new group in chat, but the rerun could quietly reinterpret old cuts.
 
-### B. New table: `analysisDerivations`
+Instead:
 
-Purpose: persist Tier A lineage as a real analytical artifact, separate from UI table cards.
+- the parent run's existing stage 20 and stage 21 outputs are treated as settled
+- only the appended group is drafted and validated during preflight
+- the child run consumes the parent run's settled planning plus the frozen appended group
 
-Recommended fields:
+### 3. The repo already has the seam we need
 
-- `orgId`
-- `projectId`
-- `sourceRunId`
-- `sessionId`
-- `computeJobId`
-- `derivationType: 'added_cut' | 'net' | 'derived_view'`
-- `status: 'success' | 'error'`
-- `title`
-- `sourceTableIds`
-- `sourceQuestionIds`
-- `artifactPath`
-- `manifestPath`
-- `createdBy`
-- `createdAt`
+`CrosstabAgentV2` is not all-or-nothing. The code already exposes `processGroupV2`, which validates a single group. That is the right seam for preflight.
 
-Notes:
+So Slice 1 should not be framed as:
 
-- this is the durable analytical object
-- `analysisArtifacts` remains the message/render surface
-- a rendered table card for a derivation can reference `analysisDerivations` lineage
+- "run stage 20 and 21 again in miniature"
 
-### C. Extend `runs` for child-run lineage
+It should be framed as:
 
-Tier B should use the existing `runs` table, but it needs optional lineage fields so a recompute run is legible in code and in the UI.
+- "draft one stage-20 group"
+- "run the exact stage-21 single-group validator on that group"
+- "freeze the result for the child run"
 
-Recommended optional additions:
+### 4. Final stat letters belong to the child run, not the chat
 
-- `parentRunId`
-- `runKind: 'standard' | 'analysis_extension'`
-- `analysisComputeJobId`
-- `analysisExtensionType: 'banner_extension_recompute' | null`
+The chat can lock:
 
-These fields should be optional so existing production rows remain valid.
+- the appended group
+- the cuts inside that group
+- the validated expressions
 
-### D. Extend `analysisArtifacts.sourceClass`
+The chat should **not** promise final stat letters as immutable, because letters are a function of the final rerun output universe. The child run should produce the final letters and final output layout.
 
-For render-time differentiation, add a new source class for computed analytical evidence.
+### 5. We should not reopen the old HITL flow by default
 
-Recommended addition:
+If preflight returns a clean, user-confirmed appended group, that chat confirmation is the practical HITL for Slice 1.
 
-- `'analysis_compute'`
+The old review UI should only be a fallback for unstable cases, such as:
 
-This keeps the current simple split intact:
+- policy fallback
+- unresolved ambiguity
+- low-confidence mappings the user did not resolve in chat
 
-- `from_tabs`
-- `analysis_compute`
-- `assistant_synthesis`
+Default path:
+
+- clean preflight + user confirms -> no extra review stop
+
+Fallback path:
+
+- messy preflight -> require review before compute
 
 ---
 
-## Execution model
+## Proposed slices
 
-### Tier B: child-run banner extension
+### Slice 1 — Tier B full-group extension with frozen preflight
 
-### User flow
+This is the first slice we should build.
 
-1. User asks in chat for a missing cut across the dataset.
-2. Assistant explains the proposed banner extension.
-3. User explicitly confirms.
-4. Backend creates an `analysisComputeJobs` record.
-5. Backend creates a child `runs` record with lineage to the source run.
-6. Backend enqueues that child run for the worker.
-7. UI leaves normal chat-answer flow and shows run-progress state.
-8. When the child run succeeds, the analysis workspace reopens on the child run with a system message explaining that the extended tabs are ready.
+### Scope
 
-### Why this should use child runs
+Slice 1 supports only:
 
-The codebase already supports:
+- full rerun / banner extension requests
+- one appended banner group at a time
+- chat preflight followed by child-run recompute
 
-- run-scoped worker scheduling
-- checkpoint/recovery
-- artifact upload to per-run R2 paths
-- analysis sessions keyed to a run
+Slice 1 does **not** support:
 
-Using a child run reuses those primitives instead of inventing a partial pipeline execution model hidden inside analysis-only tables.
+- single-table derivations
+- arbitrary multi-group recomputes
+- editing old settled groups
+- free-form "design me a whole new banner" workflows
 
-### Required backend work
+### Core workflow
 
-#### 1. New analysis compute route
+#### A. Chat triage
 
-Recommended route:
+Analysis asks whether the request is:
 
-- `POST /api/runs/[runId]/analysis/compute`
+- table-only
+- or a full rerun
 
-Responsibilities:
+If it is a full rerun, analysis switches into banner-extension preflight.
 
-- `requireConvexAuth()`
-- `applyRateLimit(..., 'high', 'analysis_compute')`
-- verify org ownership of run + session
-- validate job payload with Zod
-- require an explicit confirmation token / flag from the client
-- create the compute job record
-- for Tier B, create a child run and enqueue it
+#### B. Preflight input
 
-#### 2. Child-run execution payload strategy
+Preflight should load from the parent run:
 
-Do **not** pretend this is a new upload.
+- `planning/20-banner-plan.json`
+- `planning/21-crosstab-plan.json`
+- `enrichment/12-questionid-final.json`
+- any variable/question context needed to support single-group validation
 
-Instead, extend the worker execution model so an analysis extension run can carry explicit extension metadata. Two reasonable shapes:
+#### C. Preflight output
 
-- add optional `analysisExtension` to `executionPayload`
-- or add a sibling execution payload validator specifically for analysis-extension runs
+Preflight should produce two frozen artifacts:
 
-Recommended direction:
+1. **Appended stage 20 group**
+   - `groupName`
+   - `columns[]`
+   - each column's `name`
+   - each column's `original`
 
-- extend `executionPayload` with an optional `analysisExtension` object
-- keep it optional so upload-driven runs still validate
+2. **Appended stage 21 validated group**
+   - the validated expressions for that same group
+   - confidence / uncertainty fields
+   - enough metadata to know whether the group is safe to proceed without review
 
-Recommended `analysisExtension` payload:
+The child run should consume these frozen artifacts directly.
 
-- `type: 'banner_extension_recompute'`
-- `sourceRunId`
-- `sourceSessionId`
-- `bannerGroupsToAdd`
-- `sourceArtifactRefs`
+#### D. Chat confirmation
 
-#### 3. Worker dispatch
+The analysis response to the user should show:
 
-Update `runClaimedWorkerRun` to dispatch a third execution path:
+- the proposed group name
+- the cuts it found
+- enough explanation for the user to confirm or reject
 
-- upload pipeline
-- review resume
-- analysis extension run
+The user then confirms yes or no in chat.
 
-Recommended new entry point:
+#### E. Child run creation
 
-- `src/lib/analysis/runAnalysisExtension.ts`
+On final confirmation:
 
-That module should:
+- create an analysis compute job record
+- create a child run with lineage to the parent run
+- persist the frozen appended group artifacts
+- enqueue the child run
 
-- reconstruct the required source-run artifacts from R2
-- reuse `questionid-final.json` and canonical tables from the source run
-- rebuild planning artifacts as needed for the new banner extension
-- continue through compute and post-processing
-- upload a full, normal child-run artifact set under the child run's R2 prefix
+#### F. Child-run execution
 
-### Reuse boundaries
+The child run should:
 
-Tier B should reuse, not fork:
+- reuse the parent run's settled stage 20 banner plan for all old groups
+- append the frozen new stage 20 group
+- reuse the parent run's settled stage 21 crosstab plan for all old groups
+- append the frozen new validated stage 21 group
+- skip rerunning banner discovery for old groups
+- skip rerunning crosstab validation for old groups
+- continue into compute and finalization
 
-- `src/lib/v3/runtime/compute/runComputePipeline.ts`
-- existing post-processing / results finalization
-- existing worker queue and `runs` lifecycle
-- existing R2 per-run artifact conventions
+This is the key guarantee of Slice 1.
 
-It should **not** reuse:
+### Backend shape
 
-- the full raw-ingestion path in `runPipelineFromUpload`
-- the review-only assumptions in `runQueuedReviewResume`
+Slice 1 likely needs:
 
-This is a third path: run-level extension from settled upstream artifacts.
+- a new analysis-compute job record for lifecycle tracking
+- optional lineage fields on `runs` so child runs are explicit
+- a backend preflight service that can:
+  - draft one appended group
+  - validate one appended group
+- a route that starts preflight and a route that confirms / enqueues the child run
+- a new worker execution path for analysis extension runs
 
----
+The exact schemas and route contracts belong in the later implementation plan. The architecture decision for Slice 1 is simply that **preflight freezes the appended group before the child run starts**.
 
-## Tier A: single-table derivation
+### Review policy
 
-### User flow
+Default:
 
-1. User asks for an added cut, NET, or derived view on one table.
-2. Assistant explains what will be computed and what source table it is based on.
-3. User explicitly confirms.
-4. Backend creates an `analysisComputeJobs` record.
-5. Backend executes a scoped compute job.
-6. Successful output is persisted as an `analysisDerivations` record plus an artifact in R2.
-7. The analysis thread receives a grounded render card and citation-capable derived evidence.
+- no extra review stop if preflight is clean and the user confirms in chat
 
-### Why Tier A is not just `analysisArtifacts`
+Fallback:
 
-`analysisArtifacts` is currently a session-scoped render object. That is useful for message replay, but insufficient for analytical lineage.
+- if preflight is unstable, force review before compute
 
-Tier A needs a persistent artifact identity that survives beyond one rendered message and can be rediscovered later.
+### Acceptance criteria
 
-### Execution path
+Slice 1 is successful when:
 
-Tier A should not create a child run at first.
-
-Recommended execution model:
-
-- create `analysisComputeJobs`
-- execute a scoped backend compute path
-- persist the derived artifact under the source run's `analysis/derivations/` namespace
-- persist one `analysisDerivations` row
-- optionally create an `analysisArtifacts` table card when the derivation is rendered in-chat
-
-Recommended R2 path:
-
-- `{orgId}/{projectId}/runs/{runId}/analysis/derivations/{derivationId}/manifest.json`
-- `{orgId}/{projectId}/runs/{runId}/analysis/derivations/{derivationId}/results/derived-table.json`
-- `{orgId}/{projectId}/runs/{runId}/analysis/derivations/{derivationId}/compute/*`
-
-### Open implementation choice
-
-Tier A can either:
-
-- execute inside the existing worker queue
-- or run through a narrower server-side job runner
-
-Recommendation:
-
-- keep the lifecycle in `analysisComputeJobs`
-- but defer worker-queue integration until after Tier B ships
-
-Reason:
-
-- Tier A is not a normal run
-- forcing it through `runs` too early creates unnecessary complexity
+- the user can request one new full group in chat
+- the system can show the exact proposed cuts before rerun
+- the user-confirmed appended group is the exact one used by the child run
+- old settled groups are not revalidated or reinterpreted
+- the original run remains immutable
 
 ---
 
-## Citation and provenance rules
+### Slice 2 — Analysis workspace handoff and child-run resume
 
-### Source-of-truth rules
+Once Slice 1 exists, improve the user experience around it.
 
-- Canonical run artifacts cite as they do today through `tableId + rowKey + cutKey`
-- Tier A derived tables cite against the derived artifact's own stable identity, while carrying source-run and source-table lineage
-- Tier B child-run tables cite against the child run's canonical results
+Focus:
 
-### No citation drift
+- clearer chat-state transitions
+- pipeline-in-progress status inside the analysis workspace
+- clean resume into the child run once outputs are ready
+- system messaging that explains the new run is derived from the original run
 
-Historical messages on the source run stay tied to the source run.
-
-Do not reinterpret old cite chips after a Tier B extension exists.
-
-### Discovery rules
-
-`searchRunCatalog` and `fetchTable` should remain source-run tools until compute-lane follow-on work adds controlled discovery of derived evidence.
-
-Recommendation:
-
-- Tier B first: no change needed to discovery semantics beyond switching to the child run once resumed
-- Tier A later: add a dedicated discovery path for derivations rather than silently merging them into canonical run search
+This slice is mostly product polish on top of the core architecture.
 
 ---
 
-## UI/session behavior
+### Slice 3 — Tier A single-table derivations
 
-### Tier B
+After Tier B is stable, add the smaller-scope compute lane.
 
-- the active thread should show a system-level transition: "Requested banner extension is running"
-- the workspace should be able to swap from message streaming into run-progress mode
-- on success, create or reopen an analysis session on the child run
-- prepend a system message describing:
-  - what cut was added
-  - that the new thread/run is derived from the original run
+Focus:
 
-### Tier A
+- one table or a very small related set
+- appended cuts, NETs, or derived views
+- persistent derived artifacts with clear lineage
+- no mutation of the canonical run results
 
-- the thread can remain in the same session
-- when the compute completes, append a system or assistant message with the new grounded card
-- the derivation should be visibly marked as analysis-added, not part of the original delivered tab book
+This slice should reuse the same overall philosophy as Slice 1:
 
----
-
-## Security and safety requirements
-
-- every compute route must start with `requireConvexAuth()`
-- apply `high` tier rate limiting
-- validate all analysis-compute payloads with Zod
-- never let model text become R code directly
-- any new R expressions must still pass existing sanitization / validation layers
-- use `execFile()` only
-- persist failures with structured error records, following the existing error persistence conventions
-- keep org ownership checks on:
-  - source run
-  - child run
-  - session
-  - derivation records
+- align in chat
+- freeze the derived artifact inputs before compute
+- backend compute owns the actual result
 
 ---
 
-## Implementation slices
+### Slice 4 — Discovery, history, and broader extension workflows
 
-### Slice A: child-run substrate for Tier B
+After both lanes exist, broaden the surface.
 
-- add `analysisComputeJobs`
-- add optional lineage fields to `runs`
-- add analysis-compute API route
-- add analysis-extension execution payload support
-- add worker dispatch path for analysis extension runs
-- implement artifact reconstruction from source run + child-run finalize path
-- implement analysis-session resume behavior for child runs
+Possible focus areas:
 
-### Slice B: prompt + UI handshake for Tier B
+- re-discovery of prior derivations within a run
+- history of analysis-triggered compute jobs
+- richer follow-up flows after recompute
+- broader multi-group extension workflows if real usage supports them
 
-- teach the assistant how to propose a banner extension without implying it has already happened
-- require explicit user confirmation before compute starts
-- add run-progress transition UI in the analysis workspace
-- add child-run resume system messaging
-
-### Slice C: Tier A lineage substrate
-
-- add `analysisDerivations`
-- add `analysis_compute` source class
-- define derivation manifest contract and R2 paths
-- add render-time support for derived evidence in the message layer
-
-### Slice D: Tier A execution + discovery
-
-- implement scoped compute runner for single-table derivations
-- append grounded derived cards into the thread
-- add controlled re-discovery of prior derivations within a run
+This slice should remain usage-driven. It is intentionally deferred.
 
 ---
 
-## Testing expectations
+## Practical takeaway
 
-At minimum:
+The architecture is now:
 
-- Convex tests or deterministic route tests for job creation and auth failures
-- worker dispatch tests for the new analysis-extension path
-- deterministic tests for source-run artifact reconstruction
-- regression tests that old analysis citations do not drift after a child run is created
-- message/render tests for derived artifact labeling once Tier A lands
-- `npm run lint && npx tsc --noEmit`
-- targeted Vitest coverage for any new route, persistence, or execution modules
+- chat is responsible for **alignment**
+- preflight is responsible for **freezing the appended group**
+- the child run is responsible for **compute and final output**
 
----
-
-## Explicit non-goals for this sub-plan
-
-- no querying raw `.sav` from model-facing grounding tools
-- no in-place rewrite of canonical run artifacts
-- no merging analysis compute back into the normal processor-facing HITL flow
-- no speculative generalized compute framework beyond the two job classes above
-
----
-
-## Final recommendation
-
-The safest implementation path is:
-
-1. add a real `analysisComputeJobs` lifecycle
-2. use it to ship Tier B as a child-run extension flow
-3. only then add Tier A once derivation identity and citation lineage are explicit
-
-That sequence is slower than an in-chat shortcut, but it is the one most consistent with the current TabulateAI architecture and the least likely to introduce subtle provenance bugs.
+That is the cleanest way to keep the user experience strong while ensuring the rerun does not reinterpret work that the previous run already settled.
