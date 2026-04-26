@@ -208,7 +208,7 @@ export async function streamAnalysisResponse({
             ),
           }),
           submitAnswer: tool({
-            description: "Finalize the user-visible reply as structured assistant parts. Call this exactly once as your final action after all needed fetchTable and confirmCitation calls. Use text parts for prose, render parts for inline tables, and cite parts for the sentence-end citations that anchor quoted numbers. Do not emit any assistant prose after calling submitAnswer.",
+            description: "Finalize the user-visible reply as structured assistant parts. This is the only valid answer-delivery contract for the turn: if you do not call submitAnswer, the turn fails; if you emit user-visible prose outside submitAnswer, the turn fails. Call this exactly once after all needed fetchTable and confirmCitation calls. Use text parts for prose, render parts for inline tables, and cite parts for the sentence-end citations that anchor quoted numbers. After calling submitAnswer, stop.",
             inputSchema: AnalysisStructuredAnswerSchema,
             execute: async ({ parts }) => ({
               parts: normalizeAnalysisStructuredAssistantParts(parts),

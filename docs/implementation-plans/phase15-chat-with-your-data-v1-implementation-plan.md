@@ -37,6 +37,7 @@ Work that changes what the agent can compute, or how rendered evidence behaves s
 - **Citation-as-evidence for unrendered tables.** When a cited number's source table isn't rendered as a card, the cite chip should still be able to surface the relevant source — popover, side panel, or inline table preview — so the user can see the exact cell without us having to render a full card every time the model cites. This lets the render policy lean lighter without losing provenance.
 - **New cuts on the fly, NETs, derived tables.** Expand the analytical surface so the agent can propose cuts, NETs, or derived views that weren't in the original tab spec. Real capability, real v1 scope; the design bar is the compute-lane checkpoint below.
 - **Compute-lane design checkpoint.** The design bar for a dedicated compute lane (separate from the pipeline) that lets the analysis surface run new computations safely. Driven by real usage signal — what numbers are users asking for that the pipeline didn't pre-compute? Treat this as active design work, not a parked item.
+- re-compute tabs for new groups if user request ("I forgot to cut by gender, can we add that to the tabs")
 
 ## Cleanup layer
 

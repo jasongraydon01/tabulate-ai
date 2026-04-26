@@ -1261,6 +1261,106 @@ describe("analysis chat route", () => {
     });
   });
 
+  it("accepts trailing reasoning metadata after submitAnswer", async () => {
+    mocks.query
+      .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
+      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Analysis Session 1", titleSource: "manual" })
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
+    mocks.mutateInternal
+      .mockResolvedValueOnce("user-msg-1")
+      .mockResolvedValueOnce("assistant-msg-1");
+    mocks.streamAnalysisResponse.mockResolvedValueOnce({
+      streamResult: makeStreamResult({
+        responseMessage: {
+          parts: [
+            makeSubmitAnswerPart([
+              { type: "text", text: "Final answer." },
+            ]),
+            {
+              type: "reasoning",
+              text: "Provider reasoning summary.",
+              state: "done",
+            },
+          ],
+        },
+      }),
+      getTraceCapture: () => makeTraceCapture(),
+      getGroundingCapture: () => [],
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/runs/run-1/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          messages: [{ id: "user-1", role: "user", parts: [{ type: "text", text: "Show me the narrative" }] }],
+        }),
+      }),
+      { params: Promise.resolve({ runId: "run-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(mocks.mutateInternal.mock.calls[1][1]).toEqual(expect.objectContaining({
+      content: "Final answer.",
+      parts: [{ type: "text", text: "Final answer." }],
+    }));
+  });
+
+  it("accepts trailing tool metadata after submitAnswer when no prose escapes the structured payload", async () => {
+    mocks.query
+      .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
+      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Analysis Session 1", titleSource: "manual" })
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
+    mocks.mutateInternal
+      .mockResolvedValueOnce("user-msg-1")
+      .mockResolvedValueOnce("assistant-msg-1");
+    mocks.streamAnalysisResponse.mockResolvedValueOnce({
+      streamResult: makeStreamResult({
+        responseMessage: {
+          parts: [
+            makeSubmitAnswerPart([
+              { type: "text", text: "Final answer." },
+            ]),
+            {
+              type: "tool-searchRunCatalog",
+              toolCallId: "search-2",
+              state: "output-available",
+              input: { query: "brands" },
+              output: { matches: ["Q1"] },
+            },
+          ],
+        },
+      }),
+      getTraceCapture: () => makeTraceCapture(),
+      getGroundingCapture: () => [],
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/runs/run-1/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          messages: [{ id: "user-1", role: "user", parts: [{ type: "text", text: "Show me the narrative" }] }],
+        }),
+      }),
+      { params: Promise.resolve({ runId: "run-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(mocks.mutateInternal.mock.calls[1][1]).toEqual(expect.objectContaining({
+      content: "Final answer.",
+      parts: [{ type: "text", text: "Final answer." }],
+    }));
+  });
+
   it("persists structured render parts and emits structured client parts in the settled response", async () => {
     mocks.loadAnalysisGroundingContext.mockResolvedValueOnce({
       availability: "available",

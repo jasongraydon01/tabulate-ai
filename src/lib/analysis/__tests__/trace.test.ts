@@ -262,6 +262,18 @@ describe("analysis trace helpers", () => {
       createdAt: "2026-04-20T12:00:05.000Z",
       latestUserPrompt: "What happened next?",
       errorMessage: "Stream failed after retrying",
+      assistantText: "Attempted answer.",
+      responseParts: [
+        { type: "reasoning", text: "Trying to confirm the right cell." },
+        {
+          type: "tool-fetchTable",
+          toolCallId: "fetch-1",
+          state: "output-available",
+          input: { tableId: "q1" },
+          output: { status: "available", tableId: "q1", rows: [] },
+        },
+        { type: "text", text: "Attempted answer." },
+      ],
       traceCapture: {
         ...makeTraceCapture(),
         terminalError: "Stream failed after retrying",
@@ -276,6 +288,14 @@ describe("analysis trace helpers", () => {
     expect(errorTrace.kind).toBe("error");
     expect(errorTrace.latestUserPrompt).toBe("What happened next?");
     expect(errorTrace.errorMessage).toBe("Stream failed after retrying");
+    expect(errorTrace.assistantText).toBe("Attempted answer.");
+    expect(errorTrace.reasoningParts).toEqual(["Trying to confirm the right cell."]);
+    expect(errorTrace.toolTimeline).toEqual([
+      expect.objectContaining({
+        toolName: "tool-fetchTable",
+        toolCallId: "fetch-1",
+      }),
+    ]);
   });
 
   it("skips writing when the run result has no valid output dir", async () => {

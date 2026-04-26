@@ -117,6 +117,8 @@ function summarizeAssistantResponseForTitle(parts: AnalysisUIMessage["parts"]): 
 function filterUIStreamForTrustLayer(
   stream: ReadableStream<InferUIMessageChunk<AnalysisUIMessage>>,
 ): ReadableStream<InferUIMessageChunk<AnalysisUIMessage>> {
+  const suppressedToolCallIds = new Set<string>();
+
   return stream.pipeThrough(new TransformStream<
   InferUIMessageChunk<AnalysisUIMessage>,
   InferUIMessageChunk<AnalysisUIMessage>
@@ -133,6 +135,17 @@ function filterUIStreamForTrustLayer(
       }
 
       if ("toolName" in chunk && chunk.toolName === SUBMIT_ANSWER_TOOL_NAME) {
+        if ("toolCallId" in chunk && typeof chunk.toolCallId === "string") {
+          suppressedToolCallIds.add(chunk.toolCallId);
+        }
+        return;
+      }
+
+      if (
+        "toolCallId" in chunk
+        && typeof chunk.toolCallId === "string"
+        && suppressedToolCallIds.has(chunk.toolCallId)
+      ) {
         return;
       }
 
@@ -319,8 +332,6 @@ function describeSubmitAnswerValidationError(
       return "submit_answer_missing";
     case "multiple_submit_answers":
       return "submit_answer_multiple";
-    case "submit_answer_not_last":
-      return "submit_answer_not_last";
     case "submit_answer_invalid":
       return "submit_answer_invalid";
     case "submit_answer_empty":
@@ -589,26 +600,40 @@ export async function POST(
       resolveFinalEvent?.(event);
     };
 
+    const persistAnalysisErrorTrace = (params: {
+      error: unknown;
+      responseMessage?: AnalysisUIMessage;
+    }) => {
+      if (errorTraceWritten) return;
+      errorTraceWritten = true;
+      const createdAt = new Date().toISOString();
+      const assistantText = params.responseMessage
+        ? sanitizeAnalysisAssistantMessageContent(
+            getAnalysisUIMessageText(params.responseMessage),
+          )
+        : undefined;
+
+      void writeAnalysisTurnErrorTrace({
+        runResultValue: run.result,
+        orgId: String(auth.convexOrgId),
+        projectId: String(session.projectId),
+        runId: String(session.runId),
+        sessionId: String(session._id),
+        sessionTitle: session.title,
+        createdAt,
+        latestUserPrompt: latestUserText,
+        errorMessage: params.error instanceof Error ? params.error.message : String(params.error),
+        traceCapture: getTraceCapture(),
+        ...(assistantText ? { assistantText } : {}),
+        ...(params.responseMessage ? { responseParts: params.responseMessage.parts } : {}),
+      }).catch((traceError) => {
+        console.warn("[Analysis Chat POST] Failed to write analysis error trace:", traceError);
+      });
+    };
+
     const handleStreamError = (error: unknown) => {
       console.error("[Analysis Chat POST] Stream error:", error);
-      if (!errorTraceWritten) {
-        errorTraceWritten = true;
-        const createdAt = new Date().toISOString();
-        void writeAnalysisTurnErrorTrace({
-          runResultValue: run.result,
-          orgId: String(auth.convexOrgId),
-          projectId: String(session.projectId),
-          runId: String(session.runId),
-          sessionId: String(session._id),
-          sessionTitle: session.title,
-          createdAt,
-          latestUserPrompt: latestUserText,
-          errorMessage: error instanceof Error ? error.message : String(error),
-          traceCapture: getTraceCapture(),
-        }).catch((traceError) => {
-          console.warn("[Analysis Chat POST] Failed to write analysis error trace:", traceError);
-        });
-      }
+      persistAnalysisErrorTrace({ error });
 
       settleFinalEvent(null);
       return "Analysis response failed. Please try again.";
@@ -640,184 +665,190 @@ export async function POST(
             return;
           }
 
-          const groundingCapture = getGroundingCapture();
-          const extractedAssistantParts = extractStrictAnalysisStructuredAssistantPartsFromSubmitAnswer(
-            finalEvent.responseMessage.parts,
-          );
-          if (!extractedAssistantParts.ok) {
-            console.warn("[Analysis Chat POST] submit_answer_validation_failed", {
-              sessionId: String(session._id),
-              reason: describeSubmitAnswerValidationError(extractedAssistantParts.reason),
-            });
-            throw new AnalysisTurnFinalizationError(extractedAssistantParts.message);
-          }
-
-          const structuredAssistantParts = extractedAssistantParts.parts;
-          const effectiveAssistantText = getAnalysisTextFromStructuredAssistantParts(
-            structuredAssistantParts,
-          );
-          const confirmedCellIds = new Set(groundingCapture
-            .map((event) => event.cellSummary?.cellId)
-            .filter((id): id is string => typeof id === "string"));
-
-          const citedCellIds = structuredAssistantParts
-            .filter((part) => part.type === "cite")
-            .flatMap((part) => part.cellIds);
-          const unconfirmedCellIds = [...new Set(citedCellIds.filter((cellId) => !confirmedCellIds.has(cellId)))];
-          if (unconfirmedCellIds.length > 0) {
-            console.warn("[Analysis Chat POST] unconfirmed_cite_parts", {
-              sessionId: String(session._id),
-              cellIds: unconfirmedCellIds,
-            });
-            throw new AnalysisTurnFinalizationError(
-              `Analysis turn failed: cite parts referenced unconfirmed cellIds (${unconfirmedCellIds.join(", ")}).`,
-            );
-          }
-
-          const renderValidationIssues = validateAnalysisStructuredRenderParts({
-            assistantParts: structuredAssistantParts,
-            responseParts: finalEvent.responseMessage.parts,
-          });
-          if (renderValidationIssues.length > 0) {
-            console.warn("[Analysis Chat POST] invalid_render_parts", {
-              sessionId: String(session._id),
-              issues: renderValidationIssues.map(formatRenderValidationIssue),
-            });
-            throw new AnalysisTurnFinalizationError(
-              `Analysis turn failed: render parts were invalid (${renderValidationIssues.map(formatRenderValidationIssue).join("; ")}).`,
-            );
-          }
-
-          // Quiet regression detector: the assistant quoted specific numbers
-          // but ended the turn with neither cite parts nor confirmed cells.
-          if (
-            detectUncitedSpecificNumbers(effectiveAssistantText)
-            && confirmedCellIds.size === 0
-            && citedCellIds.length === 0
-          ) {
-            console.warn("[Analysis Chat POST] uncited_specific_numbers", {
-              sessionId: String(session._id),
-            });
-          }
-
-          const trustResult = resolveAssistantMessageTrust({
-            assistantParts: structuredAssistantParts,
-            responseParts: finalEvent.responseMessage.parts,
-            groundingEvents: groundingCapture,
-          });
-
-          const finalResponseParts = buildFinalAssistantParts({
-            originalParts: finalEvent.responseMessage.parts,
-            structuredAssistantParts: trustResult.assistantParts,
-            injectedTableCards: trustResult.injectedTableCards,
-          });
-          const persistedAssistantText = sanitizeAnalysisAssistantMessageContent(
-            getAnalysisUIMessageText({ parts: finalResponseParts }),
-          );
-          const followUpSuggestions = buildDeterministicFollowUpSuggestions({
-            groundingContext,
-            groundingRefs: trustResult.groundingRefs,
-            responseParts: finalResponseParts,
-          });
-          const assistantTitleBasis = persistedAssistantText || summarizeAssistantResponseForTitle(finalResponseParts);
-          const traceCapture = getTraceCapture();
-
-          const streamMetadata = toStreamMetadata(
-            trustResult.groundingRefs,
-            trustResult.contextEvidence,
-            followUpSuggestions,
-          );
-          emitInjectedTableCards(writer, trustResult.injectedTableCards);
-          emitStructuredAssistantParts(writer, trustResult.assistantParts);
-          if (streamMetadata) {
-            writer.write({
-              type: "message-metadata",
-              messageMetadata: streamMetadata,
-            });
-          }
-          writer.write({
-            type: "finish",
-            finishReason: finalEvent.finishReason ?? "stop",
-          });
-
-          const { persistedParts, artifactIdsByToolCallId } = await persistAssistantMessageParts({
-            parts: finalResponseParts,
-            structuredAssistantParts: trustResult.assistantParts,
-            sessionId: session._id,
-            orgId: auth.convexOrgId,
-            projectId: session.projectId,
-            runId: session.runId,
-            createdBy: auth.convexUserId,
-          });
-          const persistedGroundingRefs = applyArtifactIdsToGroundingRefsForPersistence(
-            trustResult.groundingRefs,
-            artifactIdsByToolCallId,
-          );
-          const persistedContextEvidence = buildPersistedGroundingRefs(trustResult.contextEvidence);
-          if (!persistedAssistantText && persistedParts.length === 0) return;
-
-          const createdAt = new Date().toISOString();
-          const assistantMessageId = await mutateInternal(internal.analysisMessages.create, {
-            sessionId: session._id,
-            orgId: auth.convexOrgId,
-            role: "assistant",
-            content: persistedAssistantText,
-            ...(persistedParts.length > 0 ? { parts: persistedParts } : {}),
-            ...(persistedGroundingRefs.length > 0 ? { groundingRefs: persistedGroundingRefs } : {}),
-            ...(persistedContextEvidence.length > 0 ? { contextEvidence: persistedContextEvidence } : {}),
-            ...(followUpSuggestions.length > 0 ? { followUpSuggestions } : {}),
-            agentMetrics: {
-              model: traceCapture.usage.model,
-              inputTokens: traceCapture.usage.inputTokens,
-              outputTokens: traceCapture.usage.outputTokens,
-              nonCachedInputTokens: traceCapture.usage.nonCachedInputTokens,
-              cachedInputTokens: traceCapture.usage.cachedInputTokens,
-              cacheWriteInputTokens: traceCapture.usage.cacheWriteInputTokens,
-              durationMs: traceCapture.usage.durationMs,
-              estimatedCostUsd: traceCapture.usage.estimatedCostUsd,
-            },
-          });
-
           try {
-            await writeAnalysisTurnTrace({
-              runResultValue: run.result,
-              orgId: String(auth.convexOrgId),
-              projectId: String(session.projectId),
-              runId: String(session.runId),
-              sessionId: String(session._id),
-              sessionTitle: session.title,
-              messageId: String(assistantMessageId),
-              createdAt,
-              assistantText: persistedAssistantText,
+            const groundingCapture = getGroundingCapture();
+            const extractedAssistantParts = extractStrictAnalysisStructuredAssistantPartsFromSubmitAnswer(
+              finalEvent.responseMessage.parts,
+            );
+            if (!extractedAssistantParts.ok) {
+              console.warn("[Analysis Chat POST] submit_answer_validation_failed", {
+                sessionId: String(session._id),
+                reason: describeSubmitAnswerValidationError(extractedAssistantParts.reason),
+              });
+              throw new AnalysisTurnFinalizationError(extractedAssistantParts.message);
+            }
+
+            const structuredAssistantParts = extractedAssistantParts.parts;
+            const effectiveAssistantText = getAnalysisTextFromStructuredAssistantParts(
+              structuredAssistantParts,
+            );
+            const confirmedCellIds = new Set(groundingCapture
+              .map((event) => event.cellSummary?.cellId)
+              .filter((id): id is string => typeof id === "string"));
+
+            const citedCellIds = structuredAssistantParts
+              .filter((part) => part.type === "cite")
+              .flatMap((part) => part.cellIds);
+            const unconfirmedCellIds = [...new Set(citedCellIds.filter((cellId) => !confirmedCellIds.has(cellId)))];
+            if (unconfirmedCellIds.length > 0) {
+              console.warn("[Analysis Chat POST] unconfirmed_cite_parts", {
+                sessionId: String(session._id),
+                cellIds: unconfirmedCellIds,
+              });
+              throw new AnalysisTurnFinalizationError(
+                `Analysis turn failed: cite parts referenced unconfirmed cellIds (${unconfirmedCellIds.join(", ")}).`,
+              );
+            }
+
+            const renderValidationIssues = validateAnalysisStructuredRenderParts({
+              assistantParts: structuredAssistantParts,
+              responseParts: finalEvent.responseMessage.parts,
+            });
+            if (renderValidationIssues.length > 0) {
+              console.warn("[Analysis Chat POST] invalid_render_parts", {
+                sessionId: String(session._id),
+                issues: renderValidationIssues.map(formatRenderValidationIssue),
+              });
+              throw new AnalysisTurnFinalizationError(
+                `Analysis turn failed: render parts were invalid (${renderValidationIssues.map(formatRenderValidationIssue).join("; ")}).`,
+              );
+            }
+
+            if (
+              detectUncitedSpecificNumbers(effectiveAssistantText)
+              && confirmedCellIds.size === 0
+              && citedCellIds.length === 0
+            ) {
+              console.warn("[Analysis Chat POST] uncited_specific_numbers", {
+                sessionId: String(session._id),
+              });
+            }
+
+            const trustResult = resolveAssistantMessageTrust({
+              assistantParts: structuredAssistantParts,
+              responseParts: finalEvent.responseMessage.parts,
+              groundingEvents: groundingCapture,
+            });
+
+            const finalResponseParts = buildFinalAssistantParts({
+              originalParts: finalEvent.responseMessage.parts,
+              structuredAssistantParts: trustResult.assistantParts,
+              injectedTableCards: trustResult.injectedTableCards,
+            });
+            const persistedAssistantText = sanitizeAnalysisAssistantMessageContent(
+              getAnalysisUIMessageText({ parts: finalResponseParts }),
+            );
+            const followUpSuggestions = buildDeterministicFollowUpSuggestions({
+              groundingContext,
+              groundingRefs: trustResult.groundingRefs,
               responseParts: finalResponseParts,
-              traceCapture,
             });
-          } catch (traceError) {
-            console.warn("[Analysis Chat POST] Failed to write analysis turn trace:", traceError);
-          }
+            const assistantTitleBasis = persistedAssistantText || summarizeAssistantResponseForTitle(finalResponseParts);
+            const traceCapture = getTraceCapture();
 
-          const shouldGenerateTitle = !hasExistingAssistantMessage
-            && session.titleSource === "default"
-            && isDefaultAnalysisSessionTitle(session.title);
-
-          if (!shouldGenerateTitle || !assistantTitleBasis) {
-            return;
-          }
-
-          try {
-            const generatedTitle = await generateAnalysisSessionTitle({
-              userPrompt: latestUserText,
-              assistantResponse: assistantTitleBasis,
-              abortSignal: request.signal,
+            const streamMetadata = toStreamMetadata(
+              trustResult.groundingRefs,
+              trustResult.contextEvidence,
+              followUpSuggestions,
+            );
+            emitInjectedTableCards(writer, trustResult.injectedTableCards);
+            emitStructuredAssistantParts(writer, trustResult.assistantParts);
+            if (streamMetadata) {
+              writer.write({
+                type: "message-metadata",
+                messageMetadata: streamMetadata,
+              });
+            }
+            writer.write({
+              type: "finish",
+              finishReason: finalEvent.finishReason ?? "stop",
             });
 
-            await mutateInternal(internal.analysisSessions.applyGeneratedTitle, {
-              orgId: auth.convexOrgId,
+            const { persistedParts, artifactIdsByToolCallId } = await persistAssistantMessageParts({
+              parts: finalResponseParts,
+              structuredAssistantParts: trustResult.assistantParts,
               sessionId: session._id,
-              title: generatedTitle,
+              orgId: auth.convexOrgId,
+              projectId: session.projectId,
+              runId: session.runId,
+              createdBy: auth.convexUserId,
             });
-          } catch (titleError) {
-            console.warn("[Analysis Chat POST] Failed to generate analysis session title:", titleError);
+            const persistedGroundingRefs = applyArtifactIdsToGroundingRefsForPersistence(
+              trustResult.groundingRefs,
+              artifactIdsByToolCallId,
+            );
+            const persistedContextEvidence = buildPersistedGroundingRefs(trustResult.contextEvidence);
+            if (!persistedAssistantText && persistedParts.length === 0) return;
+
+            const createdAt = new Date().toISOString();
+            const assistantMessageId = await mutateInternal(internal.analysisMessages.create, {
+              sessionId: session._id,
+              orgId: auth.convexOrgId,
+              role: "assistant",
+              content: persistedAssistantText,
+              ...(persistedParts.length > 0 ? { parts: persistedParts } : {}),
+              ...(persistedGroundingRefs.length > 0 ? { groundingRefs: persistedGroundingRefs } : {}),
+              ...(persistedContextEvidence.length > 0 ? { contextEvidence: persistedContextEvidence } : {}),
+              ...(followUpSuggestions.length > 0 ? { followUpSuggestions } : {}),
+              agentMetrics: {
+                model: traceCapture.usage.model,
+                inputTokens: traceCapture.usage.inputTokens,
+                outputTokens: traceCapture.usage.outputTokens,
+                nonCachedInputTokens: traceCapture.usage.nonCachedInputTokens,
+                cachedInputTokens: traceCapture.usage.cachedInputTokens,
+                cacheWriteInputTokens: traceCapture.usage.cacheWriteInputTokens,
+                durationMs: traceCapture.usage.durationMs,
+                estimatedCostUsd: traceCapture.usage.estimatedCostUsd,
+              },
+            });
+
+            try {
+              await writeAnalysisTurnTrace({
+                runResultValue: run.result,
+                orgId: String(auth.convexOrgId),
+                projectId: String(session.projectId),
+                runId: String(session.runId),
+                sessionId: String(session._id),
+                sessionTitle: session.title,
+                messageId: String(assistantMessageId),
+                createdAt,
+                assistantText: persistedAssistantText,
+                responseParts: finalResponseParts,
+                traceCapture,
+              });
+            } catch (traceError) {
+              console.warn("[Analysis Chat POST] Failed to write analysis turn trace:", traceError);
+            }
+
+            const shouldGenerateTitle = !hasExistingAssistantMessage
+              && session.titleSource === "default"
+              && isDefaultAnalysisSessionTitle(session.title);
+
+            if (!shouldGenerateTitle || !assistantTitleBasis) {
+              return;
+            }
+
+            try {
+              const generatedTitle = await generateAnalysisSessionTitle({
+                userPrompt: latestUserText,
+                assistantResponse: assistantTitleBasis,
+                abortSignal: request.signal,
+              });
+
+              await mutateInternal(internal.analysisSessions.applyGeneratedTitle, {
+                orgId: auth.convexOrgId,
+                sessionId: session._id,
+                title: generatedTitle,
+              });
+            } catch (titleError) {
+              console.warn("[Analysis Chat POST] Failed to generate analysis session title:", titleError);
+            }
+          } catch (error) {
+            persistAnalysisErrorTrace({
+              error,
+              responseMessage: finalEvent.responseMessage,
+            });
+            throw error;
           }
         },
       }),

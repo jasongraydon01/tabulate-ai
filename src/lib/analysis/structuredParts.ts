@@ -240,7 +240,6 @@ export function extractAnalysisStructuredAssistantPartsFromSubmitAnswer(
 export type AnalysisStructuredAnswerExtractionFailureReason =
   | "missing_submit_answer"
   | "multiple_submit_answers"
-  | "submit_answer_not_last"
   | "submit_answer_invalid"
   | "submit_answer_empty"
   | "assistant_text_outside_submit_answer";
@@ -285,14 +284,6 @@ export function extractStrictAnalysisStructuredAssistantPartsFromSubmitAnswer(
   }
 
   const [{ part, index }] = submitAnswerParts;
-  if (index !== parts.length - 1) {
-    return {
-      ok: false,
-      reason: "submit_answer_not_last",
-      message: "Analysis turn failed: submitAnswer must be the assistant's final action.",
-    };
-  }
-
   const record = part as Record<string, unknown>;
   const payload = record.state === "output-available" ? record.output : record.input;
   const parsed = AnalysisStructuredAnswerSchema.safeParse(payload);

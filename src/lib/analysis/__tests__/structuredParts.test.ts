@@ -166,7 +166,7 @@ describe("analysis structured assistant parts", () => {
     });
   });
 
-  it("fails strict extraction when submitAnswer is not the final assistant action", () => {
+  it("allows trailing non-prose tool parts after submitAnswer", () => {
     expect(extractStrictAnalysisStructuredAssistantPartsFromSubmitAnswer([
       {
         type: "tool-submitAnswer",
@@ -186,9 +186,35 @@ describe("analysis structured assistant parts", () => {
         input: { query: "late" },
         output: { matches: [] },
       } as never,
-    ])).toMatchObject({
-      ok: false,
-      reason: "submit_answer_not_last",
+    ])).toEqual({
+      ok: true,
+      submitAnswerIndex: 0,
+      parts: [{ type: "text", text: "Final answer." }],
+    });
+  });
+
+  it("allows trailing reasoning metadata after submitAnswer", () => {
+    expect(extractStrictAnalysisStructuredAssistantPartsFromSubmitAnswer([
+      {
+        type: "tool-submitAnswer",
+        toolCallId: "submit-1",
+        state: "output-available",
+        input: {
+          parts: [{ type: "text", text: "Final answer." }],
+        },
+        output: {
+          parts: [{ type: "text", text: "Final answer." }],
+        },
+      } as never,
+      {
+        type: "reasoning",
+        text: "Provider-supplied reasoning summary.",
+        state: "done",
+      } as never,
+    ])).toEqual({
+      ok: true,
+      submitAnswerIndex: 0,
+      parts: [{ type: "text", text: "Final answer." }],
     });
   });
 });

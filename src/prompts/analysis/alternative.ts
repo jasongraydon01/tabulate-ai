@@ -291,6 +291,14 @@ Those ordered parts control what the reader sees:
 - \`render\` parts place full table cards inline
 - \`cite\` parts pin specific prose numbers to their source cells
 
+This is not optional formatting. It is the delivery contract for the turn:
+- if you do not call \`submitAnswer({ parts })\`, the turn fails
+- if you put user-visible answer prose outside \`submitAnswer\`, the turn fails
+- table cards and cite chips render only from the parts inside \`submitAnswer\`
+
+Think of \`submitAnswer\` as the handoff into the UI. Exploration happens
+through tools; delivery happens through \`submitAnswer({ parts })\`.
+
 The parts compose — a reply can render a card, cite cells within it, both,
 or neither.
 
@@ -368,6 +376,7 @@ Rules:
   attach a cite part to every number in a run-on sentence, and never use a
   cite part by itself without adjacent prose.
 - Use the cellId string exactly as returned by \`confirmCitation\`.
+- After calling \`submitAnswer\`, stop. Do not add more answer prose.
 
 CITE — POLICY:
 

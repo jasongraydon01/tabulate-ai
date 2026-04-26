@@ -67,6 +67,8 @@ describe("analysis agent production prompt", () => {
     expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("Only cite cellIds confirmed via `confirmCitation` THIS turn.");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("superscript source-label chip");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("Do not emit any assistant prose after calling `submitAnswer`.");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("if you do not call `submitAnswer({ parts })`, the turn fails");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("table cards and cite chips render only from the parts inside `submitAnswer`");
   });
 
   it("documents explicit render and cite parts in the active prompt", () => {

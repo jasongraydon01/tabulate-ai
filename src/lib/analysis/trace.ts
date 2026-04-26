@@ -96,6 +96,9 @@ export interface AnalysisTurnErrorTrace {
     events: AnalysisTraceRetryEvent[];
   };
   errorMessage: string;
+  assistantText?: string;
+  reasoningParts?: string[];
+  toolTimeline?: AnalysisToolTraceEntry[];
   usage: AnalysisTraceUsage;
 }
 
@@ -149,6 +152,8 @@ export interface WriteAnalysisTurnErrorTraceArgs extends WriteTraceBaseArgs {
   latestUserPrompt: string;
   errorMessage: string;
   traceCapture: AnalysisTraceCapture;
+  assistantText?: string;
+  responseParts?: UIMessage["parts"];
 }
 
 function safeFileSegment(value: string): string {
@@ -461,6 +466,15 @@ export async function writeAnalysisTurnErrorTrace(
       events: args.traceCapture.retryEvents,
     },
     errorMessage: sanitizeLongText(args.errorMessage),
+    ...(typeof args.assistantText === "string" && args.assistantText.trim().length > 0
+      ? { assistantText: sanitizeLongText(args.assistantText) }
+      : {}),
+    ...(args.responseParts
+      ? {
+          reasoningParts: collectReasoningParts(args.responseParts),
+          toolTimeline: serializeAnalysisToolTimeline(args.responseParts),
+        }
+      : {}),
     usage: args.traceCapture.usage,
   };
 
