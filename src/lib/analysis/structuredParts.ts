@@ -1,15 +1,20 @@
+import type { UIMessage } from "ai";
+
 import { buildAnalysisCiteMarker, extractAnalysisCiteMarkers } from "@/lib/analysis/citeAnchors";
 import {
   buildAnalysisRenderMarker,
   extractAnalysisRenderMarkerOccurrences,
   type AnalysisRenderMarkerParsedOccurrence,
 } from "@/lib/analysis/renderAnchors";
+import { SUBMIT_ANSWER_TOOL_TYPE } from "@/lib/analysis/toolLabels";
 import type {
   AnalysisRenderDirectiveFocus,
   AnalysisStructuredAssistantPart,
   AnalysisStructuredCitePart,
   AnalysisStructuredRenderPart,
+  AnalysisStructuredTextPart,
 } from "@/lib/analysis/types";
+import { AnalysisStructuredAnswerSchema } from "@/schemas/analysisStructuredAnswerSchema";
 
 type AssistantMarkerOccurrence =
   | ({ kind: "render" } & AnalysisRenderMarkerParsedOccurrence)
@@ -27,6 +32,53 @@ function normalizeRenderFocus(
   if (focus.groupRefs && focus.groupRefs.length > 0) normalized.groupRefs = [...focus.groupRefs];
 
   return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function normalizeStructuredTextPart(
+  part: Pick<AnalysisStructuredTextPart, "text">,
+): AnalysisStructuredTextPart | null {
+  return part.text.trim().length > 0 ? { type: "text", text: part.text } : null;
+}
+
+function normalizeStructuredRenderPart(
+  part: AnalysisStructuredRenderPart,
+): AnalysisStructuredRenderPart {
+  return {
+    type: "render",
+    tableId: part.tableId.trim(),
+    ...(normalizeRenderFocus(part.focus) ? { focus: normalizeRenderFocus(part.focus) } : {}),
+  };
+}
+
+function normalizeStructuredCitePart(
+  part: AnalysisStructuredCitePart,
+): AnalysisStructuredCitePart | null {
+  const cellIds = [...new Set(part.cellIds.map((cellId) => cellId.trim()).filter((cellId) => cellId.length > 0))];
+  return cellIds.length > 0 ? { type: "cite", cellIds } : null;
+}
+
+export function normalizeAnalysisStructuredAssistantParts(
+  parts: AnalysisStructuredAssistantPart[],
+): AnalysisStructuredAssistantPart[] {
+  const normalized: AnalysisStructuredAssistantPart[] = [];
+
+  for (const part of parts) {
+    if (part.type === "text") {
+      const normalizedText = normalizeStructuredTextPart(part);
+      if (normalizedText) normalized.push(normalizedText);
+      continue;
+    }
+
+    if (part.type === "render") {
+      normalized.push(normalizeStructuredRenderPart(part));
+      continue;
+    }
+
+    const normalizedCite = normalizeStructuredCitePart(part);
+    if (normalizedCite) normalized.push(normalizedCite);
+  }
+
+  return normalized;
 }
 
 function buildRenderPartFromOccurrence(
@@ -134,7 +186,152 @@ export function buildAnalysisStructuredAssistantPartsFromText(
     }
   }
 
-  return parts;
+  return normalizeAnalysisStructuredAssistantParts(parts);
+}
+
+export function getAnalysisTextFromStructuredAssistantParts(
+  parts: AnalysisStructuredAssistantPart[],
+): string {
+  let output = "";
+  let previous: AnalysisStructuredAssistantPart | null = null;
+
+  for (const part of parts) {
+    if (part.type === "cite") {
+      previous = part;
+      continue;
+    }
+
+    const needsRenderBoundary = part.type === "render" || previous?.type === "render";
+    if (part.type === "text") {
+      if (needsRenderBoundary && output.trim().length > 0) {
+        output += "\n\n";
+      }
+      output += part.text;
+    }
+
+    previous = part;
+  }
+
+  return output
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
+}
+
+export function extractAnalysisStructuredAssistantPartsFromSubmitAnswer(
+  parts: UIMessage["parts"],
+): AnalysisStructuredAssistantPart[] | null {
+  for (let index = parts.length - 1; index >= 0; index -= 1) {
+    const part = parts[index];
+    if (!part || typeof part !== "object") continue;
+
+    const record = part as Record<string, unknown>;
+    if (record.type !== SUBMIT_ANSWER_TOOL_TYPE) continue;
+
+    const payload = record.state === "output-available" ? record.output : record.input;
+    const parsed = AnalysisStructuredAnswerSchema.safeParse(payload);
+    if (!parsed.success) continue;
+
+    return normalizeAnalysisStructuredAssistantParts(parsed.data.parts);
+  }
+
+  return null;
+}
+
+export type AnalysisStructuredAnswerExtractionFailureReason =
+  | "missing_submit_answer"
+  | "multiple_submit_answers"
+  | "submit_answer_not_last"
+  | "submit_answer_invalid"
+  | "submit_answer_empty"
+  | "assistant_text_outside_submit_answer";
+
+export interface AnalysisStructuredAnswerExtractionFailure {
+  ok: false;
+  reason: AnalysisStructuredAnswerExtractionFailureReason;
+  message: string;
+}
+
+export interface AnalysisStructuredAnswerExtractionSuccess {
+  ok: true;
+  parts: AnalysisStructuredAssistantPart[];
+  submitAnswerIndex: number;
+}
+
+export function extractStrictAnalysisStructuredAssistantPartsFromSubmitAnswer(
+  parts: UIMessage["parts"],
+): AnalysisStructuredAnswerExtractionFailure | AnalysisStructuredAnswerExtractionSuccess {
+  const submitAnswerParts = parts
+    .map((part, index) => ({ part, index }))
+    .filter(({ part }) => {
+      if (!part || typeof part !== "object") return false;
+      const record = part as Record<string, unknown>;
+      return record.type === SUBMIT_ANSWER_TOOL_TYPE;
+    });
+
+  if (submitAnswerParts.length === 0) {
+    return {
+      ok: false,
+      reason: "missing_submit_answer",
+      message: "Analysis turn failed: assistant did not finalize with submitAnswer({ parts }).",
+    };
+  }
+
+  if (submitAnswerParts.length !== 1) {
+    return {
+      ok: false,
+      reason: "multiple_submit_answers",
+      message: "Analysis turn failed: assistant emitted multiple submitAnswer calls.",
+    };
+  }
+
+  const [{ part, index }] = submitAnswerParts;
+  if (index !== parts.length - 1) {
+    return {
+      ok: false,
+      reason: "submit_answer_not_last",
+      message: "Analysis turn failed: submitAnswer must be the assistant's final action.",
+    };
+  }
+
+  const record = part as Record<string, unknown>;
+  const payload = record.state === "output-available" ? record.output : record.input;
+  const parsed = AnalysisStructuredAnswerSchema.safeParse(payload);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      reason: "submit_answer_invalid",
+      message: "Analysis turn failed: submitAnswer payload did not match the structured answer schema.",
+    };
+  }
+
+  const normalizedParts = normalizeAnalysisStructuredAssistantParts(parsed.data.parts);
+  if (normalizedParts.length === 0) {
+    return {
+      ok: false,
+      reason: "submit_answer_empty",
+      message: "Analysis turn failed: submitAnswer payload contained no usable assistant parts.",
+    };
+  }
+
+  const hasAssistantTextOutsideSubmitAnswer = parts.some((candidate, candidateIndex) => (
+    candidateIndex !== index
+    && candidate.type === "text"
+    && typeof candidate.text === "string"
+    && candidate.text.trim().length > 0
+  ));
+  if (hasAssistantTextOutsideSubmitAnswer) {
+    return {
+      ok: false,
+      reason: "assistant_text_outside_submit_answer",
+      message: "Analysis turn failed: assistant emitted prose outside submitAnswer({ parts }).",
+    };
+  }
+
+  return {
+    ok: true,
+    parts: normalizedParts,
+    submitAnswerIndex: index,
+  };
 }
 
 function separatorBetweenParts(

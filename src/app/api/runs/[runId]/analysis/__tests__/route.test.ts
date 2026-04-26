@@ -66,13 +66,6 @@ vi.mock("@/lib/convex", () => ({
   mutateInternal: mocks.mutateInternal,
 }));
 
-vi.mock("@/lib/analysis/markerRepair", () => ({
-  // Repair calls hit the live OpenAI API via generateText; short-circuit to
-  // null so the strip-invalid-markers fallback path is deterministic in tests.
-  attemptAnalysisMarkerRepair: vi.fn(async () => null),
-  attemptAnalysisRenderMarkerRepair: vi.fn(async () => null),
-}));
-
 vi.mock("@/lib/analysis/AnalysisAgent", () => ({
   streamAnalysisResponse: mocks.streamAnalysisResponse,
 }));
@@ -184,6 +177,20 @@ function makeStreamResult(options: {
               output: part.output,
             });
           }
+
+          if (part.type === "tool-submitAnswer") {
+            writer.write({
+              type: "tool-input-available",
+              toolCallId: String(part.toolCallId ?? "submit-1"),
+              toolName: "submitAnswer",
+              input: part.input ?? {},
+            });
+            writer.write({
+              type: "tool-output-available",
+              toolCallId: String(part.toolCallId ?? "submit-1"),
+              output: part.output,
+            });
+          }
         }
 
         if (sendFinish) {
@@ -191,6 +198,16 @@ function makeStreamResult(options: {
         }
       },
     }),
+  };
+}
+
+function makeSubmitAnswerPart(parts: Array<Record<string, unknown>>) {
+  return {
+    type: "tool-submitAnswer",
+    toolCallId: "submit-1",
+    state: "output-available",
+    input: { parts },
+    output: { parts },
   };
 }
 
@@ -254,7 +271,9 @@ describe("analysis chat route", () => {
     mocks.streamAnalysisResponse.mockResolvedValueOnce({
       streamResult: makeStreamResult({
         responseMessage: {
-          parts: [{ type: "text", text: "Here is a careful next step." }],
+          parts: [makeSubmitAnswerPart([
+            { type: "text", text: "Here is a careful next step." },
+          ])],
         },
       }),
       getTraceCapture: () => makeTraceCapture(),
@@ -319,6 +338,88 @@ describe("analysis chat route", () => {
       projectConfig: {},
       projectIntake: {},
     });
+  });
+
+  it("fails the turn when submitAnswer is missing and does not persist an assistant message", async () => {
+    mocks.query
+      .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
+      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Audit Session", titleSource: "manual" })
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
+    mocks.mutateInternal.mockResolvedValueOnce("user-msg-1");
+    mocks.streamAnalysisResponse.mockResolvedValueOnce({
+      streamResult: makeStreamResult({
+        responseMessage: {
+          parts: [{ type: "text", text: "Plain prose fallback." }],
+        },
+      }),
+      getTraceCapture: () => makeTraceCapture(),
+      getGroundingCapture: () => [],
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/runs/run-1/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          messages: [{ id: "user-1", role: "user", parts: [{ type: "text", text: "What should I look at next?" }] }],
+        }),
+      }),
+      { params: Promise.resolve({ runId: "run-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("Analysis response failed. Please try again.");
+    expect(mocks.mutateInternal).toHaveBeenCalledTimes(1);
+    expect(mocks.writeAnalysisTurnErrorTrace).toHaveBeenCalledWith(expect.objectContaining({
+      errorMessage: "Analysis turn failed: assistant did not finalize with submitAnswer({ parts }).",
+    }));
+  });
+
+  it("fails the turn when submitAnswer is malformed", async () => {
+    mocks.query
+      .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
+      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Audit Session", titleSource: "manual" })
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
+    mocks.mutateInternal.mockResolvedValueOnce("user-msg-1");
+    mocks.streamAnalysisResponse.mockResolvedValueOnce({
+      streamResult: makeStreamResult({
+        responseMessage: {
+          parts: [{
+            type: "tool-submitAnswer",
+            toolCallId: "submit-1",
+            state: "output-available",
+            input: { parts: "bad-payload" },
+            output: { parts: "bad-payload" },
+          }],
+        },
+      }),
+      getTraceCapture: () => makeTraceCapture(),
+      getGroundingCapture: () => [],
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/runs/run-1/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          messages: [{ id: "user-1", role: "user", parts: [{ type: "text", text: "What should I look at next?" }] }],
+        }),
+      }),
+      { params: Promise.resolve({ runId: "run-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("Analysis response failed. Please try again.");
+    expect(mocks.mutateInternal).toHaveBeenCalledTimes(1);
+    expect(mocks.writeAnalysisTurnErrorTrace).toHaveBeenCalledWith(expect.objectContaining({
+      errorMessage: "Analysis turn failed: submitAnswer payload did not match the structured answer schema.",
+    }));
   });
 
   it("rehydrates persisted tool history before the next turn", async () => {
@@ -395,7 +496,9 @@ describe("analysis chat route", () => {
     mocks.streamAnalysisResponse.mockResolvedValueOnce({
       streamResult: makeStreamResult({
         responseMessage: {
-          parts: [{ type: "text", text: "Still grounded." }],
+          parts: [makeSubmitAnswerPart([
+            { type: "text", text: "Still grounded." },
+          ])],
         },
       }),
       getTraceCapture: () => makeTraceCapture(),
@@ -485,7 +588,6 @@ describe("analysis chat route", () => {
       streamResult: makeStreamResult({
         responseMessage: {
           parts: [
-            { type: "text", text: "Here is the grounded table." },
             {
               type: "tool-fetchTable",
               toolCallId: "tool-1",
@@ -521,6 +623,9 @@ describe("analysis chat route", () => {
                 sourceRefs: [],
               },
             },
+            makeSubmitAnswerPart([
+              { type: "text", text: "Here is the grounded table." },
+            ]),
           ],
         },
       }),
@@ -675,8 +780,10 @@ describe("analysis chat route", () => {
               },
             },
             {
-              type: "text",
-              text: `Overall satisfaction is 45%.[[cite cellIds=${cellId}]]`,
+              ...makeSubmitAnswerPart([
+                { type: "text", text: "Overall satisfaction is 45%." },
+                { type: "cite", cellIds: [cellId] },
+              ]),
             },
           ],
         },
@@ -727,10 +834,10 @@ describe("analysis chat route", () => {
       ]),
     }));
     expect(body).toContain("data-analysis-cite");
-    expect(body).not.toContain(`[[cite cellIds=${cellId}]]`);
+    expect(body).not.toContain("tool-submitAnswer");
   });
 
-  it("persists no grounding refs when the assistant quotes a number without a cite marker (freelancing)", async () => {
+  it("persists no grounding refs when the assistant quotes a number without a cite part", async () => {
     mocks.query
       .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
       .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Audit Session", titleSource: "manual" })
@@ -743,7 +850,9 @@ describe("analysis chat route", () => {
     mocks.streamAnalysisResponse.mockResolvedValueOnce({
       streamResult: makeStreamResult({
         responseMessage: {
-          parts: [{ type: "text", text: "Overall satisfaction is still 45%." }],
+          parts: [makeSubmitAnswerPart([
+            { type: "text", text: "Overall satisfaction is still 45%." },
+          ])],
         },
       }),
       getTraceCapture: () => makeTraceCapture(),
@@ -769,8 +878,190 @@ describe("analysis chat route", () => {
     expect(assistantCreateArgs).toEqual(expect.objectContaining({
       content: "Overall satisfaction is still 45%.",
     }));
-    // No cite marker + no confirmCitation grounding event → no grounding refs.
+    // No cite part + no confirmCitation grounding event → no grounding refs.
     expect(assistantCreateArgs).not.toHaveProperty("groundingRefs");
+  });
+
+  it("fails the turn when a cite part references an unconfirmed cellId", async () => {
+    const cellId = "q1|row_0_1|__total__%3A%3Atotal";
+
+    mocks.query
+      .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
+      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Audit Session", titleSource: "manual" })
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
+    mocks.mutateInternal.mockResolvedValueOnce("user-msg-1");
+    mocks.streamAnalysisResponse.mockResolvedValueOnce({
+      streamResult: makeStreamResult({
+        responseMessage: {
+          parts: [makeSubmitAnswerPart([
+            { type: "text", text: "Overall satisfaction is 45%." },
+            { type: "cite", cellIds: [cellId] },
+          ])],
+        },
+      }),
+      getTraceCapture: () => makeTraceCapture(),
+      getGroundingCapture: () => [],
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/runs/run-1/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          messages: [{ id: "user-1", role: "user", parts: [{ type: "text", text: "What is overall satisfaction?" }] }],
+        }),
+      }),
+      { params: Promise.resolve({ runId: "run-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("Analysis response failed. Please try again.");
+    expect(mocks.mutateInternal).toHaveBeenCalledTimes(1);
+    expect(mocks.writeAnalysisTurnErrorTrace).toHaveBeenCalledWith(expect.objectContaining({
+      errorMessage: expect.stringContaining("cite parts referenced unconfirmed cellIds"),
+    }));
+  });
+
+  it("fails the turn when a render part references an unfetched table", async () => {
+    mocks.query
+      .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
+      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Audit Session", titleSource: "manual" })
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
+    mocks.mutateInternal.mockResolvedValueOnce("user-msg-1");
+    mocks.streamAnalysisResponse.mockResolvedValueOnce({
+      streamResult: makeStreamResult({
+        responseMessage: {
+          parts: [makeSubmitAnswerPart([
+            { type: "text", text: "Here is the table." },
+            { type: "render", tableId: "q1" },
+          ])],
+        },
+      }),
+      getTraceCapture: () => makeTraceCapture(),
+      getGroundingCapture: () => [],
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/runs/run-1/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          messages: [{ id: "user-1", role: "user", parts: [{ type: "text", text: "Show me Q1" }] }],
+        }),
+      }),
+      { params: Promise.resolve({ runId: "run-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("Analysis response failed. Please try again.");
+    expect(mocks.mutateInternal).toHaveBeenCalledTimes(1);
+    expect(mocks.writeAnalysisTurnErrorTrace).toHaveBeenCalledWith(expect.objectContaining({
+      errorMessage: expect.stringContaining("render parts were invalid"),
+    }));
+  });
+
+  it("fails the turn when a render focus targets rows or groups that were not fetched", async () => {
+    mocks.query
+      .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
+      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Audit Session", titleSource: "manual" })
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
+    mocks.mutateInternal.mockResolvedValueOnce("user-msg-1");
+    mocks.streamAnalysisResponse.mockResolvedValueOnce({
+      streamResult: makeStreamResult({
+        responseMessage: {
+          parts: [
+            {
+              type: "tool-fetchTable",
+              toolCallId: "tool-1",
+              state: "output-available",
+              input: {
+                tableId: "q1",
+                cutGroups: ["Age"],
+              },
+              output: {
+                status: "available",
+                tableId: "q1",
+                title: "Q1 overall",
+                questionId: "Q1",
+                questionText: "How satisfied are you?",
+                tableType: "frequency",
+                surveySection: null,
+                baseText: "All respondents",
+                tableSubtitle: null,
+                userNote: null,
+                valueMode: "pct",
+                columns: [],
+                columnGroups: [
+                  {
+                    groupKey: "group:age",
+                    groupName: "Age",
+                    columns: [],
+                  },
+                ],
+                rows: [
+                  {
+                    rowKey: "row_1",
+                    label: "CSB",
+                    rowKind: "value",
+                    statType: null,
+                    valueType: "pct",
+                    format: { kind: "percent", decimals: 0 },
+                    indent: 0,
+                    isNet: false,
+                    values: [],
+                    cellsByCutKey: {},
+                  },
+                ],
+                totalRows: 1,
+                totalColumns: 0,
+                truncatedRows: 0,
+                truncatedColumns: 0,
+                requestedCutGroups: ["Age"],
+                focusedRowKeys: null,
+                focusedGroupKeys: null,
+                significanceTest: null,
+                significanceLevel: null,
+                comparisonGroups: [],
+                sourceRefs: [],
+              },
+            },
+            makeSubmitAnswerPart([
+              { type: "text", text: "Here is the focused table." },
+              { type: "render", tableId: "q1", focus: { rowLabels: ["Missing Row"], groupNames: ["Gender"] } },
+            ]),
+          ],
+        },
+      }),
+      getTraceCapture: () => makeTraceCapture(),
+      getGroundingCapture: () => [],
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/runs/run-1/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          messages: [{ id: "user-1", role: "user", parts: [{ type: "text", text: "Show me Q1" }] }],
+        }),
+      }),
+      { params: Promise.resolve({ runId: "run-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("Analysis response failed. Please try again.");
+    expect(mocks.mutateInternal).toHaveBeenCalledTimes(1);
+    expect(mocks.writeAnalysisTurnErrorTrace).toHaveBeenCalledWith(expect.objectContaining({
+      errorMessage: expect.stringContaining("render parts were invalid"),
+    }));
   });
 
   it("does not fail the response when writing the success trace throws", async () => {
@@ -785,7 +1076,9 @@ describe("analysis chat route", () => {
     mocks.streamAnalysisResponse.mockResolvedValueOnce({
       streamResult: makeStreamResult({
         responseMessage: {
-          parts: [{ type: "text", text: "Still returned." }],
+          parts: [makeSubmitAnswerPart([
+            { type: "text", text: "Still returned." },
+          ])],
         },
       }),
       getTraceCapture: () => makeTraceCapture({
@@ -881,7 +1174,9 @@ describe("analysis chat route", () => {
     mocks.streamAnalysisResponse.mockResolvedValueOnce({
       streamResult: makeStreamResult({
         responseMessage: {
-          parts: [{ type: "text", text: "Top drivers center on value and ease of use." }],
+          parts: [makeSubmitAnswerPart([
+            { type: "text", text: "Top drivers center on value and ease of use." },
+          ])],
         },
       }),
       getTraceCapture: () => makeTraceCapture(),
@@ -914,7 +1209,7 @@ describe("analysis chat route", () => {
     });
   });
 
-  it("strips render anchors from persisted assistant content and title generation input", async () => {
+  it("persists prose-only structured replies and titles from the structured assistant payload", async () => {
     mocks.query
       .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
       .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Analysis Session 1", titleSource: "default" })
@@ -929,8 +1224,9 @@ describe("analysis chat route", () => {
       streamResult: makeStreamResult({
         responseMessage: {
           parts: [{
-            type: "text",
-            text: "Intro.\n\n[[render tableId=q1]]\n\nClose.",
+            ...makeSubmitAnswerPart([
+              { type: "text", text: "Intro.\n\nClose." },
+            ]),
           }],
         },
       }),
@@ -952,9 +1248,6 @@ describe("analysis chat route", () => {
 
     expect(response.status).toBe(200);
     await response.text();
-    // The marker referenced q1 but q1 is not in the mock catalog and was not
-    // fetched this turn — validation strips it from the in-memory text before
-    // persistence, and the persisted assistant structure keeps only cleaned prose.
     expect(mocks.mutateInternal.mock.calls[1][1]).toEqual(expect.objectContaining({
       content: "Intro.\n\nClose.",
       parts: [
@@ -1056,8 +1349,11 @@ describe("analysis chat route", () => {
               },
             },
             {
-              type: "text",
-              text: "Intro.\n\n[[render tableId=q1]]\n\nClose.",
+              ...makeSubmitAnswerPart([
+                { type: "text", text: "Intro." },
+                { type: "render", tableId: "q1" },
+                { type: "text", text: "Close." },
+              ]),
             },
           ],
         },
@@ -1087,6 +1383,6 @@ describe("analysis chat route", () => {
       ]),
     }));
     expect(body).toContain("data-analysis-render");
-    expect(body).not.toContain("[[render tableId=q1]]");
+    expect(body).not.toContain("tool-submitAnswer");
   });
 });

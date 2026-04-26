@@ -14,12 +14,7 @@ import {
   resolveAssistantMessageTrust,
   type InjectedAnalysisTableCard,
 } from "@/lib/analysis/claimCheck";
-import {
-  extractAnalysisCiteMarkers,
-  stripAnalysisCiteAnchors,
-  stripInvalidAnalysisCiteMarkers,
-  validateAnalysisCiteMarkers,
-} from "@/lib/analysis/citeAnchors";
+import { stripAnalysisCiteAnchors } from "@/lib/analysis/citeAnchors";
 import { buildDeterministicFollowUpSuggestions } from "@/lib/analysis/followups";
 import { loadAnalysisGroundingContext } from "@/lib/analysis/grounding";
 import {
@@ -31,17 +26,16 @@ import {
   sanitizeAnalysisAssistantMessageContent,
   sanitizeAnalysisMessageContent,
 } from "@/lib/analysis/messages";
-import {
-  stripAnalysisRenderAnchors,
-  stripInvalidAnalysisRenderMarkers,
-  validateAnalysisRenderMarkers,
-} from "@/lib/analysis/renderAnchors";
-import { attemptAnalysisMarkerRepair } from "@/lib/analysis/markerRepair";
+import { stripAnalysisRenderAnchors } from "@/lib/analysis/renderAnchors";
 import {
   buildPersistedAnalysisPartsWithStructuredAssistantParts,
   type PersistedAnalysisPart,
 } from "@/lib/analysis/persistence";
-import { buildAnalysisStructuredAssistantPartsFromText } from "@/lib/analysis/structuredParts";
+import {
+  extractStrictAnalysisStructuredAssistantPartsFromSubmitAnswer,
+  getAnalysisTextFromStructuredAssistantParts,
+} from "@/lib/analysis/structuredParts";
+import { validateAnalysisStructuredRenderParts } from "@/lib/analysis/renderAnchors";
 import {
   writeAnalysisTurnErrorTrace,
   writeAnalysisTurnTrace,
@@ -50,10 +44,13 @@ import {
   generateAnalysisSessionTitle,
   isDefaultAnalysisSessionTitle,
 } from "@/lib/analysis/title";
-import { FETCH_TABLE_TOOL_TYPE } from "@/lib/analysis/toolLabels";
+import {
+  FETCH_TABLE_TOOL_TYPE,
+  SUBMIT_ANSWER_TOOL_NAME,
+  SUBMIT_ANSWER_TOOL_TYPE,
+} from "@/lib/analysis/toolLabels";
 import {
   type AnalysisStructuredAssistantPart,
-  isAnalysisTableCard,
   type AnalysisGroundingRef,
   type AnalysisMessageMetadata,
 } from "@/lib/analysis/types";
@@ -77,6 +74,13 @@ type PersistedPartForCreate = PersistedAnalysisPart & {
 interface PersistAssistantPartsResult {
   persistedParts: PersistedPartForCreate[];
   artifactIdsByToolCallId: Record<string, Id<"analysisArtifacts">>;
+}
+
+class AnalysisTurnFinalizationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AnalysisTurnFinalizationError";
+  }
 }
 
 function summarizeAssistantResponseForTitle(parts: AnalysisUIMessage["parts"]): string {
@@ -125,6 +129,10 @@ function filterUIStreamForTrustLayer(
         || chunk.type === "finish"
         || chunk.type === "message-metadata"
       ) {
+        return;
+      }
+
+      if ("toolName" in chunk && chunk.toolName === SUBMIT_ANSWER_TOOL_NAME) {
         return;
       }
 
@@ -214,15 +222,23 @@ function emitStructuredAssistantParts(
 
 function toStreamMetadata(
   groundingRefs: AnalysisGroundingRef[],
+  contextEvidence: AnalysisGroundingRef[],
   followUpSuggestions: string[],
 ): AnalysisMessageMetadata | undefined {
-  if (groundingRefs.length === 0 && followUpSuggestions.length === 0) return undefined;
+  if (groundingRefs.length === 0 && contextEvidence.length === 0 && followUpSuggestions.length === 0) {
+    return undefined;
+  }
 
   return {
     ...(groundingRefs.length > 0
       ? {
           hasGroundedClaims: true,
           evidence: buildAnalysisEvidenceItems(groundingRefs),
+        }
+      : {}),
+    ...(contextEvidence.length > 0
+      ? {
+          contextEvidence: buildAnalysisEvidenceItems(contextEvidence),
         }
       : {}),
     ...(followUpSuggestions.length > 0 ? { followUpSuggestions } : {}),
@@ -283,12 +299,52 @@ function applyArtifactIdsToGroundingRefsForPersistence(
   });
 }
 
+function buildPersistedGroundingRefs(
+  groundingRefs: AnalysisGroundingRef[],
+): Array<Record<string, unknown>> {
+  return groundingRefs.map((ref) => buildPersistedGroundingRef(ref, undefined));
+}
+
+function describeSubmitAnswerValidationError(
+  reason:
+    | "missing_submit_answer"
+    | "multiple_submit_answers"
+    | "submit_answer_not_last"
+    | "submit_answer_invalid"
+    | "submit_answer_empty"
+    | "assistant_text_outside_submit_answer",
+): string {
+  switch (reason) {
+    case "missing_submit_answer":
+      return "submit_answer_missing";
+    case "multiple_submit_answers":
+      return "submit_answer_multiple";
+    case "submit_answer_not_last":
+      return "submit_answer_not_last";
+    case "submit_answer_invalid":
+      return "submit_answer_invalid";
+    case "submit_answer_empty":
+      return "submit_answer_empty";
+    case "assistant_text_outside_submit_answer":
+      return "assistant_text_outside_submit_answer";
+    default:
+      return "submit_answer_invalid";
+  }
+}
+
+function formatRenderValidationIssue(issue: ReturnType<typeof validateAnalysisStructuredRenderParts>[number]): string {
+  const detail = issue.detail ? ` (${issue.detail})` : "";
+  return `${issue.tableId}:${issue.reason}${detail}`;
+}
+
 function buildFinalAssistantParts(params: {
   originalParts: AnalysisUIMessage["parts"];
-  assistantText: string;
+  structuredAssistantParts: AnalysisStructuredAssistantPart[];
   injectedTableCards: InjectedAnalysisTableCard[];
 }): AnalysisUIMessage["parts"] {
-  const nonTextParts = params.originalParts.filter((part) => part.type !== "text");
+  const nonTextParts = params.originalParts.filter((part) => (
+    part.type !== "text" && part.type !== SUBMIT_ANSWER_TOOL_TYPE
+  ));
   const injectedParts = params.injectedTableCards.map<AnalysisUIMessage["parts"][number]>((entry) => ({
     type: FETCH_TABLE_TOOL_TYPE,
     toolCallId: entry.toolCallId,
@@ -299,11 +355,35 @@ function buildFinalAssistantParts(params: {
     },
     output: entry.card,
   }));
+  const structuredParts = params.structuredAssistantParts.flatMap<AnalysisUIMessage["parts"][number]>((part) => {
+    if (part.type === "text") {
+      return [{ type: "text", text: part.text }];
+    }
+
+    if (part.type === "render") {
+      return [{
+        type: "data-analysis-render",
+        data: {
+          tableId: part.tableId,
+          ...(part.focus ? { focus: part.focus } : {}),
+        },
+      }];
+    }
+
+    return part.cellIds.length > 0
+      ? [{
+          type: "data-analysis-cite",
+          data: {
+            cellIds: [...part.cellIds],
+          },
+        }]
+      : [];
+  });
 
   return [
     ...nonTextParts,
     ...injectedParts,
-    ...(params.assistantText ? [{ type: "text", text: params.assistantText } satisfies AnalysisUIMessage["parts"][number]] : []),
+    ...structuredParts,
   ];
 }
 
@@ -560,109 +640,67 @@ export async function POST(
             return;
           }
 
-          const rawAssistantText = sanitizeAnalysisAssistantMessageContent(
-            getAnalysisUIMessageText(finalEvent.responseMessage),
-          );
           const groundingCapture = getGroundingCapture();
-
-          // Marker guardrails:
-          //  - render: every `[[render tableId=X]]` must point at a table that
-          //    exists in the run AND was fetched this turn.
-          //  - cite: every cellId in `[[cite cellIds=...]]` must have been
-          //    confirmed this turn via confirmCitation.
-          // Invalid markers → one combined repair shot; still-invalid after
-          // repair → strip them deterministically.
-          const fetchedTableIds = finalEvent.responseMessage.parts.flatMap((part) => {
-            if (part.type !== FETCH_TABLE_TOOL_TYPE) return [];
-            if (part.state !== "output-available") return [];
-            if (!isAnalysisTableCard(part.output)) return [];
-            return [part.output.tableId];
-          });
-          const catalogTableIds = Object.keys(groundingContext.tables);
-
-          const confirmedCellIds = groundingCapture
-            .map((event) => event.cellSummary?.cellId)
-            .filter((id): id is string => typeof id === "string");
-
-          const initialAssistantText = rawAssistantText;
-          const initialRenderIssues = validateAnalysisRenderMarkers({
-            text: initialAssistantText,
-            fetchedTableIds,
-            catalogTableIds,
-          });
-          const initialCiteIssues = validateAnalysisCiteMarkers({
-            text: initialAssistantText,
-            confirmedCellIds,
-          });
-
-          let effectiveAssistantText = initialAssistantText;
-
-          if (initialRenderIssues.length > 0 || initialCiteIssues.length > 0) {
-            const repairedText = await attemptAnalysisMarkerRepair({
-              groundingContext,
-              conversationMessages,
-              failedAssistantText: initialAssistantText,
-              renderIssues: initialRenderIssues,
-              citeIssues: initialCiteIssues,
-              fetchedTableIds,
-              confirmedCellIds,
-              catalogSampleTableIds: catalogTableIds,
-              abortSignal: request.signal,
+          const extractedAssistantParts = extractStrictAnalysisStructuredAssistantPartsFromSubmitAnswer(
+            finalEvent.responseMessage.parts,
+          );
+          if (!extractedAssistantParts.ok) {
+            console.warn("[Analysis Chat POST] submit_answer_validation_failed", {
+              sessionId: String(session._id),
+              reason: describeSubmitAnswerValidationError(extractedAssistantParts.reason),
             });
-
-            let finalText = initialAssistantText;
-            if (repairedText) {
-              finalText = sanitizeAnalysisAssistantMessageContent(repairedText);
-            }
-
-            const remainingRenderIssues = validateAnalysisRenderMarkers({
-              text: finalText,
-              fetchedTableIds,
-              catalogTableIds,
-            });
-            const remainingCiteIssues = validateAnalysisCiteMarkers({
-              text: finalText,
-              confirmedCellIds,
-            });
-
-            if (remainingRenderIssues.length > 0 || remainingCiteIssues.length > 0) {
-              console.warn("[Analysis Chat POST] Stripping invalid markers after repair:", {
-                renderMarkers: remainingRenderIssues.map((issue) => ({ tableId: issue.tableId, reason: issue.reason })),
-                citeMarkers: remainingCiteIssues.map((issue) => ({ reason: issue.reason, unconfirmedCellIds: issue.unconfirmedCellIds })),
-                repairAttempted: Boolean(repairedText),
-              });
-              if (remainingRenderIssues.length > 0) {
-                finalText = stripInvalidAnalysisRenderMarkers(finalText, remainingRenderIssues);
-              }
-              if (remainingCiteIssues.length > 0) {
-                finalText = stripInvalidAnalysisCiteMarkers(finalText, remainingCiteIssues);
-              }
-            }
-
-            effectiveAssistantText = finalText;
+            throw new AnalysisTurnFinalizationError(extractedAssistantParts.message);
           }
 
-          // Freelancing-log: quiet regression detector — assistant quoted a
-          // specific number but neither confirmed a cell this turn nor emitted
-          // any cite marker. No user-visible effect.
-          const citeMarkerCount = extractAnalysisCiteMarkers(effectiveAssistantText).length;
+          const structuredAssistantParts = extractedAssistantParts.parts;
+          const effectiveAssistantText = getAnalysisTextFromStructuredAssistantParts(
+            structuredAssistantParts,
+          );
+          const confirmedCellIds = new Set(groundingCapture
+            .map((event) => event.cellSummary?.cellId)
+            .filter((id): id is string => typeof id === "string"));
+
+          const citedCellIds = structuredAssistantParts
+            .filter((part) => part.type === "cite")
+            .flatMap((part) => part.cellIds);
+          const unconfirmedCellIds = [...new Set(citedCellIds.filter((cellId) => !confirmedCellIds.has(cellId)))];
+          if (unconfirmedCellIds.length > 0) {
+            console.warn("[Analysis Chat POST] unconfirmed_cite_parts", {
+              sessionId: String(session._id),
+              cellIds: unconfirmedCellIds,
+            });
+            throw new AnalysisTurnFinalizationError(
+              `Analysis turn failed: cite parts referenced unconfirmed cellIds (${unconfirmedCellIds.join(", ")}).`,
+            );
+          }
+
+          const renderValidationIssues = validateAnalysisStructuredRenderParts({
+            assistantParts: structuredAssistantParts,
+            responseParts: finalEvent.responseMessage.parts,
+          });
+          if (renderValidationIssues.length > 0) {
+            console.warn("[Analysis Chat POST] invalid_render_parts", {
+              sessionId: String(session._id),
+              issues: renderValidationIssues.map(formatRenderValidationIssue),
+            });
+            throw new AnalysisTurnFinalizationError(
+              `Analysis turn failed: render parts were invalid (${renderValidationIssues.map(formatRenderValidationIssue).join("; ")}).`,
+            );
+          }
+
+          // Quiet regression detector: the assistant quoted specific numbers
+          // but ended the turn with neither cite parts nor confirmed cells.
           if (
-            detectUncitedSpecificNumbers(stripAnalysisCiteAnchors(stripAnalysisRenderAnchors(effectiveAssistantText)))
-            && confirmedCellIds.length === 0
-            && citeMarkerCount === 0
+            detectUncitedSpecificNumbers(effectiveAssistantText)
+            && confirmedCellIds.size === 0
+            && citedCellIds.length === 0
           ) {
             console.warn("[Analysis Chat POST] uncited_specific_numbers", {
               sessionId: String(session._id),
             });
           }
 
-          // Rebuild trust result against the post-repair text — the cite set
-          // may have changed between initial stream and final text.
-          const structuredAssistantParts = buildAnalysisStructuredAssistantPartsFromText(
-            effectiveAssistantText,
-          );
           const trustResult = resolveAssistantMessageTrust({
-            assistantText: effectiveAssistantText,
             assistantParts: structuredAssistantParts,
             responseParts: finalEvent.responseMessage.parts,
             groundingEvents: groundingCapture,
@@ -670,11 +708,11 @@ export async function POST(
 
           const finalResponseParts = buildFinalAssistantParts({
             originalParts: finalEvent.responseMessage.parts,
-            assistantText: trustResult.assistantText,
+            structuredAssistantParts: trustResult.assistantParts,
             injectedTableCards: trustResult.injectedTableCards,
           });
-          const persistedAssistantText = stripAnalysisCiteAnchors(
-            stripAnalysisRenderAnchors(trustResult.assistantText),
+          const persistedAssistantText = sanitizeAnalysisAssistantMessageContent(
+            getAnalysisUIMessageText({ parts: finalResponseParts }),
           );
           const followUpSuggestions = buildDeterministicFollowUpSuggestions({
             groundingContext,
@@ -684,7 +722,11 @@ export async function POST(
           const assistantTitleBasis = persistedAssistantText || summarizeAssistantResponseForTitle(finalResponseParts);
           const traceCapture = getTraceCapture();
 
-          const streamMetadata = toStreamMetadata(trustResult.groundingRefs, followUpSuggestions);
+          const streamMetadata = toStreamMetadata(
+            trustResult.groundingRefs,
+            trustResult.contextEvidence,
+            followUpSuggestions,
+          );
           emitInjectedTableCards(writer, trustResult.injectedTableCards);
           emitStructuredAssistantParts(writer, trustResult.assistantParts);
           if (streamMetadata) {
@@ -711,6 +753,7 @@ export async function POST(
             trustResult.groundingRefs,
             artifactIdsByToolCallId,
           );
+          const persistedContextEvidence = buildPersistedGroundingRefs(trustResult.contextEvidence);
           if (!persistedAssistantText && persistedParts.length === 0) return;
 
           const createdAt = new Date().toISOString();
@@ -721,6 +764,7 @@ export async function POST(
             content: persistedAssistantText,
             ...(persistedParts.length > 0 ? { parts: persistedParts } : {}),
             ...(persistedGroundingRefs.length > 0 ? { groundingRefs: persistedGroundingRefs } : {}),
+            ...(persistedContextEvidence.length > 0 ? { contextEvidence: persistedContextEvidence } : {}),
             ...(followUpSuggestions.length > 0 ? { followUpSuggestions } : {}),
             agentMetrics: {
               model: traceCapture.usage.model,

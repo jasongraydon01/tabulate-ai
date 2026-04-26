@@ -3,9 +3,9 @@
  * disclosure.
  *
  * `tool-fetchTable` plays two roles: it is the data source for inline table
- * card rendering (via `[[render tableId=…]]` prose markers) AND it appears as
- * an activity chip in the thinking trace. The renderer resolves markers
- * against this-turn's fetchTable results.
+ * card rendering AND it appears as an activity chip in the thinking trace.
+ * The settled renderer resolves explicit render parts against this-turn's
+ * fetchTable results.
  */
 export const ANALYSIS_TOOL_ACTIVITY_LABELS: Record<string, string> = {
   "tool-searchRunCatalog": "Searching run catalog",
@@ -17,6 +17,8 @@ export const ANALYSIS_TOOL_ACTIVITY_LABELS: Record<string, string> = {
 
 export const FETCH_TABLE_TOOL_TYPE = "tool-fetchTable";
 export const CONFIRM_CITATION_TOOL_TYPE = "tool-confirmCitation";
+export const SUBMIT_ANSWER_TOOL_NAME = "submitAnswer";
+export const SUBMIT_ANSWER_TOOL_TYPE = "tool-submitAnswer";
 
 export function getAnalysisToolActivityLabel(toolType: string): string | null {
   return ANALYSIS_TOOL_ACTIVITY_LABELS[toolType] ?? null;

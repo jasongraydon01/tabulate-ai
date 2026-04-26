@@ -217,6 +217,7 @@ describe("streamAnalysisResponse", () => {
         "getQuestionContext",
         "listBannerCuts",
         "confirmCitation",
+        "submitAnswer",
       ]);
       expect(tools?.confirmCitation.providerOptions).toEqual({
         anthropic: {
@@ -254,6 +255,13 @@ describe("streamAnalysisResponse", () => {
         tableId: "q1",
         valueMode: "pct",
       }).success).toBe(false);
+      expect(tools?.submitAnswer.inputSchema.safeParse({
+        parts: [
+          { type: "text", text: "Overall satisfaction is 45%." },
+          { type: "cite", cellIds: ["q1|row_1|cut_1"] },
+          { type: "render", tableId: "q1", focus: { groupNames: ["Age"] } },
+        ],
+      }).success).toBe(true);
 
       onFinish?.({
         totalUsage: {
@@ -343,7 +351,8 @@ describe("streamAnalysisResponse", () => {
         id: "a1",
         role: "assistant",
         parts: [
-          { type: "text", text: "Prior answer.[[render tableId=q1]]" },
+          { type: "text", text: "Prior answer." },
+          { type: "data-analysis-render", id: "render-1", data: { tableId: "q1" } },
           {
             type: "tool-someNewThing",
             toolCallId: "tool-1",

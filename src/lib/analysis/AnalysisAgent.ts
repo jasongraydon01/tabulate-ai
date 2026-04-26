@@ -28,12 +28,14 @@ import {
 import type { AnalysisTurnGroundingEvent } from "@/lib/analysis/claimCheck";
 import type { AnalysisTraceRetryEvent } from "@/lib/analysis/trace";
 import type { AnalysisUIMessage } from "@/lib/analysis/ui";
+import { normalizeAnalysisStructuredAssistantParts } from "@/lib/analysis/structuredParts";
 import {
   isAnalysisCellSummary,
   type AnalysisCellSummary,
   type AnalysisSourceRef,
   type AnalysisTableCard,
 } from "@/lib/analysis/types";
+import { AnalysisStructuredAnswerSchema } from "@/schemas/analysisStructuredAnswerSchema";
 import { calculateCostSync, recordAgentMetrics } from "@/lib/observability";
 import { retryWithPolicyHandling } from "@/lib/retryWithPolicyHandling";
 
@@ -148,7 +150,7 @@ export async function streamAnalysisResponse({
             ),
           }),
           fetchTable: tool({
-            description: "Fetch a grounded table's data for analysis. By default this returns all rows with Total only. Ask for additional banner groups explicitly via cutGroups when you need subgroup evidence. This does NOT render a card on its own — to show the table inline in your reply, emit a render marker `[[render tableId=<id>]]` in your prose.",
+            description: "Fetch a grounded table's data for analysis. By default this returns all rows with Total only. Ask for additional banner groups explicitly via cutGroups when you need subgroup evidence. This does NOT render a card on its own — if the table belongs in the final reply, reference it in your final submitAnswer call as a render part.",
             inputSchema: z.object({
               tableId: z.string().min(1).max(200),
               cutGroups: z.union([
@@ -196,7 +198,7 @@ export async function streamAnalysisResponse({
             ),
           }),
           confirmCitation: tool({
-            description: "Confirm a specific cell before citing its number in prose. Returns the cell summary (displayValue, pct/count/n/mean, baseN, sig markers) plus a stable cellId. Required before emitting any `[[cite cellIds=...]]` marker for that cell IN THIS TURN. Hierarchy: fetch → (optionally) render → confirm → cite.",
+            description: "Confirm a specific cell before citing its number in the final reply. Returns the cell summary (displayValue, pct/count/n/mean, baseN, sig markers) plus a stable cellId. Required before referencing that cell in a cite part for THIS TURN. Hierarchy: fetch → decide whether to render → confirm → submitAnswer with cite parts.",
             providerOptions: ANALYSIS_ANTHROPIC_EPHEMERAL_CACHE_CONTROL_PROVIDER_OPTIONS,
             inputSchema: confirmCitationInputSchema,
             execute: async (input, options) => executeGroundedTool(
@@ -204,6 +206,13 @@ export async function streamAnalysisResponse({
               () => confirmCitation(groundingContext, input),
               { toolCallId: options.toolCallId },
             ),
+          }),
+          submitAnswer: tool({
+            description: "Finalize the user-visible reply as structured assistant parts. Call this exactly once as your final action after all needed fetchTable and confirmCitation calls. Use text parts for prose, render parts for inline tables, and cite parts for the sentence-end citations that anchor quoted numbers. Do not emit any assistant prose after calling submitAnswer.",
+            inputSchema: AnalysisStructuredAnswerSchema,
+            execute: async ({ parts }) => ({
+              parts: normalizeAnalysisStructuredAssistantParts(parts),
+            }),
           }),
         },
         onFinish: ({ totalUsage }) => {

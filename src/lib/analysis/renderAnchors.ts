@@ -6,7 +6,10 @@ import {
   type AnalysisUIMessage,
 } from "@/lib/analysis/ui";
 import {
+  type AnalysisRenderDirectiveFocus,
+  isAnalysisStructuredRenderPart,
   isAnalysisTableCard,
+  type AnalysisStructuredAssistantPart,
   type AnalysisFetchTableCutGroups,
   type AnalysisTableCard,
 } from "@/lib/analysis/types";
@@ -31,6 +34,17 @@ type FetchTableUIPart = AnalysisUIMessage["parts"][number] & {
 export interface AnalysisRenderFocus {
   focusedRowKeys: string[];
   focusedGroupKeys: string[];
+}
+
+export interface AnalysisStructuredRenderValidationIssue {
+  tableId: string;
+  reason:
+    | "not_fetched_this_turn"
+    | "invalid_row_label_focus"
+    | "invalid_row_ref_focus"
+    | "invalid_group_name_focus"
+    | "invalid_group_ref_focus";
+  detail?: string;
 }
 
 export type AnalysisRenderableInlineSegment =
@@ -233,6 +247,99 @@ function buildTableIdMap(parts: FetchTableUIPart[]): Map<string, FetchTableUIPar
     }
   }
   return map;
+}
+
+function matchesUniqueRowLabel(rows: AnalysisTableCard["rows"], rowLabel: string): boolean {
+  const matches = rows.filter((row) => normalizeText(row.label) === normalizeText(rowLabel));
+  return matches.length === 1;
+}
+
+function matchesUniqueGroupName(
+  groups: AnalysisTableCard["columnGroups"] | undefined,
+  groupName: string,
+): { groupKey: string } | null {
+  const nonTotalGroups = (groups ?? []).filter((group) => group.groupKey !== TOTAL_GROUP_KEY);
+  const matches = nonTotalGroups.filter((group) => normalizeText(group.groupName) === normalizeText(groupName));
+  if (matches.length !== 1) return null;
+  return { groupKey: matches[0]!.groupKey };
+}
+
+function validateRenderFocusForFetchedTable(
+  part: FetchTableUIPart,
+  focus: AnalysisRenderDirectiveFocus | undefined,
+): AnalysisStructuredRenderValidationIssue[] {
+  if (!focus) return [];
+
+  const issues: AnalysisStructuredRenderValidationIssue[] = [];
+  const groups = (part.output.columnGroups ?? []).filter((group) => group.groupKey !== TOTAL_GROUP_KEY);
+  const fetchedGroupKeys = getFetchedGroupKeys(part);
+
+  for (const rowLabel of focus.rowLabels ?? []) {
+    if (!matchesUniqueRowLabel(part.output.rows, rowLabel)) {
+      issues.push({
+        tableId: part.output.tableId,
+        reason: "invalid_row_label_focus",
+        detail: rowLabel,
+      });
+    }
+  }
+
+  for (const rowRef of focus.rowRefs ?? []) {
+    if (!part.output.rows.some((row) => row.rowKey === rowRef)) {
+      issues.push({
+        tableId: part.output.tableId,
+        reason: "invalid_row_ref_focus",
+        detail: rowRef,
+      });
+    }
+  }
+
+  for (const groupName of focus.groupNames ?? []) {
+    const match = matchesUniqueGroupName(part.output.columnGroups, groupName);
+    if (!match || !fetchedGroupKeys.has(match.groupKey)) {
+      issues.push({
+        tableId: part.output.tableId,
+        reason: "invalid_group_name_focus",
+        detail: groupName,
+      });
+    }
+  }
+
+  for (const groupRef of focus.groupRefs ?? []) {
+    if (!groups.some((group) => group.groupKey === groupRef) || !fetchedGroupKeys.has(groupRef)) {
+      issues.push({
+        tableId: part.output.tableId,
+        reason: "invalid_group_ref_focus",
+        detail: groupRef,
+      });
+    }
+  }
+
+  return issues;
+}
+
+export function validateAnalysisStructuredRenderParts(params: {
+  assistantParts: AnalysisStructuredAssistantPart[];
+  responseParts: AnalysisUIMessage["parts"];
+}): AnalysisStructuredRenderValidationIssue[] {
+  const tableMap = buildTableIdMap(getRenderableTableParts(params.responseParts));
+  const issues: AnalysisStructuredRenderValidationIssue[] = [];
+
+  for (const part of params.assistantParts) {
+    if (!isAnalysisStructuredRenderPart(part)) continue;
+    const fetchedPart = tableMap.get(part.tableId);
+    if (!fetchedPart) {
+      issues.push({
+        tableId: part.tableId,
+        reason: "not_fetched_this_turn",
+      });
+      continue;
+    }
+
+    issues.push(...validateRenderFocusForFetchedTable(fetchedPart, part.focus));
+  }
+
+  return issues;
 }
 
 function getFetchedGroupKeys(part: FetchTableUIPart): Set<string> {

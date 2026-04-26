@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  getAnalysisMessageContextEvidenceItems,
   getAnalysisMessageMetadata,
   getAnalysisMessageFollowUpSuggestions,
   getAnalysisUIMessageText,
@@ -798,6 +799,7 @@ export function AnalysisMessage({
     (part) => isToolUIPart(part) && part.type === "tool-fetchTable",
   );
   const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
+  const [isContextOpen, setIsContextOpen] = useState(false);
   const [draftCorrectionText, setDraftCorrectionText] = useState(feedback?.correctionText ?? "");
   const [optimisticFeedback, setOptimisticFeedback] = useState<AnalysisMessageFeedbackRecord | null>(feedback ?? null);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
@@ -813,12 +815,14 @@ export function AnalysisMessage({
 
   const traceEntries = getAnalysisTraceEntries(message);
   const evidenceItems = getAnalysisMessageEvidenceItems(message);
+  const contextEvidenceItems = getAnalysisMessageContextEvidenceItems(message);
   const visibleEvidenceItems = getVisibleEvidenceItems(message, evidenceItems);
   const followUpSuggestions = getAnalysisMessageFollowUpItems(message);
   const effectiveFeedback = optimisticFeedback ?? feedback ?? null;
   const isDownvoteOpen = effectiveFeedback?.vote === "down";
   const citeLookup = buildCitationChipLookup(message);
   const shouldShowEvidence = visibleEvidenceItems.length > 0;
+  const shouldShowContextEvidence = contextEvidenceItems.length > 0;
   const hasTrace = traceEntries.length > 0;
   const rawAssistantText = isUser ? "" : getAnalysisUIMessageText(message);
 
@@ -1328,6 +1332,39 @@ export function AnalysisMessage({
                             </button>
                           );
                         })}
+                      </div>
+                    </div>
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
+            ) : null}
+
+            {shouldShowContextEvidence && isFooterReady ? (
+              <Collapsible open={isContextOpen} onOpenChange={setIsContextOpen}>
+                <div className="pt-1">
+                  <CollapsibleTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground/70"
+                    >
+                      <ChevronDown
+                        className={cn("h-3 w-3 transition-transform", isContextOpen && "rotate-180")}
+                      />
+                      <span>Context ({contextEvidenceItems.length})</span>
+                    </button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pt-2">
+                    <div className="rounded-xl border border-border/60 bg-muted/15 px-3 py-2">
+                      <div className="space-y-1.5">
+                        {contextEvidenceItems.map((item) => (
+                          <div
+                            key={item.key}
+                            className="flex w-full items-center gap-2 text-left text-[11px] leading-5 text-muted-foreground"
+                          >
+                            <Link2 className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{item.label}</span>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </CollapsibleContent>

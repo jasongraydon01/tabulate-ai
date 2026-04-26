@@ -1,8 +1,6 @@
 import { isToolUIPart, type UIMessage } from "ai";
 
-import { extractAnalysisCiteMarkers } from "@/lib/analysis/citeAnchors";
-import { extractAnalysisRenderMarkers } from "@/lib/analysis/renderAnchors";
-import { serializeAnalysisStructuredAssistantPartsToText } from "@/lib/analysis/structuredParts";
+import { getAnalysisTextFromStructuredAssistantParts } from "@/lib/analysis/structuredParts";
 import { FETCH_TABLE_TOOL_TYPE } from "@/lib/analysis/toolLabels";
 import {
   isAnalysisStructuredCitePart,
@@ -42,6 +40,7 @@ export interface ClaimCheckResult {
   assistantParts: AnalysisStructuredAssistantPart[];
   hasGroundedClaims: boolean;
   groundingRefs: AnalysisGroundingRef[];
+  contextEvidence: AnalysisGroundingRef[];
   injectedTableCards: InjectedAnalysisTableCard[];
 }
 
@@ -118,14 +117,11 @@ function collectFetchedTableCardsByTableId(
 
 function collectExplicitlyRenderedTablesByTableId(params: {
   assistantParts: AnalysisStructuredAssistantPart[];
-  assistantText: string;
   responseParts: UIMessage["parts"];
 }): Map<string, { toolCallId: string; card: AnalysisTableCard }> {
   const fetchedTablesByTableId = collectFetchedTableCardsByTableId(params.responseParts);
   const explicitlyRenderedTableIds = new Set(
-    params.assistantParts.length > 0
-      ? params.assistantParts.flatMap((part) => (isAnalysisStructuredRenderPart(part) ? [part.tableId] : []))
-      : extractAnalysisRenderMarkers(params.assistantText).map((marker) => marker.tableId),
+    params.assistantParts.flatMap((part) => (isAnalysisStructuredRenderPart(part) ? [part.tableId] : [])),
   );
 
   const renderedTablesByTableId = new Map<string, { toolCallId: string; card: AnalysisTableCard }>();
@@ -216,24 +212,13 @@ function isContextRefType(ref: AnalysisSourceRef): boolean {
   return ref.refType !== "table" && ref.refType !== "question";
 }
 
-/**
- * Resolves grounded trust for a finalized assistant message. In Slice 1 the
- * route can now pass canonical structured assistant parts, so cite-derived
- * grounding comes from explicit `cite` parts when available and falls back to
- * legacy marker scanning only for older text-only paths.
- */
 export function resolveAssistantMessageTrust(params: {
-  assistantText?: string;
-  assistantParts?: AnalysisStructuredAssistantPart[];
+  assistantParts: AnalysisStructuredAssistantPart[];
   responseParts: UIMessage["parts"];
   groundingEvents: AnalysisTurnGroundingEvent[];
 }): ClaimCheckResult {
-  const cleanedAssistantParts = params.assistantParts
-    ? stripPlaceholderCitationsFromAssistantParts(params.assistantParts)
-    : [];
-  const cleanedAssistantText = cleanedAssistantParts.length > 0
-    ? serializeAnalysisStructuredAssistantPartsToText(cleanedAssistantParts)
-    : stripPlaceholderCitations(params.assistantText ?? "");
+  const cleanedAssistantParts = stripPlaceholderCitationsFromAssistantParts(params.assistantParts);
+  const cleanedAssistantText = getAnalysisTextFromStructuredAssistantParts(cleanedAssistantParts);
 
   const cellSummariesById = new Map<string, AnalysisCellSummary>();
   for (const event of params.groundingEvents) {
@@ -242,12 +227,11 @@ export function resolveAssistantMessageTrust(params: {
     }
   }
 
-  const citedCellIds = cleanedAssistantParts.length > 0
-    ? cleanedAssistantParts.flatMap((part) => (isAnalysisStructuredCitePart(part) ? part.cellIds : []))
-    : extractAnalysisCiteMarkers(cleanedAssistantText).flatMap((marker) => marker.cellIds);
+  const citedCellIds = cleanedAssistantParts.flatMap((part) => (
+    isAnalysisStructuredCitePart(part) ? part.cellIds : []
+  ));
   const renderedTablesByTableId = collectExplicitlyRenderedTablesByTableId({
     assistantParts: cleanedAssistantParts,
-    assistantText: cleanedAssistantText,
     responseParts: params.responseParts,
   });
 
@@ -276,7 +260,8 @@ export function resolveAssistantMessageTrust(params: {
     assistantText: cleanedAssistantText,
     assistantParts: cleanedAssistantParts,
     hasGroundedClaims: cellRefs.length > 0,
-    groundingRefs: dedupeGroundingRefs([...cellRefs, ...contextRefs]),
+    groundingRefs: dedupeGroundingRefs(cellRefs),
+    contextEvidence: dedupeGroundingRefs(contextRefs),
     // Kept for backwards-compatible route shape; no injection in v1.
     injectedTableCards: [],
   };

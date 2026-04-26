@@ -6,9 +6,7 @@ import {
 } from "ai";
 
 import { buildAnalysisStructuredAssistantPartsFromText } from "@/lib/analysis/structuredParts";
-import { stripAnalysisCiteAnchors } from "@/lib/analysis/citeAnchors";
 import { buildFetchTableModelMarkdown } from "@/lib/analysis/grounding";
-import { stripAnalysisRenderAnchors } from "@/lib/analysis/renderAnchors";
 import {
   CONFIRM_CITATION_TOOL_TYPE,
   FETCH_TABLE_TOOL_TYPE,
@@ -85,6 +83,7 @@ export interface PersistedAnalysisMessageRecord {
   content: string;
   parts?: PersistedAnalysisPartRecord[];
   groundingRefs?: AnalysisGroundingRef[];
+  contextEvidence?: AnalysisGroundingRef[];
   followUpSuggestions?: string[];
 }
 
@@ -146,6 +145,7 @@ export function normalizePersistedAnalysisMessageRecord(
     content: string;
     parts?: PersistedAnalysisPartRecordInput[];
     groundingRefs?: PersistedAnalysisGroundingRefInput[];
+    contextEvidence?: PersistedAnalysisGroundingRefInput[];
     followUpSuggestions?: string[];
   },
 ): PersistedAnalysisMessageRecord {
@@ -156,6 +156,9 @@ export function normalizePersistedAnalysisMessageRecord(
     ...(message.parts ? { parts: message.parts.map(normalizePersistedAnalysisPartRecord) } : {}),
     ...(message.groundingRefs
       ? { groundingRefs: message.groundingRefs.map(normalizePersistedAnalysisGroundingRef) }
+      : {}),
+    ...(message.contextEvidence
+      ? { contextEvidence: message.contextEvidence.map(normalizePersistedAnalysisGroundingRef) }
       : {}),
     ...(message.followUpSuggestions ? { followUpSuggestions: message.followUpSuggestions } : {}),
   };
@@ -305,6 +308,7 @@ export function getAnalysisMessageMetadata(
   if (
     !candidate.hasGroundedClaims
     && (!candidate.evidence || candidate.evidence.length === 0)
+    && (!candidate.contextEvidence || candidate.contextEvidence.length === 0)
     && (!candidate.followUpSuggestions || candidate.followUpSuggestions.length === 0)
   ) {
     return null;
@@ -315,6 +319,12 @@ export function getAnalysisMessageMetadata(
 
 export function getAnalysisMessageFollowUpSuggestions(message: Pick<AnalysisUIMessage, "metadata">): string[] {
   return getAnalysisMessageMetadata(message)?.followUpSuggestions ?? [];
+}
+
+export function getAnalysisMessageContextEvidenceItems(
+  message: Pick<AnalysisUIMessage, "metadata">,
+): AnalysisEvidenceItem[] {
+  return getAnalysisMessageMetadata(message)?.contextEvidence ?? [];
 }
 
 function appendRenderBoundaryText(accumulator: string): string {
@@ -446,6 +456,7 @@ export function persistedAnalysisMessagesToUIMessages(
     id: String(message._id),
     role: message.role,
     ...((message.groundingRefs && message.groundingRefs.length > 0)
+      || (message.contextEvidence && message.contextEvidence.length > 0)
       || (message.followUpSuggestions && message.followUpSuggestions.length > 0)
       ? {
           metadata: {
@@ -453,6 +464,11 @@ export function persistedAnalysisMessagesToUIMessages(
               ? {
                   hasGroundedClaims: true,
                   evidence: buildAnalysisEvidenceItems(message.groundingRefs),
+                }
+              : {}),
+            ...(message.contextEvidence && message.contextEvidence.length > 0
+              ? {
+                  contextEvidence: buildAnalysisEvidenceItems(message.contextEvidence),
                 }
               : {}),
             ...(message.followUpSuggestions && message.followUpSuggestions.length > 0
@@ -595,8 +611,7 @@ export function getSanitizedConversationMessagesForModel(
     ) {
       const prefix = hasPendingRenderBoundary && acc.some(isTextUIPart) ? "\n\n" : "";
       hasPendingRenderBoundary = false;
-      const markerFree = stripAnalysisCiteAnchors(stripAnalysisRenderAnchors(`${prefix}${text}`));
-      const sanitizedText = sanitizeAnalysisMessageContent(markerFree);
+      const sanitizedText = sanitizeAnalysisMessageContent(`${prefix}${text}`);
       if (sanitizedText.length > 0) {
         acc.push({
           type: "text",

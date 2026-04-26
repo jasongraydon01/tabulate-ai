@@ -54,6 +54,7 @@ export interface AnalysisEvidenceItem {
 export interface AnalysisMessageMetadata {
   hasGroundedClaims?: boolean;
   evidence?: AnalysisEvidenceItem[];
+  contextEvidence?: AnalysisEvidenceItem[];
   followUpSuggestions?: string[];
 }
 

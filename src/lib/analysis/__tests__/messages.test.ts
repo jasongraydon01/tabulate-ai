@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_ANALYSIS_ASSISTANT_MESSAGE_CHARS,
   MAX_ANALYSIS_MESSAGE_CHARS,
+  getAnalysisMessageContextEvidenceItems,
   getAnalysisMessageFollowUpSuggestions,
   getSanitizedConversationMessagesForModel,
   getAnalysisUIMessageText,
@@ -95,6 +96,35 @@ describe("analysis message helpers", () => {
     expect(getAnalysisMessageFollowUpSuggestions(messages[0])).toEqual([
       "Show this in counts",
       "How was Q1 asked?",
+    ]);
+  });
+
+  it("rehydrates persisted context evidence into separate message metadata", () => {
+    const messages = persistedAnalysisMessagesToUIMessages([
+      {
+        _id: "msg-1",
+        role: "assistant",
+        content: "Here is the question context.",
+        contextEvidence: [
+          {
+            claimId: "context-survey_question-Q1",
+            claimType: "context",
+            evidenceKind: "context",
+            refType: "survey_question",
+            refId: "Q1",
+            label: "Q1 survey wording",
+          },
+        ],
+      },
+    ]);
+
+    expect(getAnalysisMessageContextEvidenceItems(messages[0])).toEqual([
+      expect.objectContaining({
+        claimType: "context",
+        evidenceKind: "context",
+        refType: "survey_question",
+        refId: "Q1",
+      }),
     ]);
   });
 
@@ -282,6 +312,18 @@ describe("analysis message helpers", () => {
             renderedInCurrentMessage: true,
           },
         ],
+        contextEvidence: [
+          {
+            claimId: "context-survey_question-Q1",
+            claimType: "context",
+            evidenceKind: "context",
+            refType: "survey_question",
+            refId: "Q1",
+            label: "Q1 survey wording",
+            sourceQuestionId: "Q1",
+            renderedInCurrentMessage: false,
+          },
+        ],
         followUpSuggestions: ["Show me the base sizes"],
       }),
     ]);
@@ -295,6 +337,12 @@ describe("analysis message helpers", () => {
           expect.objectContaining({
             anchorId: "tool-1",
             artifactId: "artifact-1",
+          }),
+        ],
+        contextEvidence: [
+          expect.objectContaining({
+            refType: "survey_question",
+            refId: "Q1",
           }),
         ],
         followUpSuggestions: ["Show me the base sizes"],

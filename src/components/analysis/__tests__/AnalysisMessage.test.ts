@@ -307,13 +307,12 @@ describe("AnalysisMessage trace presentation", () => {
     expect(markup).not.toContain("Evidence (");
   });
 
-  it("shows the Evidence block when grounded support is not surfaced inline", () => {
+  it("shows context support in a separate Context block", () => {
     const message: UIMessage = {
       id: "assistant-extra-evidence",
       role: "assistant",
       metadata: {
-        hasGroundedClaims: true,
-        evidence: [
+        contextEvidence: [
           {
             key: "context::q1",
             claimType: "context",
@@ -333,7 +332,8 @@ describe("AnalysisMessage trace presentation", () => {
       React.createElement(AnalysisMessage, { message, isStreaming: false }),
     );
 
-    expect(markup).toContain("Evidence (1)");
+    expect(markup).not.toContain("Evidence (1)");
+    expect(markup).toContain("Context (1)");
   });
 
   it("reads follow-up suggestions from message metadata", () => {
@@ -735,13 +735,15 @@ describe("AnalysisMessage trace presentation", () => {
             cutKey: "__total__::total",
             renderedInCurrentMessage: true,
           },
+        ],
+        contextEvidence: [
           {
-            key: "context::q1",
+            key: "context::survey-q1",
             claimType: "context",
             evidenceKind: "context",
-            refType: "question",
+            refType: "survey_question",
             refId: "Q1",
-            label: "Q1 wording",
+            label: "Q1 survey wording",
             sourceQuestionId: "Q1",
             renderedInCurrentMessage: false,
           },
@@ -758,14 +760,14 @@ describe("AnalysisMessage trace presentation", () => {
 
     expect(getVisibleEvidenceItems(message, getAnalysisMessageEvidenceItems(message))).toEqual([
       expect.objectContaining({ key: "cell::q1-uncited" }),
-      expect.objectContaining({ key: "context::q1" }),
     ]);
 
     const markup = renderToStaticMarkup(
       React.createElement(AnalysisMessage, { message, isStreaming: false }),
     );
 
-    expect(markup).toContain("Evidence (2)");
+    expect(markup).toContain("Evidence (1)");
+    expect(markup).toContain("Context (1)");
     expect(markup).toContain("aria-label=\"Citation Q1\"");
   });
 
