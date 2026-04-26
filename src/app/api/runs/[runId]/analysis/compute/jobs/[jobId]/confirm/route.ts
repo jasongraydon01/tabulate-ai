@@ -101,6 +101,34 @@ export async function POST(
     if (job.status !== "proposed" && job.status !== "confirmed" && job.status !== "queued") {
       return NextResponse.json({ error: `Analysis compute job cannot be confirmed from status ${job.status}` }, { status: 409 });
     }
+    if (job.jobType === "table_rollup_derivation") {
+      if (!job.frozenTableRollupSpec) {
+        return NextResponse.json({ error: "Analysis compute job is missing frozen roll-up spec" }, { status: 409 });
+      }
+      const enqueueResult = await mutateInternal(internal.analysisComputeJobs.confirmTableRollupJob, {
+        orgId: auth.convexOrgId,
+        jobId: job._id,
+        parentRunId: run._id,
+        expectedFingerprint: fingerprint,
+      });
+
+      if (!enqueueResult.alreadyQueued) {
+        const message = "Confirmed. TabulateAI queued the derived table. I will add it here when it finishes.";
+        await mutateInternal(internal.analysisMessages.create, {
+          sessionId: job.sessionId,
+          orgId: auth.convexOrgId,
+          role: "assistant",
+          content: message,
+          parts: [{ type: "text", text: message }],
+        });
+      }
+
+      return NextResponse.json({
+        accepted: true,
+        alreadyQueued: enqueueResult.alreadyQueued,
+        derivedArtifactId: enqueueResult.derivedArtifactId ? String(enqueueResult.derivedArtifactId) : null,
+      });
+    }
     if (job.childRunId) {
       return NextResponse.json({ accepted: true, childRunId: String(job.childRunId), alreadyQueued: true });
     }

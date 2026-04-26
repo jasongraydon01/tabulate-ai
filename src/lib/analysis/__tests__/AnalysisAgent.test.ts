@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   recordAgentMetrics: vi.fn(),
   buildAnalysisSystemMessage: vi.fn(() => ({ role: "system", content: "system prompt" })),
   createAnalysisBannerExtensionProposal: vi.fn(),
+  createAnalysisTableRollupProposal: vi.fn(),
 }));
 
 vi.mock("ai", async (importOriginal) => {
@@ -44,6 +45,10 @@ vi.mock("@/lib/analysis/computeLane/proposalService", () => ({
   },
   createAnalysisBannerExtensionProposal: mocks.createAnalysisBannerExtensionProposal,
   formatAnalysisComputeProposalToolResult: vi.fn((value) => value.proposal),
+}));
+
+vi.mock("@/lib/analysis/computeLane/tableRollup", () => ({
+  createAnalysisTableRollupProposal: mocks.createAnalysisTableRollupProposal,
 }));
 
 vi.mock("@/lib/analysis/promptPrefix", () => ({
@@ -228,6 +233,7 @@ describe("streamAnalysisResponse", () => {
         "listBannerCuts",
         "confirmCitation",
         "proposeDerivedRun",
+        "proposeTableRollup",
         "submitAnswer",
       ]);
       expect(tools?.confirmCitation.providerOptions).toEqual({
@@ -283,6 +289,55 @@ describe("streamAnalysisResponse", () => {
         targetScope: "full_crosstab_set",
         tableSpecificDerivationExcluded: true,
         rawExpression: "REGION == 1",
+      }).success).toBe(false);
+      expect(tools?.proposeTableRollup.providerOptions).toBeUndefined();
+      expect(tools?.proposeTableRollup.inputSchema.safeParse({
+        requestText: "Roll up top two box on Q1",
+        targetScope: "selected_tables",
+        derivationType: "answer_option_rollup",
+        selectedTableSpecificCutExcluded: true,
+        sourceTables: [{
+          tableId: "q1",
+          rollups: [{
+            label: "Top 2 Box",
+            components: [{ rowKey: "row_4" }, { rowKey: "row_5" }],
+          }],
+        }],
+      }).success).toBe(true);
+      expect(tools?.proposeTableRollup.inputSchema.safeParse({
+        requestText: "Roll up top two box on Q1 and Q2",
+        targetScope: "selected_tables",
+        derivationType: "answer_option_rollup",
+        selectedTableSpecificCutExcluded: true,
+        sourceTables: [
+          {
+            tableId: "q1",
+            rollups: [{
+              label: "Top 2 Box",
+              components: [{ rowKey: "row_4" }, { rowKey: "row_5" }],
+            }],
+          },
+          {
+            tableId: "q2",
+            rollups: [{
+              label: "Top 2 Box",
+              components: [{ rowKey: "row_4" }, { rowKey: "row_5" }],
+            }],
+          },
+        ],
+      }).success).toBe(false);
+      expect(tools?.proposeTableRollup.inputSchema.safeParse({
+        requestText: "Add region cuts to Q1",
+        targetScope: "selected_tables",
+        derivationType: "selected_table_cut",
+        selectedTableSpecificCutExcluded: false,
+        sourceTables: [{
+          tableId: "q1",
+          rollups: [{
+            label: "Region",
+            components: [{ rowKey: "row_1" }, { rowKey: "row_2" }],
+          }],
+        }],
       }).success).toBe(false);
       expect(tools?.fetchTable.inputSchema.safeParse({
         tableId: "q1",
@@ -600,6 +655,139 @@ describe("streamAnalysisResponse", () => {
       requestText: "Append region cuts across the full crosstab set",
       transcriptMode: "none",
       abortSignal: undefined,
+    }));
+  });
+
+  it("returns validated table roll-up proposals through the native tool", async () => {
+    const proposal = {
+      status: "validated_proposal",
+      jobId: "job-rollup-1",
+      jobType: "table_rollup_derivation",
+      message: "I prepared a validated derived-table proposal.",
+      sourceTables: [{
+        tableId: "q1",
+        title: "Q1 Satisfaction",
+        questionId: "Q1",
+        questionText: "How satisfied are you?",
+        rollups: [{
+          label: "Top 2 Box",
+          components: [
+            { rowKey: "row_4", label: "Somewhat satisfied" },
+            { rowKey: "row_5", label: "Very satisfied" },
+          ],
+        }],
+      }],
+    };
+    mocks.createAnalysisTableRollupProposal.mockResolvedValueOnce(proposal);
+    mocks.streamText.mockImplementationOnce(async ({ onFinish, tools }) => {
+      const output = await tools?.proposeTableRollup.execute?.({
+        requestText: "Create a Top 2 Box roll-up on Q1",
+        targetScope: "selected_tables",
+        derivationType: "answer_option_rollup",
+        selectedTableSpecificCutExcluded: true,
+        sourceTables: [{
+          tableId: "q1",
+          rollups: [{
+            label: "Top 2 Box",
+            components: [{ rowKey: "row_4" }, { rowKey: "row_5" }],
+          }],
+        }],
+      }, { toolCallId: "rollup-1" });
+      expect(output).toEqual(proposal);
+      expect(JSON.stringify(output)).not.toContain("r2://");
+      expect(JSON.stringify(output)).not.toContain("fingerprint");
+      expect(JSON.stringify(output)).not.toContain("confirmToken");
+
+      onFinish?.({
+        totalUsage: {
+          inputTokens: 12,
+          outputTokens: 4,
+        },
+      });
+      return {
+        toUIMessageStreamResponse: vi.fn(() => new Response("ok")),
+      };
+    });
+    mocks.retryWithPolicyHandling.mockImplementationOnce(async (fn: () => Promise<unknown>) => ({
+      success: true,
+      result: await fn(),
+      attempts: 1,
+      wasPolicyError: false,
+      finalClassification: null,
+    }));
+
+    await streamAnalysisResponse({
+      messages: [{ id: "u1", role: "user", parts: [{ type: "text", text: "Roll up top two box on Q1" }] }],
+      groundingContext: {
+        availability: "available",
+        missingArtifacts: [],
+        tables: {},
+        questions: [],
+        bannerGroups: [],
+        bannerRouteMetadata: null,
+        surveyMarkdown: null,
+        surveyQuestions: [],
+        bannerPlanGroups: [],
+        projectContext: {
+          projectName: "TabulateAI Study",
+          runStatus: "success",
+          studyMethodology: null,
+          analysisMethod: null,
+          bannerSource: null,
+          bannerMode: null,
+          tableCount: null,
+          bannerGroupCount: null,
+          totalCuts: null,
+          bannerGroupNames: [],
+          researchObjectives: null,
+          bannerHints: null,
+          intakeFiles: {
+            dataFile: null,
+            survey: null,
+            bannerPlan: null,
+            messageList: null,
+          },
+        },
+        tablesMetadata: {
+          significanceTest: null,
+          significanceLevel: null,
+          comparisonGroups: [],
+        },
+      },
+      computeProposalContext: {
+        orgId: "org-1" as never,
+        projectId: "project-1" as never,
+        parentRunId: "run-1" as never,
+        sessionId: "session-1" as never,
+        requestedBy: "user-1" as never,
+        parentRun: {
+          _id: "run-1" as never,
+          status: "success",
+          result: {},
+        },
+        project: {
+          _id: "project-1" as never,
+          name: "TabulateAI Study",
+          config: {},
+          intake: {},
+        },
+        session: {
+          _id: "session-1" as never,
+          runId: "run-1" as never,
+          projectId: "project-1" as never,
+        },
+      },
+    });
+
+    expect(mocks.createAnalysisTableRollupProposal).toHaveBeenCalledWith(expect.objectContaining({
+      requestText: "Create a Top 2 Box roll-up on Q1",
+      candidates: [{
+        tableId: "q1",
+        rollups: [{
+          label: "Top 2 Box",
+          components: [{ rowKey: "row_4" }, { rowKey: "row_5" }],
+        }],
+      }],
     }));
   });
 });

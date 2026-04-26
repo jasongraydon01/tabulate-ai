@@ -11,6 +11,9 @@ import {
   formatAnalysisComputeProposalToolResult,
 } from "@/lib/analysis/computeLane/proposalService";
 import {
+  createAnalysisTableRollupProposal,
+} from "@/lib/analysis/computeLane/tableRollup";
+import {
   getAnalysisModel,
   getAnalysisModelName,
   getAnalysisProviderOptions,
@@ -285,6 +288,55 @@ export async function streamAnalysisResponse({
                   message: "TabulateAI could not prepare a derived-run proposal for this request.",
                 };
               }
+            },
+          }),
+          proposeTableRollup: tool({
+            description: [
+              "Validate and create a persisted derived-table proposal for answer-option roll-ups on one selected table.",
+              "Use only for table-scoped roll-ups that combine existing answer-option rows, such as Top 2 Box, Bottom 2 Box, favorable/unfavorable, or a custom grouping of rows in a specific table.",
+              "Do not use for adding cuts to a table, adding a banner cut across the full crosstab set, raw data recoding, open-end coding, or multi-table redesigns.",
+              "The backend validates table ids, row refs, row eligibility, compatible roll-up math, and significance support before creating any proposal card.",
+              "If the tool returns rejected_candidate because ids or row refs are wrong, repair using fetchTable/searchRunCatalog and retry only when the fix is clear. If intent is missing, ask a concise clarification via submitAnswer.",
+              "The tool persists a proposal only when validation passes. Confirmation remains button-driven.",
+            ].join("\n"),
+            inputSchema: z.object({
+              requestText: z.string().min(1).max(1000),
+              targetScope: z.literal("selected_tables"),
+              derivationType: z.literal("answer_option_rollup"),
+              selectedTableSpecificCutExcluded: z.literal(true),
+              sourceTables: z.array(z.object({
+                tableId: z.string().min(1).max(200),
+                rollups: z.array(z.object({
+                  label: z.string().min(1).max(200),
+                  components: z.array(z.object({
+                    rowKey: z.string().min(1).max(200).optional(),
+                    label: z.string().min(1).max(400).optional(),
+                  }).refine((value) => Boolean(value.rowKey || value.label), {
+                    message: "Each component needs a rowKey or label",
+                  })).min(2).max(12),
+                }).strict()).min(1).max(4),
+              }).strict()).min(1).max(1),
+            }).strict(),
+            execute: async ({ requestText, sourceTables }) => {
+              if (!computeProposalContext) {
+                return {
+                  status: "rejected_candidate" as const,
+                  message: "Derived-table proposals are not available in this chat context.",
+                  reasons: ["Derived-table proposals are not available in this chat context."],
+                  repairHints: ["Answer normally or ask the user to open a completed run's analysis workspace."],
+                  invalidTableIds: [],
+                  invalidRowRefs: [],
+                  ineligibleRows: [],
+                  unsupportedCombinations: [],
+                };
+              }
+
+              return createAnalysisTableRollupProposal({
+                ...computeProposalContext,
+                requestText,
+                candidates: sourceTables,
+                groundingContext,
+              });
             },
           }),
           submitAnswer: tool({

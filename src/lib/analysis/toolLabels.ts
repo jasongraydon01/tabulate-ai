@@ -14,6 +14,7 @@ export const ANALYSIS_TOOL_ACTIVITY_LABELS: Record<string, string> = {
   "tool-listBannerCuts": "Listing available cuts",
   "tool-confirmCitation": "Confirming cell",
   "tool-proposeDerivedRun": "Preparing derived run proposal",
+  "tool-proposeTableRollup": "Preparing derived table proposal",
 };
 
 export const FETCH_TABLE_TOOL_TYPE = "tool-fetchTable";

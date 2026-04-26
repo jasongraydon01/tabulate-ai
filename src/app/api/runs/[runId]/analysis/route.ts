@@ -62,6 +62,8 @@ import { api, internal } from "../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
 
 const CONVEX_ID_RE = /^[a-zA-Z0-9_.-]+$/;
+const HIDDEN_PROPOSAL_TOOL_NAMES = new Set(["proposeDerivedRun", "proposeTableRollup"]);
+const HIDDEN_PROPOSAL_TOOL_TYPES = new Set(["tool-proposeDerivedRun", "tool-proposeTableRollup"]);
 
 function isAnalysisMessageCandidate(value: unknown): value is AnalysisUIMessage[] {
   return Array.isArray(value);
@@ -135,6 +137,17 @@ function filterUIStreamForTrustLayer(
       }
 
       if ("toolName" in chunk && chunk.toolName === SUBMIT_ANSWER_TOOL_NAME) {
+        if ("toolCallId" in chunk && typeof chunk.toolCallId === "string") {
+          suppressedToolCallIds.add(chunk.toolCallId);
+        }
+        return;
+      }
+
+      if (
+        "toolName" in chunk
+        && typeof chunk.toolName === "string"
+        && HIDDEN_PROPOSAL_TOOL_NAMES.has(chunk.toolName)
+      ) {
         if ("toolCallId" in chunk && typeof chunk.toolCallId === "string") {
           suppressedToolCallIds.add(chunk.toolCallId);
         }
@@ -354,7 +367,9 @@ function buildFinalAssistantParts(params: {
   injectedTableCards: InjectedAnalysisTableCard[];
 }): AnalysisUIMessage["parts"] {
   const nonTextParts = params.originalParts.filter((part) => (
-    part.type !== "text" && part.type !== SUBMIT_ANSWER_TOOL_TYPE
+    part.type !== "text"
+    && part.type !== SUBMIT_ANSWER_TOOL_TYPE
+    && !HIDDEN_PROPOSAL_TOOL_TYPES.has(part.type)
   ));
   const injectedParts = params.injectedTableCards.map<AnalysisUIMessage["parts"][number]>((entry) => ({
     type: FETCH_TABLE_TOOL_TYPE,
@@ -563,6 +578,10 @@ export async function POST(
       runStatus: run.status,
       projectConfig: project.config,
       projectIntake: project.intake,
+      derivedArtifacts: persistedArtifacts.map((artifact) => ({
+        payload: artifact.payload,
+        sourceClass: artifact.sourceClass,
+      })),
     });
 
     const {

@@ -38,6 +38,7 @@ function formatConfidence(value: number | undefined): string | null {
 }
 
 function statusLabel(job: AnalysisComputeJobView): string {
+  const isTableRollup = job.jobType === "table_rollup_derivation";
   switch (job.effectiveStatus) {
     case "proposed":
       return "Proposal ready";
@@ -48,9 +49,9 @@ function statusLabel(job: AnalysisComputeJobView): string {
     case "queued":
       return "Queued";
     case "running":
-      return "Creating derived run";
+      return isTableRollup ? "Creating derived table" : "Creating derived run";
     case "success":
-      return "Derived run ready";
+      return isTableRollup ? "Derived table ready" : "Derived run ready";
     case "failed":
       return "Failed";
     case "cancelled":
@@ -83,7 +84,8 @@ export function AnalysisComputeJobCard({
   const isPending = pendingAction !== null;
   const canConfirm = job.effectiveStatus === "proposed" && Boolean(job.confirmToken);
   const canCancel = ["proposed", "needs_clarification", "confirmed", "queued", "running"].includes(job.effectiveStatus);
-  const showProgress = job.childRun && (job.effectiveStatus === "queued" || job.effectiveStatus === "running");
+  const isTableRollup = job.jobType === "table_rollup_derivation";
+  const showProgress = (job.childRun || isTableRollup) && (job.effectiveStatus === "queued" || job.effectiveStatus === "running");
   const progress = typeof job.childRun?.progress === "number"
     ? Math.max(0, Math.min(100, job.childRun.progress))
     : job.effectiveStatus === "queued"
@@ -110,11 +112,13 @@ export function AnalysisComputeJobCard({
               <span>{statusLabel(job)}</span>
             </div>
             <h3 className="text-sm font-medium text-foreground">
-              {job.proposedGroup?.groupName ?? "Derived banner group"}
+              {job.proposedGroup?.groupName
+                ?? job.proposedTableRollup?.sourceTables.map((table) => table.title).join(", ")
+                ?? "Derived table"}
             </h3>
           </div>
           <div className="shrink-0 rounded-full border border-border/70 px-2 py-1 text-[11px] text-muted-foreground">
-            Derived run
+            {isTableRollup ? "Derived table" : "Derived run"}
           </div>
         </div>
 
@@ -182,6 +186,32 @@ export function AnalysisComputeJobCard({
           </div>
         ) : null}
 
+        {job.proposedTableRollup ? (
+          <div className="mt-3 space-y-2">
+            {job.proposedTableRollup.sourceTables.map((table) => (
+              <div
+                key={`${job.id}-${table.tableId}`}
+                className="rounded-lg border border-border/60 bg-muted/15 px-3 py-2"
+              >
+                <p className="text-sm font-medium text-foreground">{table.title}</p>
+                {table.questionText ? (
+                  <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{table.questionText}</p>
+                ) : null}
+                <div className="mt-2 space-y-2">
+                  {table.rollups.map((rollup) => (
+                    <div key={`${table.tableId}-${rollup.label}`} className="rounded-md bg-background/70 px-2 py-2">
+                      <p className="text-xs font-medium text-foreground">{rollup.label}</p>
+                      <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
+                        Combines {rollup.components.map((component) => component.label).join(", ")}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         {job.reviewFlags?.reasons.length ? (
           <div className="mt-3 rounded-lg border border-ct-amber/30 bg-ct-amber-dim px-3 py-2 text-xs leading-5 text-foreground/85">
             {job.reviewFlags.reasons.map((reason) => (
@@ -194,7 +224,11 @@ export function AnalysisComputeJobCard({
           <div className="mt-3 space-y-2">
             <Progress value={progress} className="h-1.5" />
             <p className="text-xs leading-5 text-muted-foreground">
-              {job.childRun?.message ?? (job.effectiveStatus === "queued" ? "Queued for worker pickup." : "Running compute for the derived run.")}
+              {job.childRun?.message ?? (job.effectiveStatus === "queued"
+                ? "Queued for worker pickup."
+                : isTableRollup
+                  ? "Computing the derived table."
+                  : "Running compute for the derived run.")}
             </p>
           </div>
         ) : null}

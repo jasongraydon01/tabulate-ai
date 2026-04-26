@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { query, internalMutation } from "./_generated/server";
+import { query, internalMutation, internalQuery } from "./_generated/server";
 
 const groundingRefValidator = v.object({
   claimId: v.string(),
@@ -204,5 +204,28 @@ export const create = internalMutation({
     });
 
     return messageId;
+  },
+});
+
+export const hasToolCallPart = internalQuery({
+  args: {
+    orgId: v.id("organizations"),
+    sessionId: v.id("analysisSessions"),
+    toolCallId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session || session.orgId !== args.orgId) return false;
+
+    const messages = await ctx.db
+      .query("analysisMessages")
+      .withIndex("by_session_created", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+
+    return messages.some((message) =>
+      message.orgId === args.orgId
+      && Array.isArray(message.parts)
+      && message.parts.some((part) => part.toolCallId === args.toolCallId)
+    );
   },
 });

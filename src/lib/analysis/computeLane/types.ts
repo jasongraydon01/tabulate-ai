@@ -13,7 +13,7 @@ export type AnalysisComputeJobStatus =
   | 'cancelled'
   | 'expired';
 
-export type AnalysisComputeJobType = 'banner_extension_recompute';
+export type AnalysisComputeJobType = 'banner_extension_recompute' | 'table_rollup_derivation';
 
 export interface AnalysisBannerExtensionReviewFlags {
   requiresClarification: boolean;
@@ -49,4 +49,28 @@ export interface AnalysisBannerExtensionPayload {
 export interface ExtendedPlanningArtifacts {
   bannerPlan: { bannerCuts: BannerGroupType[] };
   crosstabPlan: ValidationResultType;
+}
+
+export interface AnalysisTableRollupComponent {
+  rowKey: string;
+  label: string;
+}
+
+export interface AnalysisTableRollupDefinition {
+  label: string;
+  components: AnalysisTableRollupComponent[];
+}
+
+export interface AnalysisTableRollupTableSpec {
+  tableId: string;
+  title: string;
+  questionId: string | null;
+  questionText: string | null;
+  rollups: AnalysisTableRollupDefinition[];
+}
+
+export interface AnalysisTableRollupSpec {
+  schemaVersion: 1;
+  derivationType: 'answer_option_rollup';
+  sourceTables: AnalysisTableRollupTableSpec[];
 }

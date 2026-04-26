@@ -4,6 +4,7 @@ import { mutateInternal, queryInternal } from '@/lib/convex';
 import { isTransientConvexError } from '@/lib/convex';
 import { internal } from '../convex/_generated/api';
 import { runClaimedWorkerRun } from '@/lib/worker/runClaimedRun';
+import { runClaimedTableRollupJob, type ClaimedTableRollupJob } from '@/lib/api/tableRollupCompletion';
 import { cleanupPendingArtifactRuns } from '@/lib/worker/artifactCleanup';
 import { formatWorkerQueueSnapshotLog } from '@/lib/worker/logging';
 import type { ClaimedWorkerRun } from '@/lib/worker/types';
@@ -44,6 +45,25 @@ async function claimNextRun(): Promise<ClaimedWorkerRun | null> {
     executionPayload: claimed.executionPayload,
     recoveryManifest: claimed.recoveryManifest,
     resumeFromStage: claimed.resumeFromStage,
+  };
+}
+
+async function claimNextTableRollupJob(): Promise<ClaimedTableRollupJob | null> {
+  const claimed = await mutateInternal(internal.analysisComputeJobs.claimNextQueuedTableRollupJob, {
+    workerId,
+  });
+  if (!claimed) return null;
+
+  return {
+    jobId: String(claimed.jobId),
+    orgId: String(claimed.orgId),
+    projectId: String(claimed.projectId),
+    parentRunId: String(claimed.parentRunId),
+    sessionId: String(claimed.sessionId),
+    requestedBy: String(claimed.requestedBy),
+    requestText: claimed.requestText,
+    frozenTableRollupSpec: claimed.frozenTableRollupSpec,
+    fingerprint: claimed.fingerprint,
   };
 }
 
@@ -101,17 +121,29 @@ async function main(): Promise<void> {
       await mutateInternal(internal.runs.requeueStaleRuns, {
         staleBeforeMs: STALE_LEASE_MS,
       });
+      await mutateInternal(internal.analysisComputeJobs.requeueStaleTableRollupJobs, {
+        staleBeforeMs: STALE_LEASE_MS,
+      });
 
       const claimedRun = await claimNextRun();
-      if (!claimedRun) {
-        await logIdleQueueSnapshot();
-        await sleep(POLL_INTERVAL_MS);
+      if (claimedRun) {
+        lastIdleSnapshotKey = '';
+        console.log(`[Worker] Claimed run ${claimedRun.runId} (attempt ${claimedRun.attemptCount})`);
+        await runClaimedWorkerRun(claimedRun, workerId);
         continue;
       }
 
-      lastIdleSnapshotKey = '';
-      console.log(`[Worker] Claimed run ${claimedRun.runId} (attempt ${claimedRun.attemptCount})`);
-      await runClaimedWorkerRun(claimedRun, workerId);
+      const claimedRollupJob = await claimNextTableRollupJob();
+      if (claimedRollupJob) {
+        lastIdleSnapshotKey = '';
+        console.log(`[Worker] Claimed table roll-up job ${claimedRollupJob.jobId}`);
+        await runClaimedTableRollupJob(claimedRollupJob);
+        continue;
+      }
+
+      await logIdleQueueSnapshot();
+      await sleep(POLL_INTERVAL_MS);
+      continue;
     } catch (error) {
       if (isTransientConvexError(error)) {
         console.warn(

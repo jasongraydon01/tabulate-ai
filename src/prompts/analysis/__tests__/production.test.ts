@@ -142,12 +142,40 @@ describe("analysis agent production prompt", () => {
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("confirmCitation");
   });
 
+  it("keeps the production prompt on the derived-run-only compute contract", () => {
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("proposeDerivedRun");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("append one new banner cut or banner group across the full crosstab");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("one table or a small set of tables");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("Do not imply single-table compute is available yet");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("button before any worker-queued compute starts");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain('targetScope: "full_crosstab_set"');
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("tableSpecificDerivationExcluded: true");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("original tables in this\nrun's table set will stay as they are");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("raw expressions, R2 keys, frozen artifacts, fingerprints");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).not.toContain("proposeTableRollup");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).not.toContain("rejected_candidate");
+  });
+
+  it("documents native Tier A roll-up proposal boundaries in the alternative prompt", () => {
+    const prompt = ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE;
+    expect(prompt).toContain("proposeDerivedRun");
+    expect(prompt).toContain("proposeTableRollup");
+    expect(prompt).toContain("append one new banner cut or banner group across the\nfull crosstab");
+    expect(prompt).toContain("answer-option roll-up on one selected table");
+    expect(prompt).toContain("Table-\nspecific added cuts and multi-table roll-up jobs are not available yet");
+    expect(prompt).toContain("rejected_candidate");
+    expect(prompt).toContain("button before any worker-queued compute starts");
+    expect(prompt).toContain('targetScope: "full_crosstab_set"');
+    expect(prompt).toContain("tableSpecificDerivationExcluded: true");
+    expect(prompt).toContain("original tables in this\nrun's table set will stay as they are");
+    expect(prompt).toContain("raw expressions, R2 keys, frozen artifacts, fingerprints");
+  });
+
   it("documents native derived-run proposal boundaries in both prompt variants", () => {
     for (const prompt of [ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION, ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE]) {
       expect(prompt).toContain("proposeDerivedRun");
-      expect(prompt).toContain("append one new banner cut or banner group across the full crosstab");
-      expect(prompt).toContain("one table or a small set of tables");
-      expect(prompt).toContain("Do not imply single-table compute is available yet");
+      expect(prompt).toContain("one new banner cut or banner group");
+      expect(prompt).toContain("full crosstab");
       expect(prompt).toContain("button before any worker-queued compute starts");
       expect(prompt).toContain('targetScope: "full_crosstab_set"');
       expect(prompt).toContain("tableSpecificDerivationExcluded: true");

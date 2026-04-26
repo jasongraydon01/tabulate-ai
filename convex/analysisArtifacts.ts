@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { query, internalMutation } from "./_generated/server";
+import { query, internalMutation, internalQuery } from "./_generated/server";
 
 export const listBySession = query({
   args: {
@@ -45,10 +45,17 @@ export const create = internalMutation({
     sourceClass: v.union(
       v.literal("from_tabs"),
       v.literal("assistant_synthesis"),
+      v.literal("computed_derivation"),
     ),
     title: v.string(),
     sourceTableIds: v.array(v.string()),
     sourceQuestionIds: v.array(v.string()),
+    lineage: v.optional(v.object({
+      sourceRunId: v.id("runs"),
+      sourceTableIds: v.array(v.string()),
+      analysisComputeJobId: v.optional(v.id("analysisComputeJobs")),
+      derivationType: v.optional(v.string()),
+    })),
     payload: v.any(),
     createdBy: v.id("users"),
   },
@@ -85,9 +92,33 @@ export const create = internalMutation({
       title: args.title,
       sourceTableIds: args.sourceTableIds,
       sourceQuestionIds: args.sourceQuestionIds,
+      ...(args.lineage ? { lineage: args.lineage } : {}),
       payload: args.payload,
       createdBy: args.createdBy,
       createdAt: Date.now(),
     });
+  },
+});
+
+export const getByAnalysisComputeJob = internalQuery({
+  args: {
+    orgId: v.id("organizations"),
+    sessionId: v.id("analysisSessions"),
+    jobId: v.id("analysisComputeJobs"),
+  },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session || session.orgId !== args.orgId) return null;
+
+    const artifacts = await ctx.db
+      .query("analysisArtifacts")
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+
+    return artifacts.find((artifact) =>
+      artifact.orgId === args.orgId
+      && artifact.sourceClass === "computed_derivation"
+      && artifact.lineage?.analysisComputeJobId === args.jobId
+    ) ?? null;
   },
 });

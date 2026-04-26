@@ -22,13 +22,27 @@ export interface AnalysisComputeJobCutView {
 
 export interface AnalysisComputeJobView {
   id: string;
-  jobType: "banner_extension_recompute";
+  jobType: "banner_extension_recompute" | "table_rollup_derivation";
   status: AnalysisComputeJobClientStatus;
   effectiveStatus: AnalysisComputeJobClientStatus;
   requestText: string;
   proposedGroup?: {
     groupName: string;
     cuts: AnalysisComputeJobCutView[];
+  };
+  proposedTableRollup?: {
+    sourceTables: Array<{
+      tableId: string;
+      title: string;
+      questionText: string | null;
+      rollups: Array<{
+        label: string;
+        components: Array<{
+          rowKey: string;
+          label: string;
+        }>;
+      }>;
+    }>;
   };
   reviewFlags?: {
     requiresClarification: boolean;
@@ -51,6 +65,7 @@ export interface AnalysisComputeJobView {
     analysisUrl: string;
     analysisSessionId?: string;
   };
+  derivedArtifactId?: string;
   error?: string;
   createdAt: number;
   updatedAt: number;
@@ -66,6 +81,7 @@ interface RawAnalysisComputeJob {
   requestText: string;
   frozenBannerGroup?: unknown;
   frozenValidatedGroup?: unknown;
+  frozenTableRollupSpec?: unknown;
   reviewFlags?: unknown;
   fingerprint?: string;
   error?: string;
@@ -73,6 +89,7 @@ interface RawAnalysisComputeJob {
   updatedAt: number;
   confirmedAt?: number;
   completedAt?: number;
+  derivedArtifactId?: unknown;
 }
 
 interface RawChildRun {
@@ -157,6 +174,42 @@ function buildProposedGroup(job: RawAnalysisComputeJob): AnalysisComputeJobView[
   return cuts.length > 0 ? { groupName, cuts } : undefined;
 }
 
+function buildProposedTableRollup(job: RawAnalysisComputeJob): AnalysisComputeJobView["proposedTableRollup"] | undefined {
+  const spec = asRecord(job.frozenTableRollupSpec);
+  if (!spec) return undefined;
+  const sourceTables = Array.isArray(spec.sourceTables) ? spec.sourceTables : [];
+  const safeTables = sourceTables.flatMap((entry) => {
+    const table = asRecord(entry);
+    const tableId = optionalString(table?.tableId);
+    const title = optionalString(table?.title);
+    if (!tableId || !title) return [];
+    const rollups = Array.isArray(table?.rollups) ? table.rollups : [];
+    const safeRollups = rollups.flatMap((rollupEntry) => {
+      const rollup = asRecord(rollupEntry);
+      const label = optionalString(rollup?.label);
+      if (!label) return [];
+      const components = Array.isArray(rollup?.components) ? rollup.components : [];
+      const safeComponents = components.flatMap((componentEntry) => {
+        const component = asRecord(componentEntry);
+        const rowKey = optionalString(component?.rowKey);
+        const componentLabel = optionalString(component?.label);
+        return rowKey && componentLabel ? [{ rowKey, label: componentLabel }] : [];
+      });
+      return safeComponents.length >= 2 ? [{ label, components: safeComponents }] : [];
+    });
+    return safeRollups.length > 0
+      ? [{
+          tableId,
+          title,
+          questionText: optionalString(table?.questionText) ?? null,
+          rollups: safeRollups,
+        }]
+      : [];
+  });
+
+  return safeTables.length > 0 ? { sourceTables: safeTables } : undefined;
+}
+
 function deriveEffectiveStatus(
   jobStatus: AnalysisComputeJobClientStatus,
   childRun?: RawChildRun | null,
@@ -195,11 +248,14 @@ export function buildAnalysisComputeJobView(params: {
 
   return {
     id: String(params.job._id),
-    jobType: "banner_extension_recompute",
+    jobType: params.job.jobType === "table_rollup_derivation"
+      ? "table_rollup_derivation"
+      : "banner_extension_recompute",
     status: params.job.status,
     effectiveStatus,
     requestText: params.job.requestText,
     ...(buildProposedGroup(params.job) ? { proposedGroup: buildProposedGroup(params.job) } : {}),
+    ...(buildProposedTableRollup(params.job) ? { proposedTableRollup: buildProposedTableRollup(params.job) } : {}),
     ...(reviewFlags ? { reviewFlags } : {}),
     ...(canConfirm && params.job.fingerprint ? { confirmToken: params.job.fingerprint } : {}),
     ...(params.childRun
@@ -218,6 +274,7 @@ export function buildAnalysisComputeJobView(params: {
           },
         }
       : {}),
+    ...(params.job.derivedArtifactId ? { derivedArtifactId: String(params.job.derivedArtifactId) } : {}),
     ...(params.job.error ? { error: params.job.error } : {}),
     createdAt: params.job.createdAt,
     updatedAt: params.job.updatedAt,

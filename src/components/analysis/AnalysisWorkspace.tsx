@@ -285,7 +285,7 @@ export function AnalysisWorkspace({
       throw new Error(payload.error ?? "Failed to queue derived run");
     }
 
-    toast.success("Derived run queued");
+    toast.success(job.jobType === "table_rollup_derivation" ? "Derived table queued" : "Derived run queued");
   }
 
   async function handleCancelComputeJob(job: AnalysisComputeJobView) {
@@ -298,7 +298,7 @@ export function AnalysisWorkspace({
       throw new Error(payload.error ?? "Failed to cancel derived run");
     }
 
-    toast.success("Derived run cancelled");
+    toast.success(job.jobType === "table_rollup_derivation" ? "Derived table cancelled" : "Derived run cancelled");
   }
 
   async function handleContinueInDerivedRun(job: AnalysisComputeJobView) {
@@ -412,7 +412,7 @@ export function AnalysisWorkspace({
           try {
             await handleConfirmComputeJob(job);
           } catch (error) {
-            toast.error("Failed to queue derived run", {
+            toast.error(job.jobType === "table_rollup_derivation" ? "Failed to queue derived table" : "Failed to queue derived run", {
               description: error instanceof Error ? error.message : "Unknown error",
             });
             throw error;
@@ -422,7 +422,7 @@ export function AnalysisWorkspace({
           try {
             await handleCancelComputeJob(job);
           } catch (error) {
-            toast.error("Failed to cancel derived run", {
+            toast.error(job.jobType === "table_rollup_derivation" ? "Failed to cancel derived table" : "Failed to cancel derived run", {
               description: error instanceof Error ? error.message : "Unknown error",
             });
             throw error;

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { cancelJob, getById, listForSession } from "../../../../../convex/analysisComputeJobs";
+import {
+  cancelJob,
+  getById,
+  listForSession,
+  requeueStaleTableRollupJobs,
+  updateStatus,
+} from "../../../../../convex/analysisComputeJobs";
 
 type TestRecord = Record<string, unknown>;
 type TestConvexFunction<Result = unknown> = {
@@ -237,5 +243,77 @@ describe("analysisComputeJobs Convex functions", () => {
     expect(patches).toHaveLength(1);
     expect(patches[0].id).toBe("job-1");
     expect(patches[0].patch).toMatchObject({ status: "success" });
+  });
+
+  it("requeues stale running table roll-up jobs and clears worker lease fields", async () => {
+    const { db, patches } = createDb({}, {
+      analysisComputeJobs: [
+        {
+          _id: "stale-rollup",
+          orgId: "org-1",
+          jobType: "table_rollup_derivation",
+          status: "running",
+          workerId: "worker-old",
+          claimedAt: 100,
+          updatedAt: 100,
+        },
+        {
+          _id: "fresh-rollup",
+          orgId: "org-1",
+          jobType: "table_rollup_derivation",
+          status: "running",
+          workerId: "worker-new",
+          claimedAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+        {
+          _id: "banner-job",
+          orgId: "org-1",
+          jobType: "banner_extension_recompute",
+          status: "running",
+          workerId: "worker-old",
+          claimedAt: 100,
+          updatedAt: 100,
+        },
+      ],
+    });
+
+    const result = await (requeueStaleTableRollupJobs as unknown as TestConvexFunction<TestRecord>)._handler(
+      { db },
+      { staleBeforeMs: 1_000 },
+    );
+
+    expect(result).toEqual({ requeued: 1 });
+    expect(patches).toHaveLength(1);
+    expect(patches[0]).toMatchObject({
+      id: "stale-rollup",
+      patch: {
+        status: "queued",
+        workerId: undefined,
+        claimedAt: undefined,
+      },
+    });
+  });
+
+  it("does not let a late worker failure overwrite a cancelled job", async () => {
+    const { db, patches } = createDb({
+      "job-1": {
+        _id: "job-1",
+        orgId: "org-1",
+        parentRunId: "run-1",
+        status: "cancelled",
+        workerId: undefined,
+        claimedAt: undefined,
+        createdAt: 100,
+        updatedAt: 200,
+      },
+    }, {});
+
+    await (updateStatus as unknown as TestConvexFunction<void>)._handler(
+      { db },
+      { jobId: "job-1", status: "failed", error: "Late worker failure" },
+    );
+
+    expect(patches).toEqual([]);
   });
 });

@@ -137,4 +137,38 @@ describe("AnalysisComputeJobCard", () => {
       confirmToken: undefined,
     })).toContain("Expired");
   });
+
+  it("renders a derived-table proposal without derived-run continuation", () => {
+    const markup = renderCard({
+      id: "job-rollup-1",
+      jobType: "table_rollup_derivation",
+      status: "proposed",
+      effectiveStatus: "proposed",
+      requestText: "Create Top 2 Box on Q1",
+      confirmToken: "rollup-token",
+      proposedTableRollup: {
+        sourceTables: [{
+          tableId: "q1",
+          title: "Q1 Satisfaction",
+          questionText: "How satisfied are you?",
+          rollups: [{
+            label: "Top 2 Box",
+            components: [
+              { rowKey: "row_4", label: "Somewhat satisfied" },
+              { rowKey: "row_5", label: "Very satisfied" },
+            ],
+          }],
+        }],
+      },
+      createdAt: 100,
+      updatedAt: 110,
+    });
+
+    expect(markup).toContain("Derived table");
+    expect(markup).toContain("Q1 Satisfaction");
+    expect(markup).toContain("Top 2 Box");
+    expect(markup).toContain("Somewhat satisfied, Very satisfied");
+    expect(markup).toContain("Confirm");
+    expect(markup).not.toContain("Continue in derived run");
+  });
 });

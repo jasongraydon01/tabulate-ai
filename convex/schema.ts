@@ -98,6 +98,7 @@ const wincrossParseDiagnosticsValidator = v.object({
 const analysisSourceClassValidator = v.union(
   v.literal("from_tabs"),
   v.literal("assistant_synthesis"),
+  v.literal("computed_derivation"),
 );
 
 const analysisGroundingRefValidator = v.object({
@@ -142,6 +143,7 @@ const analysisComputeJobStatusValidator = v.union(
 
 const analysisComputeJobTypeValidator = v.union(
   v.literal("banner_extension_recompute"),
+  v.literal("table_rollup_derivation"),
 );
 
 const analysisComputeReviewFlagsValidator = v.object({
@@ -477,6 +479,12 @@ export default defineSchema({
     title: v.string(),
     sourceTableIds: v.array(v.string()),
     sourceQuestionIds: v.array(v.string()),
+    lineage: v.optional(v.object({
+      sourceRunId: v.id("runs"),
+      sourceTableIds: v.array(v.string()),
+      analysisComputeJobId: v.optional(v.id("analysisComputeJobs")),
+      derivationType: v.optional(v.string()),
+    })),
     // Payload varies by rendered card type and remains internal-only for v1.
     payload: v.any(),
     createdBy: v.id("users"),
@@ -497,11 +505,15 @@ export default defineSchema({
     requestText: v.string(),
     frozenBannerGroup: v.optional(v.any()),
     frozenValidatedGroup: v.optional(v.any()),
+    frozenTableRollupSpec: v.optional(v.any()),
+    derivedArtifactId: v.optional(v.id("analysisArtifacts")),
     reviewFlags: v.optional(analysisComputeReviewFlagsValidator),
     fingerprint: v.optional(v.string()),
     promptSummary: v.optional(v.string()),
     r2Keys: v.optional(v.any()),
     error: v.optional(v.string()),
+    workerId: v.optional(v.string()),
+    claimedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
     confirmedAt: v.optional(v.number()),
@@ -510,7 +522,8 @@ export default defineSchema({
     .index("by_session", ["sessionId"])
     .index("by_parent_run", ["parentRunId"])
     .index("by_child_run", ["childRunId"])
-    .index("by_org_status", ["orgId", "status"]),
+    .index("by_org_status", ["orgId", "status"])
+    .index("by_status", ["status"]),
 
   demoRuns: defineTable({
     name: v.string(),

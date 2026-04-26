@@ -129,4 +129,62 @@ describe("buildAnalysisComputeJobView", () => {
     expect(view.effectiveStatus).toBe("expired");
     expect(view.childRun?.expiredAt).toBe(500);
   });
+
+  it("projects table roll-up jobs into sanitized proposal views", () => {
+    const rollupJob = {
+      _id: "job-rollup-1",
+      projectId: "project-1",
+      jobType: "table_rollup_derivation" as const,
+      status: "proposed" as const,
+      requestText: "Create Top 2 Box",
+      fingerprint: "rollup-token",
+      frozenTableRollupSpec: {
+        schemaVersion: 1,
+        derivationType: "answer_option_rollup",
+        sourceTables: [{
+          tableId: "q1",
+          title: "Q1 Satisfaction",
+          questionId: "Q1",
+          questionText: "How satisfied are you?",
+          rollups: [{
+            label: "Top 2 Box",
+            components: [
+              { rowKey: "row_4", label: "Somewhat satisfied" },
+              { rowKey: "row_5", label: "Very satisfied" },
+            ],
+          }],
+        }],
+      },
+      r2Keys: { unsafe: "hidden" },
+      promptSummary: "private reasoning",
+      createdAt: 100,
+      updatedAt: 120,
+    };
+
+    const view = buildAnalysisComputeJobView({
+      job: rollupJob,
+    });
+
+    expect(view).toMatchObject({
+      id: "job-rollup-1",
+      jobType: "table_rollup_derivation",
+      confirmToken: "rollup-token",
+      proposedTableRollup: {
+        sourceTables: [{
+          tableId: "q1",
+          title: "Q1 Satisfaction",
+          rollups: [{
+            label: "Top 2 Box",
+            components: [
+              { rowKey: "row_4", label: "Somewhat satisfied" },
+              { rowKey: "row_5", label: "Very satisfied" },
+            ],
+          }],
+        }],
+      },
+    });
+    expect(view).not.toHaveProperty("frozenTableRollupSpec");
+    expect(view).not.toHaveProperty("r2Keys");
+    expect(view).not.toHaveProperty("promptSummary");
+  });
 });

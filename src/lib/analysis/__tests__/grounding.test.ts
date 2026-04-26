@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   attachRetrievedContextXml,
   buildFetchTableModelMarkdown,
+  confirmCitation,
   fetchTable,
   getQuestionContext,
   listBannerCuts,
@@ -604,6 +605,53 @@ describe("analysis grounding helpers", () => {
     expect(all.questions).toHaveLength(1);
     expect(all.tables).toHaveLength(4);
     expect(all.cuts).toHaveLength(4);
+  });
+
+  it("includes computed derived tables in search, fetch, and citation grounding", () => {
+    const sourceCard = fetchTable(context, { tableId: "q1_overall", cutGroups: "*" });
+    expect(sourceCard.status).toBe("available");
+    if (sourceCard.status !== "available") return;
+
+    const derivedContext: AnalysisGroundingContext = {
+      ...context,
+      derivedTables: {
+        "q1_overall__rollup_job_1": {
+          ...sourceCard,
+          tableId: "q1_overall__rollup_job_1",
+          title: "Q1 Satisfaction — Derived roll-up",
+          rows: [{
+            ...sourceCard.rows[0]!,
+            rowKey: "derived_rollup_1",
+            label: "Top 2 Box",
+            isNet: true,
+          }],
+          sourceRefs: [
+            ...sourceCard.sourceRefs,
+            { refType: "table", refId: "q1_overall", label: "Source table: Q1 Overall" },
+          ],
+        },
+      },
+    };
+
+    const listing = searchRunCatalog(derivedContext, undefined, "tables");
+    expect(listing.tables.map((table) => table.tableId)).toContain("q1_overall__rollup_job_1");
+
+    const fetched = fetchTable(derivedContext, { tableId: "q1_overall__rollup_job_1" });
+    expect(fetched.status).toBe("available");
+    if (fetched.status !== "available") return;
+    expect(fetched.title).toContain("Derived roll-up");
+
+    const citation = confirmCitation(derivedContext, {
+      tableId: "q1_overall__rollup_job_1",
+      rowLabel: "Top 2 Box",
+      columnLabel: "Total",
+      rowRef: "derived_rollup_1",
+      columnRef: "__total__::total",
+    });
+    expect(citation.status).toBe("confirmed");
+    if (citation.status !== "confirmed") return;
+    expect(citation.cellId).toContain("q1_overall__rollup_job_1");
+    expect(citation.sourceRefs.map((ref) => ref.refId)).toContain("q1_overall");
   });
 
   it("search mode surfaces mode and trimmed query on the result", () => {

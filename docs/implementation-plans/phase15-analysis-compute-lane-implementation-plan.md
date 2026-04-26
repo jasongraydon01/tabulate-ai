@@ -1,6 +1,6 @@
 # Phase 15 Sub-Plan — Analysis Compute Lane
 
-**Status:** Tier B one-group banner-extension recompute is implemented, including native agent initiation. Slice 3, Tier A table-scoped derivations, is next.
+**Status:** Tier B one-group banner-extension recompute is implemented, including native agent initiation. Slice 3, Tier A table-scoped derivations, now has an initial roll-up skeleton, but the product model is not complete.
 
 **Purpose:** give TabulateAI's analysis workspace a safe way to create computed follow-up outputs from a completed run without mutating the original run or reinterpreting settled pipeline decisions.
 
@@ -112,15 +112,27 @@ Verification run for Slice 2:
 
 ### Slice 3 — Tier A Table-Scoped Derivations
 
-**Status:** next.
+**Status:** in progress. Initial infrastructure exists for one selected table and validated answer-option roll-up proposals, but Slice 3 should not be called done until the roll-up product shape below is settled and implemented.
 
 Add compute-backed derivations for one table or a small related set of tables. This is the required next slice for requests where the user or agent is not asking for a whole derived run, but for a table-level computed follow-up.
+
+Implemented skeleton:
+
+- `table_rollup_derivation` jobs share the `analysisComputeJobs` proposal/confirm/cancel lifecycle.
+- The analysis agent has a `proposeTableRollup` tool that can create a proposal only after backend validation.
+- Valid proposals render as derived-table proposal cards and remain button-confirmed.
+- Confirmed jobs are worker-claimed, compute a `computed_derivation` analysis artifact, and do not create a child run or project default.
+- Completed derived artifacts are available to grounding tools, and TabulateAI can continue the analysis loop by fetching and interpreting the computed table in the same conversation.
+- Current scope is intentionally one selected source table.
 
 Product decisions for Slice 3:
 
 - Start with **answer-option roll-ups**. A user may ask to combine rows/options into a new view, such as top/middle/bottom boxes, positive/neutral/negative, or custom groupings that test whether separate rows become meaningful when rolled up.
+- A roll-up should mean collapsing selected existing rows into one new row while preserving the table's analytical meaning. For single-response rows this may be a mutually exclusive count sum. For multi-select rows it may need respondent-level "selected any of these rows" logic. The user should not need to know which mechanism applies; TabulateAI should infer and validate the safe compute method.
+- Do not broaden roll-ups into every possible derived-table operation. Examples such as "CSB and Chase", cross-row composites, or changing a numeric allocation table into a frequency distribution are better treated as future advanced table derivations, not the first roll-up scope.
+- Before a proposal card exists, backend validation must classify the roll-up mechanism and prove it can compute values and significance correctly. If the mechanism is unsupported, the tool returns repair/clarification feedback and creates no job.
 - Keep **selected-table cuts** in scope for Tier A, but treat them as the second operation after the derived-artifact/result model is settled. Example: add region or company-size cuts to one table or a few selected tables, not the full crosstab set.
-- The agent can select one or several source tables, but only a small table set. Broad “all tabs” requests remain Tier B derived-run proposals.
+- The current implementation supports one source table. A future expansion may allow a very small set of related source tables, but broad “all tabs” requests remain Tier B derived-run proposals.
 - If scope is ambiguous, the agent asks whether the user wants a full-set derived run or a table-specific derivation.
 - Tier A should not create a new project default run by default. It should persist a separate derived analysis artifact with lineage to source run, source table(s), derivation type, requested-by user, and frozen inputs.
 - The parent run's canonical artifacts remain unchanged.
@@ -139,9 +151,12 @@ Expected flow:
 
 This post-compute continuation is part of the product contract, not a cosmetic convenience. A Tier A request should feel like "compute this table-level follow-up and tell me what it means," while still keeping the computation itself deterministic and grounded.
 
-Open implementation decision before schema work:
+Open product/implementation decisions before calling Slice 3 complete:
 
-- Persist Tier A outputs in a new `analysisDerivedArtifacts` table, or extend `analysisArtifacts`/`analysisComputeJobs` with enough lineage and lifecycle state. The product behavior above should drive the schema choice.
+- Define the allowed roll-up mechanisms for the first user-facing version. The likely minimum is "collapse selected rows into one row," with backend classification between artifact-safe same-variable sums and respondent-level any-of NETs for multi-select rows.
+- Decide what source respondent-level artifacts are required for multi-select row collapse. Do not fake this from displayed percentages when rows can overlap.
+- Keep unsupported derivations explicit: AND logic, composites, averages across records, and table-type transformations should be routed to a later advanced derived-table slice unless they fit the agreed roll-up contract.
+- Continue using `analysisArtifacts`/`analysisComputeJobs` with lineage unless a separate `analysisDerivedArtifacts` table becomes necessary after the product shape expands.
 
 ## V1 Polish — Compute Reuse And Smoothness
 

@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 
 import type { BannerGroupType } from '@/schemas/bannerPlanSchema';
 import type { ValidatedGroupType } from '@/schemas/agentOutputSchema';
+import type { AnalysisTableRollupSpec } from '@/lib/analysis/computeLane/types';
 
 function stableStringify(value: unknown): string {
   if (Array.isArray(value)) {
@@ -35,3 +36,18 @@ export function buildAnalysisComputeFingerprint(params: {
   return hash.digest('hex');
 }
 
+export function buildAnalysisTableRollupFingerprint(params: {
+  parentRunId: string;
+  parentArtifactKeys: Record<string, string | null | undefined>;
+  requestText: string;
+  frozenTableRollupSpec: AnalysisTableRollupSpec;
+}): string {
+  const hash = createHash('sha256');
+  hash.update(stableStringify({
+    parentRunId: params.parentRunId,
+    parentArtifactKeys: params.parentArtifactKeys,
+    requestText: params.requestText,
+    frozenTableRollupSpec: params.frozenTableRollupSpec,
+  }));
+  return hash.digest('hex');
+}

@@ -337,7 +337,67 @@ describe("analysis chat route", () => {
       runStatus: undefined,
       projectConfig: {},
       projectIntake: {},
+      derivedArtifacts: [],
     });
+  });
+
+  it("does not persist proposal tool breadcrumbs in assistant messages", async () => {
+    mocks.query
+      .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
+      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Audit Session", titleSource: "manual" })
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
+    mocks.mutateInternal
+      .mockResolvedValueOnce("user-msg-1")
+      .mockResolvedValueOnce("assistant-msg-1");
+    mocks.streamAnalysisResponse.mockResolvedValueOnce({
+      streamResult: makeStreamResult({
+        responseMessage: {
+          parts: [
+            {
+              type: "tool-proposeTableRollup",
+              toolCallId: "rollup-1",
+              state: "output-available",
+              input: { requestText: "Bad roll-up" },
+              output: {
+                status: "rejected_candidate",
+                reasons: ["Bad row ref"],
+                repairHints: ["Fetch table again"],
+              },
+            },
+            makeSubmitAnswerPart([
+              { type: "text", text: "I need the exact source rows before TabulateAI can prepare that roll-up." },
+            ]),
+          ],
+        },
+      }),
+      getTraceCapture: () => makeTraceCapture(),
+      getGroundingCapture: () => [],
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/runs/run-1/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          messages: [{ id: "user-1", role: "user", parts: [{ type: "text", text: "Roll these up" }] }],
+        }),
+      }),
+      { params: Promise.resolve({ runId: "run-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(mocks.mutateInternal.mock.calls[1][1]).toMatchObject({
+      role: "assistant",
+      parts: [
+        { type: "text", text: "I need the exact source rows before TabulateAI can prepare that roll-up." },
+      ],
+    });
+    expect(JSON.stringify(mocks.mutateInternal.mock.calls[1][1])).not.toContain("tool-proposeTableRollup");
+    expect(JSON.stringify(mocks.mutateInternal.mock.calls[1][1])).not.toContain("rejected_candidate");
   });
 
   it("fails the turn when submitAnswer is missing and does not persist an assistant message", async () => {

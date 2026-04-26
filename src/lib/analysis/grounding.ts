@@ -37,7 +37,7 @@ import type {
   AnalysisTableCardResult,
   AnalysisValueMode,
 } from "@/lib/analysis/types";
-import { buildAnalysisCellId } from "@/lib/analysis/types";
+import { buildAnalysisCellId, isAnalysisTableCard } from "@/lib/analysis/types";
 
 const TABLES_JSON_PATH = "results/tables.json";
 const QUESTION_ID_FINAL_PATH = "enrichment/12-questionid-final.json";
@@ -230,6 +230,7 @@ interface SelectedCut {
 export interface AnalysisGroundingContext {
   availability: AnalysisAvailabilityStatus;
   tables: Record<string, RawTableEntry>;
+  derivedTables?: Record<string, AnalysisTableCard>;
   brokenTables?: Record<string, string>;
   questions: BuiltQuestionContext[];
   bannerGroups: RawBannerGroup[];
@@ -846,6 +847,7 @@ export async function loadAnalysisGroundingContext(params: {
   runStatus?: string | null;
   projectConfig?: Record<string, unknown> | null;
   projectIntake?: Record<string, unknown> | null;
+  derivedArtifacts?: Array<{ payload: unknown; sourceClass?: string }>;
 }): Promise<AnalysisGroundingContext> {
   const runResult = parseRunResult(params.runResultValue) ?? {};
   const outputs = runResult.r2Files?.outputs ?? {};
@@ -974,6 +976,13 @@ export async function loadAnalysisGroundingContext(params: {
   const bannerGroups = buildBannerGroups(tablesArtifact, crosstabArtifact);
   const bannerPlanGroups = buildBannerPlanGroups(bannerPlanArtifact);
   const surveyQuestions = buildSurveyQuestions(surveyParsedCleanupArtifact);
+  const derivedTables = Object.fromEntries(
+    (params.derivedArtifacts ?? []).flatMap((artifact) =>
+      artifact.sourceClass === "computed_derivation" && isAnalysisTableCard(artifact.payload)
+        ? [[artifact.payload.tableId, artifact.payload] as const]
+        : [],
+    ),
+  );
 
   return {
     availability: deriveAvailability(
@@ -989,6 +998,7 @@ export async function loadAnalysisGroundingContext(params: {
       ),
     ),
     tables: (tablesArtifact?.tables ?? {}) as Record<string, RawTableEntry>,
+    derivedTables,
     brokenTables,
     questions,
     bannerGroups,
@@ -1057,7 +1067,8 @@ export function searchRunCatalog(
       : [];
 
     const tables: AnalysisCatalogTableMatch[] = includeTables
-      ? Object.entries(context.tables)
+      ? [
+          ...Object.entries(context.tables)
           .sort(([leftId], [rightId]) => leftId.localeCompare(rightId))
           .map(([tableId, table]) => ({
             tableId,
@@ -1065,7 +1076,17 @@ export function searchRunCatalog(
             questionId: table.questionId ?? null,
             questionText: table.questionText ?? null,
             tableType: table.tableType ?? null,
-          }))
+          })),
+          ...Object.entries(context.derivedTables ?? {})
+            .sort(([leftId], [rightId]) => leftId.localeCompare(rightId))
+            .map(([tableId, table]) => ({
+              tableId,
+              title: table.title,
+              questionId: table.questionId,
+              questionText: table.questionText,
+              tableType: table.tableType,
+            })),
+        ]
       : [];
 
     const cuts: AnalysisCatalogCutMatch[] = includeCuts
@@ -1080,7 +1101,7 @@ export function searchRunCatalog(
 
     const totals = {
       questions: context.questions.length,
-      tables: Object.keys(context.tables).length,
+      tables: Object.keys(context.tables).length + Object.keys(context.derivedTables ?? {}).length,
       cuts: context.bannerGroups.reduce((sum, group) => sum + group.columns.length, 0),
     };
 
@@ -1121,7 +1142,8 @@ export function searchRunCatalog(
 
   const tableMatches = effectiveScope === "all" || effectiveScope === "tables"
     ? sortByScore(
-      Object.entries(context.tables)
+      [
+        ...Object.entries(context.tables)
         .map(([tableId, table]) => ({
           tableId,
           title: deriveTitle(table, tableId),
@@ -1140,7 +1162,24 @@ export function searchRunCatalog(
               .slice(0, 16)
               .map((row) => row.label ?? row.rowKey),
           ),
-        }))
+        })),
+        ...Object.entries(context.derivedTables ?? {}).map(([tableId, table]) => ({
+          tableId,
+          title: table.title,
+          questionId: table.questionId,
+          questionText: table.questionText,
+          tableType: table.tableType,
+          score: scoreMatch(
+            trimmedQuery,
+            tableId,
+            table.title,
+            table.questionId,
+            table.questionText,
+            table.tableSubtitle,
+            ...table.rows.slice(0, 16).map((row) => row.label),
+          ),
+        })),
+      ]
         .filter((match) => match.score > 0),
     ).slice(0, 5)
     : [];
@@ -1440,6 +1479,14 @@ export function fetchTable(
     cutGroups?: AnalysisFetchTableCutGroups | null;
   },
 ): AnalysisTableCardResult {
+  const derivedTable = context.derivedTables?.[args.tableId];
+  if (derivedTable) {
+    return {
+      ...derivedTable,
+      requestedCutGroups: normalizeRequestedCutGroups(args.cutGroups ?? null),
+    };
+  }
+
   const brokenReason = context.brokenTables?.[args.tableId];
   if (brokenReason) {
     return {
@@ -1801,6 +1848,84 @@ export function confirmCitation(
   context: AnalysisGroundingContext,
   args: SemanticConfirmCitationArgs,
 ): AnalysisCellConfirmationResult {
+  const derivedTable = context.derivedTables?.[args.tableId];
+  if (derivedTable) {
+    const normalizedRowLabel = normalizeText(args.rowLabel);
+    let matchingRows = derivedTable.rows.filter((row) => normalizeText(row.label) === normalizedRowLabel);
+    if (typeof args.rowRef === "string") {
+      matchingRows = matchingRows.filter((row) => row.rowKey === args.rowRef);
+    }
+    if (matchingRows.length !== 1) {
+      return {
+        status: matchingRows.length === 0 ? "invalid_row" : "ambiguous_row",
+        tableId: args.tableId,
+        message: matchingRows.length === 0
+          ? `No row labeled "${args.rowLabel}" was found on table ${args.tableId}. Retry with a rowLabel from the fetched table.`
+          : `More than one row matches "${args.rowLabel}" on table ${args.tableId}. Retry with rowRef from the fetched table.`,
+        candidateRows: matchingRows.map((row) => ({ rowLabel: row.label, rowRef: row.rowKey })),
+      };
+    }
+
+    const normalizedColumnLabel = normalizeText(args.columnLabel);
+    let matchingColumns = derivedTable.columns.filter((column) => normalizeText(column.cutName) === normalizedColumnLabel);
+    if (typeof args.columnRef === "string") {
+      matchingColumns = matchingColumns.filter((column) => (column.cutKey ?? column.cutName) === args.columnRef);
+    }
+    if (matchingColumns.length !== 1) {
+      return {
+        status: matchingColumns.length === 0 ? "invalid_column" : "ambiguous_column",
+        tableId: args.tableId,
+        rowKey: matchingRows[0]!.rowKey,
+        message: matchingColumns.length === 0
+          ? `No column labeled "${args.columnLabel}" was found on table ${args.tableId}. Retry with a columnLabel from the fetched table.`
+          : `More than one column matches "${args.columnLabel}" on table ${args.tableId}. Retry with columnRef from the fetched table.`,
+        candidateColumns: matchingColumns.map((column) => ({
+          columnLabel: column.cutName,
+          columnRef: column.cutKey ?? column.cutName,
+        })),
+      };
+    }
+
+    const row = matchingRows[0]!;
+    const column = matchingColumns[0]!;
+    const cutKey = column.cutKey ?? column.cutName;
+    const cell = row.cellsByCutKey?.[cutKey]
+      ?? row.values.find((value) => value.cutKey === cutKey || value.cutName === column.cutName)
+      ?? null;
+    if (!cell) {
+      return {
+        status: "invalid_column",
+        tableId: args.tableId,
+        rowKey: row.rowKey,
+        message: `Column "${args.columnLabel}" has no cell for row "${args.rowLabel}" on table ${args.tableId}.`,
+        candidateColumns: [],
+      };
+    }
+
+    return {
+      status: "confirmed",
+      cellId: buildAnalysisCellId({ tableId: args.tableId, rowKey: row.rowKey, cutKey }),
+      tableId: args.tableId,
+      tableTitle: derivedTable.title,
+      questionId: derivedTable.questionId,
+      rowKey: row.rowKey,
+      rowLabel: row.label,
+      cutKey,
+      cutName: column.cutName,
+      groupName: column.groupName,
+      valueMode: derivedTable.valueMode,
+      displayValue: cell.displayValue,
+      pct: cell.pct,
+      count: cell.count,
+      n: cell.n,
+      mean: cell.mean,
+      baseN: column.baseN,
+      sigHigherThan: cell.sigHigherThan,
+      sigVsTotal: cell.sigVsTotal,
+      sourceRefs: derivedTable.sourceRefs,
+    };
+  }
+
   const brokenReason = context.brokenTables?.[args.tableId];
   if (brokenReason) {
     return {
