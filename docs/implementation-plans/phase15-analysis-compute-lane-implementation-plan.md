@@ -127,11 +127,14 @@ Implemented skeleton:
 
 Product decisions for Slice 3:
 
-- Start with **answer-option roll-ups**. A user may ask to combine rows/options into a new view, such as top/middle/bottom boxes, positive/neutral/negative, or custom groupings that test whether separate rows become meaningful when rolled up.
-- A roll-up should mean collapsing selected existing rows into one new row while preserving the table's analytical meaning. For single-response rows this may be a mutually exclusive count sum. For multi-select rows it may need respondent-level "selected any of these rows" logic. The user should not need to know which mechanism applies; TabulateAI should infer and validate the safe compute method.
-- Do not broaden roll-ups into every possible derived-table operation. Examples such as "CSB and Chase", cross-row composites, or changing a numeric allocation table into a frequency distribution are better treated as future advanced table derivations, not the first roll-up scope.
+- Treat Tier A as three ordered product buckets:
+  1. **Table roll-ups.** Finish this first. A roll-up collapses selected existing rows into one new row while preserving the table's analytical meaning. This includes top/middle/bottom boxes, positive/neutral/negative groups, custom row groupings, multi-select "any of these rows" NETs, and allocation/treatment group roll-ups where the table remains an allocation/average table. The key boundary is not table value type; it is whether the derived row preserves the source table's intent.
+  2. **Selected-table cuts.** Do this second. A cut creates a new respondent group/column for one selected table or a small selected table set. Cut logic can be semantically complex, such as "aware of CSB and Chase and rated this scale 4 or 5," as long as backend validation can prove the variables, values, bases, and significance behavior are valid.
+  3. **Non-roll-up derived tables.** Do this third, but keep it squarely in V1. These are valuable flexible table-building workflows where the output answers a meaningfully new table question or assembles a new view, such as KPI side-by-side tables, tables built from rows across multiple questions, composites, intersections, or table-type transformations. This bucket needs more product design because the agent may need to search for variables/questions and plan the table shape, not just collapse rows already visible in one source table.
+- For roll-ups, the agent should operate semantically: source table, selected source rows, desired label, and the user's intent. Backend validation decides the compute mechanism. For single-response rows this may be an artifact-safe mutually exclusive sum. For multi-select rows it may need respondent-level "selected any of these rows" logic. For allocation or other average-style tables, it may need a table-preserving aggregation rule. The user should not need to know which mechanism applies.
+- Do not fake roll-ups from displayed percentages when selected rows can overlap or when the table metric requires a respondent-level or table-specific aggregation rule.
 - Before a proposal card exists, backend validation must classify the roll-up mechanism and prove it can compute values and significance correctly. If the mechanism is unsupported, the tool returns repair/clarification feedback and creates no job.
-- Keep **selected-table cuts** in scope for Tier A, but treat them as the second operation after the derived-artifact/result model is settled. Example: add region or company-size cuts to one table or a few selected tables, not the full crosstab set.
+- Keep **selected-table cuts** in scope for Tier A after roll-ups. Example: add region or company-size cuts to one table or a few selected tables, not the full crosstab set.
 - The current implementation supports one source table. A future expansion may allow a very small set of related source tables, but broad “all tabs” requests remain Tier B derived-run proposals.
 - If scope is ambiguous, the agent asks whether the user wants a full-set derived run or a table-specific derivation.
 - Tier A should not create a new project default run by default. It should persist a separate derived analysis artifact with lineage to source run, source table(s), derivation type, requested-by user, and frozen inputs.
@@ -153,9 +156,10 @@ This post-compute continuation is part of the product contract, not a cosmetic c
 
 Open product/implementation decisions before calling Slice 3 complete:
 
-- Define the allowed roll-up mechanisms for the first user-facing version. The likely minimum is "collapse selected rows into one row," with backend classification between artifact-safe same-variable sums and respondent-level any-of NETs for multi-select rows.
-- Decide what source respondent-level artifacts are required for multi-select row collapse. Do not fake this from displayed percentages when rows can overlap.
-- Keep unsupported derivations explicit: AND logic, composites, averages across records, and table-type transformations should be routed to a later advanced derived-table slice unless they fit the agreed roll-up contract.
+- Define the allowed roll-up mechanisms for the first user-facing version. The core contract is "collapse selected rows into one row without changing the table's intent," with backend classification between artifact-safe same-variable sums, respondent-level any-of NETs for multi-select rows, and table-preserving aggregation for allocation/average-style rows.
+- Decide what source respondent-level or metric-specific artifacts are required for multi-select and allocation-style row collapse. Do not fake this from displayed percentages when rows can overlap or when row values need table-specific aggregation.
+- Keep unsupported derivations explicit: AND logic, composites, intersections, and table-type transformations should be routed to the non-roll-up derived-table bucket unless they fit the agreed roll-up contract.
+- Design the non-roll-up derived-table workflow after roll-ups and selected-table cuts. This is V1 work, but it needs a separate planning layer because the agent may be building a new table shape rather than validating a straightforward row collapse.
 - Continue using `analysisArtifacts`/`analysisComputeJobs` with lineage unless a separate `analysisDerivedArtifacts` table becomes necessary after the product shape expands.
 
 ## V1 Polish — Compute Reuse And Smoothness
