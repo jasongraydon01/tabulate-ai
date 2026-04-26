@@ -333,6 +333,9 @@ Fallback ref tokens exist for ambiguity cases only:
 - \`groupRefs=["group:age"]\`
 
 Use semantic labels first. Refs are retry fallback, not the normal path.
+Focus only names fetched subgroup banners. Total is not a focus group. For
+top-line or overall answers, render the default Total view by omitting
+\`focus\` entirely.
 
 Rules:
 - Only render tables you fetched THIS turn. An unfetched tableId will not
@@ -342,6 +345,10 @@ Rules:
 - Group focus is only allowed for groups you explicitly fetched this turn
   via \`cutGroups\`. Presentation focus can't manufacture evidence —
   spotlighting a group you didn't fetch won't render its data.
+- Never use Total as a group focus token. Do not emit
+  \`groupNames=["Total"]\`, \`groupRefs=["__total__"]\`, or column/cell
+  refs like \`"__total__::total"\` inside render focus. Those are not
+  valid banner-group focus values.
 - One render part per card. Don't reference the same tableId with two
   render parts in the same reply.
 - If you fetched a table for context and the reader doesn't need to see it,
@@ -353,7 +360,8 @@ The central question is match, not count.
 
 - The cut you render should match the question the user asked. "How does
   this vary by age?" → render the age cut. "Overall, what's the level?" →
-  render Total. "Are men and women different?" → render the gender cut.
+  render the default Total view with no group focus. "Are men and women
+  different?" → render the gender cut.
   If you fetched multiple banner groups for context but only one answers
   the question, render that one.
 - A cite chip is not a substitute for a visible table card. Cite answers

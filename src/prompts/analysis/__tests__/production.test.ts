@@ -93,6 +93,21 @@ describe("analysis agent production prompt", () => {
     );
   });
 
+  it("teaches Total as the implicit default render view only in the alternative prompt", () => {
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain(
+      "Total is not a focus group. For\ntop-line or overall answers, render the default Total view by omitting\n`focus` entirely.",
+    );
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain(
+      '`groupNames=["Total"]`, `groupRefs=["__total__"]`, or column/cell\n  refs like `"__total__::total"` inside render focus.',
+    );
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain(
+      '"Overall, what\'s the level?" →\n  render the default Total view with no group focus.',
+    );
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain(
+      '"Overall, what\'s the level?" →\n  render Total.',
+    );
+  });
+
   it("keeps every final-answer example on submitAnswer rather than raw assistant prose", () => {
     expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).not.toContain(
       'Response sketch:\n> This run has 28 questions',
