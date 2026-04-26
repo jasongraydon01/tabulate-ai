@@ -798,8 +798,7 @@ export function AnalysisMessage({
   const hasGroundedTableCard = !isUser && message.parts.some(
     (part) => isToolUIPart(part) && part.type === "tool-fetchTable",
   );
-  const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
-  const [isContextOpen, setIsContextOpen] = useState(false);
+  const [isSourcesOpen, setIsSourcesOpen] = useState(false);
   const [draftCorrectionText, setDraftCorrectionText] = useState(feedback?.correctionText ?? "");
   const [optimisticFeedback, setOptimisticFeedback] = useState<AnalysisMessageFeedbackRecord | null>(feedback ?? null);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
@@ -817,12 +816,12 @@ export function AnalysisMessage({
   const evidenceItems = getAnalysisMessageEvidenceItems(message);
   const contextEvidenceItems = getAnalysisMessageContextEvidenceItems(message);
   const visibleEvidenceItems = getVisibleEvidenceItems(message, evidenceItems);
+  const sourceItems = [...visibleEvidenceItems, ...contextEvidenceItems];
   const followUpSuggestions = getAnalysisMessageFollowUpItems(message);
   const effectiveFeedback = optimisticFeedback ?? feedback ?? null;
   const isDownvoteOpen = effectiveFeedback?.vote === "down";
   const citeLookup = buildCitationChipLookup(message);
-  const shouldShowEvidence = visibleEvidenceItems.length > 0;
-  const shouldShowContextEvidence = contextEvidenceItems.length > 0;
+  const shouldShowSources = sourceItems.length > 0;
   const hasTrace = traceEntries.length > 0;
   const rawAssistantText = isUser ? "" : getAnalysisUIMessageText(message);
 
@@ -1282,8 +1281,8 @@ export function AnalysisMessage({
               </div>
             ) : null}
 
-            {shouldShowEvidence && isFooterReady ? (
-              <Collapsible open={isEvidenceOpen} onOpenChange={setIsEvidenceOpen}>
+            {shouldShowSources && isFooterReady ? (
+              <Collapsible open={isSourcesOpen} onOpenChange={setIsSourcesOpen}>
                 <div className="pt-1">
                   <CollapsibleTrigger asChild>
                     <button
@@ -1291,15 +1290,15 @@ export function AnalysisMessage({
                       className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground/70"
                     >
                       <ChevronDown
-                        className={cn("h-3 w-3 transition-transform", isEvidenceOpen && "rotate-180")}
+                        className={cn("h-3 w-3 transition-transform", isSourcesOpen && "rotate-180")}
                       />
-                      <span>Evidence ({visibleEvidenceItems.length})</span>
+                      <span>Additional sources ({sourceItems.length})</span>
                     </button>
                   </CollapsibleTrigger>
                   <CollapsibleContent className="pt-2">
                     <div className="rounded-xl border border-border/60 bg-muted/15 px-3 py-2">
                       <div className="space-y-1.5">
-                        {visibleEvidenceItems.map((item) => {
+                        {sourceItems.map((item) => {
                           const cellAnchorCellId = getEvidenceItemCellId(item);
                           const canScrollToRenderedCell = Boolean(
                             item.renderedInCurrentMessage && cellAnchorCellId,
@@ -1332,39 +1331,6 @@ export function AnalysisMessage({
                             </button>
                           );
                         })}
-                      </div>
-                    </div>
-                  </CollapsibleContent>
-                </div>
-              </Collapsible>
-            ) : null}
-
-            {shouldShowContextEvidence && isFooterReady ? (
-              <Collapsible open={isContextOpen} onOpenChange={setIsContextOpen}>
-                <div className="pt-1">
-                  <CollapsibleTrigger asChild>
-                    <button
-                      type="button"
-                      className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground/70"
-                    >
-                      <ChevronDown
-                        className={cn("h-3 w-3 transition-transform", isContextOpen && "rotate-180")}
-                      />
-                      <span>Context ({contextEvidenceItems.length})</span>
-                    </button>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="pt-2">
-                    <div className="rounded-xl border border-border/60 bg-muted/15 px-3 py-2">
-                      <div className="space-y-1.5">
-                        {contextEvidenceItems.map((item) => (
-                          <div
-                            key={item.key}
-                            className="flex w-full items-center gap-2 text-left text-[11px] leading-5 text-muted-foreground"
-                          >
-                            <Link2 className="h-3 w-3 shrink-0" />
-                            <span className="truncate">{item.label}</span>
-                          </div>
-                        ))}
                       </div>
                     </div>
                   </CollapsibleContent>

@@ -239,7 +239,7 @@ describe("AnalysisMessage trace presentation", () => {
     ]);
   });
 
-  it("hides the Evidence block when inline citations already surface rendered cell refs", () => {
+  it("hides the additional sources block when inline citations already surface rendered cell refs", () => {
     const cellId = "q1|row_0_1|__total__%3A%3Atotal";
     const message: UIMessage = {
       id: "assistant-inline-only",
@@ -304,10 +304,10 @@ describe("AnalysisMessage trace presentation", () => {
       React.createElement(AnalysisMessage, { message, isStreaming: false }),
     );
 
-    expect(markup).not.toContain("Evidence (");
+    expect(markup).not.toContain("Additional sources (");
   });
 
-  it("shows context support in a separate Context block", () => {
+  it("shows context support in the merged additional sources block", () => {
     const message: UIMessage = {
       id: "assistant-extra-evidence",
       role: "assistant",
@@ -332,8 +332,7 @@ describe("AnalysisMessage trace presentation", () => {
       React.createElement(AnalysisMessage, { message, isStreaming: false }),
     );
 
-    expect(markup).not.toContain("Evidence (1)");
-    expect(markup).toContain("Context (1)");
+    expect(markup).toContain("Additional sources (1)");
   });
 
   it("reads follow-up suggestions from message metadata", () => {
@@ -766,8 +765,7 @@ describe("AnalysisMessage trace presentation", () => {
       React.createElement(AnalysisMessage, { message, isStreaming: false }),
     );
 
-    expect(markup).toContain("Evidence (1)");
-    expect(markup).toContain("Context (1)");
+    expect(markup).toContain("Additional sources (2)");
     expect(markup).toContain("aria-label=\"Citation Q1\"");
   });
 

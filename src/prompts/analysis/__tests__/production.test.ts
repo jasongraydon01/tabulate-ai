@@ -76,6 +76,24 @@ describe("analysis agent production prompt", () => {
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("`cite` parts pin specific prose numbers");
   });
 
+  it("biases render decisions toward visible tables on first-turn, subgroup, and multi-table answers", () => {
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain(
+      'The submitAnswer contract and the render\ndecision are separate',
+    );
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain(
+      "On the first grounded answer in a thread, a fetched table usually should\n  be rendered.",
+    );
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain(
+      "If the answer depends on a subgroup cut, render that subgroup cut.",
+    );
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain(
+      "If the answer spans different tables, ideas, or themes, render the\n  relevant tables rather than compressing everything into prose-only.",
+    );
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain(
+      "A cite chip is not a substitute for a visible table card.",
+    );
+  });
+
   it("keeps every final-answer example on submitAnswer rather than raw assistant prose", () => {
     expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).not.toContain(
       'Response sketch:\n> This run has 28 questions',
@@ -88,6 +106,15 @@ describe("analysis agent production prompt", () => {
     );
     expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain(
       'Response sketch:\n> submitAnswer({\n>   parts: [\n>     { type: "text", text: "Q20 is an open-end the pipeline couldn\'t tabulate',
+    );
+  });
+
+  it("updates the narrow-lookup example to teach first-turn rendering", () => {
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain(
+      "EXAMPLE 1 — Narrow lookup, first-turn render.",
+    );
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain(
+      'Response sketch:\n> submitAnswer({\n>   parts: [\n>     { type: "text", text: "The mean on Q7 is 3.46 on a 5-point scale." },\n>     { type: "cite", cellIds: ["..."] },\n>     { type: "render", tableId: "Q7" },',
     );
   });
 

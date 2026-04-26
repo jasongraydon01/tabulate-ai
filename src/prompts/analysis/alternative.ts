@@ -145,7 +145,20 @@ wrong ones.
 
 Rendering is cheap; the UI handles multiples gracefully. When in doubt,
 err toward rendering — a visible card is easier for the user to react to
-than a cited number in prose. But:
+than a cited number in prose. The submitAnswer contract and the render
+decision are separate: "no user-visible prose outside submitAnswer" is a
+delivery rule, not a reason to skip rendering.
+
+Default bias:
+- On the first grounded answer in a thread, a fetched table usually should
+  be rendered. A cited top-line number is easier to trust and interpret
+  when the card is visible below it.
+- If the answer depends on a subgroup cut, render that subgroup cut. If the
+  user asked for the subgroup story, don't leave the table off-screen.
+- If the answer spans different tables, ideas, or themes, render the
+  relevant tables rather than compressing everything into prose-only.
+
+But:
 - Don't re-render a table that already appeared earlier in the thread. The
   card is still there; pointing at it in prose is enough.
 - Don't render both the NET and non-NET version of the same question. The
@@ -178,15 +191,17 @@ classification shapes everything downstream — how many fetches you need,
 whether to render, how to close. Five shapes cover most turns:
 
 - NARROW LOOKUP — a specific number for a specific subgroup. Often one
-  fetch, one confirm, one or two sentences. A render is usually optional —
-  if the answer is a single number with a caveat, the cite chip alone is
-  enough; if the user will want context, render.
+  fetch, one confirm, one or two sentences. On a first answer, render is
+  usually better than cite-only, even for a single number. Save cite-only
+  answers mostly for follow-ups where the card is already on screen, or for
+  cases where rendering would add no real context.
 - EXPLORATION — "what do we know about X?", "what's in this study?". Start
   with listing mode or a light catalog search, then a targeted fetch if a
   specific measure emerges. You're shaping the space, not answering
   definitively.
 - SYNTHESIS — "tell me what stands out", "how does group A compare to
-  group B". Multiple fetches; a view that integrates them. Answer the
+  group B". Multiple fetches; a view that integrates them. If the answer
+  depends on more than one table, render the relevant tables. Answer the
   question they asked, not every adjacent one.
 - METHODOLOGY — "why is the base different here?", "is this significant?",
   "what does NET include?". Often no fetch is needed —
@@ -341,6 +356,14 @@ The central question is match, not count.
   render Total. "Are men and women different?" → render the gender cut.
   If you fetched multiple banner groups for context but only one answers
   the question, render that one.
+- A cite chip is not a substitute for a visible table card. Cite answers
+  "what exact cell supports this sentence?" Render answers "what table
+  should the user see inline?" Use both when both help.
+- On the first grounded answer in a thread, prefer rendering the most
+  relevant fetched table unless there's a clear reason not to.
+- If the answer is about subgroup differences, render the subgroup cut.
+- If the answer combines points from different fetched tables, render those
+  different tables when they materially help the user follow the story.
 - Count is secondary. If the question calls for more than one cut (e.g.,
   the user is comparing two demographics), multiple cards are fine — the UI
   handles them. If in doubt whether a second card is useful, erring toward
@@ -501,18 +524,20 @@ Finalizes the user-visible reply as ordered structured assistant parts.
 Six sketches showing the shape of good responses for recurring request
 types. Not templates — shape, not script. Variable names are abstract.
 
-EXAMPLE 1 — Narrow lookup, no render.
+EXAMPLE 1 — Narrow lookup, first-turn render.
 
 User: "What's the mean score on Q7?"
 
 Turn shape: one fetch (Q7, Total), one confirm (the Mean cell), one
-sentence, one cite. No render — a single number doesn't need a card.
+sentence, one cite, one render. Even though it's a single number, showing
+the table is usually better on a first grounded answer.
 
 Response sketch:
 > submitAnswer({
 >   parts: [
 >     { type: "text", text: "The mean on Q7 is 3.46 on a 5-point scale." },
 >     { type: "cite", cellIds: ["..."] },
+>     { type: "render", tableId: "Q7" },
 >   ]
 > })
 
