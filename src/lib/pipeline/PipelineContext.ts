@@ -2,7 +2,12 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { SkipRule } from '../../schemas/skipLogicSchema';
 import type { CircuitBreaker } from '../CircuitBreaker';
 
-export type PipelineContextSource = 'pipelineRunner' | 'orchestrator' | 'reviewCompletion';
+export type PipelineContextSource =
+  | 'pipelineRunner'
+  | 'orchestrator'
+  | 'reviewCompletion'
+  | 'analysisPreflight'
+  | 'analysisExtension';
 
 export interface PipelineContextMeta {
   pipelineId: string;

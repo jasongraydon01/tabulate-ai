@@ -308,6 +308,145 @@ describe('project detail page', () => {
     expect(markup).toContain('30-day retention period');
   });
 
+  it('keeps project detail anchored to the latest primary run when an analysis child fails', () => {
+    const project = {
+      _id: 'project-1',
+      _creationTime: Date.UTC(2026, 2, 20),
+      name: 'Test Project',
+      intake: {},
+      config: {
+        exportFormats: ['excel'],
+      },
+    };
+    const runs = [
+      {
+        _id: 'child-run',
+        _creationTime: Date.UTC(2026, 2, 21),
+        status: 'error',
+        origin: 'analysis_compute',
+        parentRunId: 'parent-run',
+        analysisComputeJobId: 'job-1',
+        lineageKind: 'banner_extension',
+        error: 'PipelineContext is required but missing.',
+        result: {},
+      },
+      {
+        _id: 'parent-run',
+        _creationTime: Date.UTC(2026, 2, 20),
+        status: 'success',
+        result: {
+          summary: {
+            tables: 12,
+            cuts: 6,
+            bannerGroups: 2,
+            durationMs: 120000,
+          },
+          r2Files: {
+            outputs: {
+              'results/crosstabs.xlsx': 'org/project/run/results/crosstabs.xlsx',
+            },
+          },
+        },
+      },
+    ];
+
+    let queryCall = 0;
+    mocks.useQuery.mockReset();
+    mocks.useQuery.mockImplementation(() => {
+      queryCall += 1;
+      if (queryCall === 1) return project;
+      if (queryCall === 2) return runs;
+      return [];
+    });
+
+    const markup = renderToStaticMarkup(
+      React.createElement(Page, {
+        params: { projectId: 'project-1' } as never,
+      }),
+    );
+
+    expect(markup).not.toContain('Pipeline Error');
+    expect(markup).not.toContain('PipelineContext is required but missing.');
+    expect(markup).toContain('/projects/project-1/runs/parent-run/analysis');
+    expect(markup).toContain('Chat with your data');
+  });
+
+  it('uses a completed analysis child as the default project output and shows lineage', () => {
+    const project = {
+      _id: 'project-1',
+      _creationTime: Date.UTC(2026, 2, 20),
+      name: 'Test Project',
+      intake: {},
+      config: {
+        exportFormats: ['excel'],
+      },
+    };
+    const runs = [
+      {
+        _id: 'child-run',
+        _creationTime: Date.UTC(2026, 2, 21),
+        status: 'success',
+        origin: 'analysis_compute',
+        parentRunId: 'parent-run',
+        analysisComputeJobId: 'job-1',
+        lineageKind: 'banner_extension',
+        result: {
+          summary: {
+            tables: 12,
+            cuts: 14,
+            bannerGroups: 3,
+            durationMs: 120000,
+          },
+          r2Files: {
+            outputs: {
+              'results/crosstabs.xlsx': 'org/project/child/results/crosstabs.xlsx',
+            },
+          },
+        },
+      },
+      {
+        _id: 'parent-run',
+        _creationTime: Date.UTC(2026, 2, 20),
+        status: 'success',
+        result: {
+          summary: {
+            tables: 12,
+            cuts: 9,
+            bannerGroups: 2,
+            durationMs: 100000,
+          },
+          r2Files: {
+            outputs: {
+              'results/crosstabs.xlsx': 'org/project/parent/results/crosstabs.xlsx',
+            },
+          },
+        },
+      },
+    ];
+
+    let queryCall = 0;
+    mocks.useQuery.mockReset();
+    mocks.useQuery.mockImplementation(() => {
+      queryCall += 1;
+      if (queryCall === 1) return project;
+      if (queryCall === 2) return runs;
+      return [];
+    });
+
+    const markup = renderToStaticMarkup(
+      React.createElement(Page, {
+        params: { projectId: 'project-1' } as never,
+      }),
+    );
+
+    expect(markup).toContain('/projects/project-1/runs/child-run/analysis');
+    expect(markup).toContain('Derived output');
+    expect(markup).toContain('This output includes a confirmed added cut from Chat with your data.');
+    expect(markup).toContain('Original run unchanged');
+    expect(markup).toContain('14');
+    expect(markup).toContain('3');
+  });
+
   it('renders checkpoint retry when the latest failed run has a durable recovery checkpoint', () => {
     process.env.NEXT_PUBLIC_ENABLE_RUN_CHECKPOINT_RETRY = 'true';
 

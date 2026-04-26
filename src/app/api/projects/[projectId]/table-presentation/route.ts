@@ -22,6 +22,7 @@ import { generateQExportPackage } from '@/lib/exportData/q/service';
 import { generateWinCrossExportPackage } from '@/lib/exportData/wincross/service';
 import type { WinCrossPreferenceSource } from '@/lib/exportData/wincross/preferenceResolver';
 import { areRunArtifactsExpired } from '@/lib/runs/artifactRetention';
+import { selectPrimaryProjectRun } from '@/lib/runs/selectPrimaryRun';
 
 const CONVEX_ID_RE = /^[a-zA-Z0-9_]+$/;
 
@@ -82,7 +83,7 @@ export async function GET(
       projectId: projectId as Id<'projects'>,
       orgId: auth.convexOrgId as Id<'organizations'>,
     });
-    const latestRun = runs[0] ?? null;
+    const latestRun = selectPrimaryProjectRun(runs) ?? null;
     const latestRunExpired = latestRun ? areRunArtifactsExpired(latestRun) : false;
     const latestRunResult = latestRun ? parseRunResult(latestRun.result) : null;
     const r2Outputs = latestRunResult?.r2Files?.outputs ?? {};
@@ -164,7 +165,7 @@ export async function PATCH(
       projectId: projectId as Id<'projects'>,
       orgId: auth.convexOrgId as Id<'organizations'>,
     });
-    const latestRun = runs[0] ?? null;
+    const latestRun = selectPrimaryProjectRun(runs) ?? null;
     const warnings: string[] = [];
     let rebuildSummary: {
       runId: string;

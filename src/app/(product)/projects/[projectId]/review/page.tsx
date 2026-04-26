@@ -36,6 +36,7 @@ import { useAuthContext } from '@/providers/auth-provider';
 import { useLoadingTimeout } from '@/hooks/useLoadingTimeout';
 import { LoadingTimeoutFallback } from '@/components/ErrorFallback';
 import { V3_STAGE_NAMES, isV3StageId } from '@/lib/v3/runtime/stageOrder';
+import { selectPrimaryProjectRun } from '@/lib/runs/selectPrimaryRun';
 
 function stripEmojis(text: string): string {
   return text
@@ -322,8 +323,7 @@ export default function ReviewPage({
   const isLoading = runs === undefined || project === undefined;
   const loadingTimedOut = useLoadingTimeout(isLoading);
 
-  // Latest run
-  const latestRun = runs?.[0];
+  const latestRun = selectPrimaryProjectRun(runs);
   const runId = latestRun ? String(latestRun._id) : null;
   const runResult = parseRunResult(latestRun?.result);
 

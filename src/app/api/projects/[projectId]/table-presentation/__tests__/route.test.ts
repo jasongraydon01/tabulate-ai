@@ -98,6 +98,105 @@ describe('table presentation route', () => {
     });
   });
 
+  it('ignores analysis compute child runs when resolving the rebuildable project run', async () => {
+    mocks.query
+      .mockResolvedValueOnce({
+        _id: 'project-1',
+        config: {},
+      })
+      .mockResolvedValueOnce([
+        {
+          _id: 'child-run',
+          status: 'error',
+          origin: 'analysis_compute',
+          parentRunId: 'parent-run',
+          analysisComputeJobId: 'job-1',
+          lineageKind: 'banner_extension',
+          result: {},
+        },
+        {
+          _id: 'parent-run',
+          status: 'success',
+          result: {
+            r2Files: {
+              outputs: {
+                'tables/13d-table-canonical.json': 'org/project/run/tables/13d-table-canonical.json',
+              },
+            },
+          },
+        },
+      ]);
+    mocks.getUsedSlots.mockResolvedValueOnce(['meanLabel', 'baseLabel']);
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/projects/project-1/table-presentation'),
+      { params: Promise.resolve({ projectId: 'project_1' }) },
+    );
+    const payload = await response.json() as Record<string, unknown>;
+
+    expect(response.status).toBe(200);
+    expect(payload.latestRun).toEqual({
+      runId: 'parent-run',
+      status: 'success',
+      canRebuild: true,
+    });
+    expect(payload.usedSlots).toEqual(['meanLabel', 'baseLabel']);
+  });
+
+  it('uses completed analysis compute child runs for table presentation', async () => {
+    mocks.query
+      .mockResolvedValueOnce({
+        _id: 'project-1',
+        config: {},
+      })
+      .mockResolvedValueOnce([
+        {
+          _id: 'child-run',
+          status: 'success',
+          origin: 'analysis_compute',
+          parentRunId: 'parent-run',
+          analysisComputeJobId: 'job-1',
+          lineageKind: 'banner_extension',
+          result: {
+            r2Files: {
+              outputs: {
+                'tables/13d-table-canonical.json': 'org/project/child/tables/13d-table-canonical.json',
+              },
+            },
+          },
+        },
+        {
+          _id: 'parent-run',
+          status: 'success',
+          result: {
+            r2Files: {
+              outputs: {
+                'tables/13d-table-canonical.json': 'org/project/parent/tables/13d-table-canonical.json',
+              },
+            },
+          },
+        },
+      ]);
+    mocks.getUsedSlots.mockResolvedValueOnce(['rankFormat', 'meanLabel']);
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/projects/project-1/table-presentation'),
+      { params: Promise.resolve({ projectId: 'project_1' }) },
+    );
+    const payload = await response.json() as Record<string, unknown>;
+
+    expect(response.status).toBe(200);
+    expect(payload.latestRun).toEqual({
+      runId: 'child-run',
+      status: 'success',
+      canRebuild: true,
+    });
+    expect(mocks.getUsedSlots).toHaveBeenCalledWith({
+      'tables/13d-table-canonical.json': 'org/project/child/tables/13d-table-canonical.json',
+    });
+    expect(payload.usedSlots).toEqual(['rankFormat', 'meanLabel']);
+  });
+
   it('marks expired runs as not rebuildable', async () => {
     mocks.query
       .mockResolvedValueOnce({

@@ -17,6 +17,7 @@ import { useAuthContext } from '@/providers/auth-provider';
 import { getProductEntryCta } from '@/lib/billing/pricingFlow';
 import { useLoadingTimeout } from '@/hooks/useLoadingTimeout';
 import { canPerform } from '@/lib/permissions';
+import { isProjectDefaultCandidate } from '@/lib/runs/selectPrimaryRun';
 import { parseRunResult } from '@/schemas/runResultSchema';
 import { api } from '../../../../convex/_generated/api';
 import type { Id } from '../../../../convex/_generated/dataModel';
@@ -62,6 +63,7 @@ export default function DashboardPage() {
 
     const latestRunByProject = new Map<string, (typeof runs)[number]>();
     for (const run of runs) {
+      if (!isProjectDefaultCandidate(run)) continue;
       const pid = String(run.projectId);
       if (!latestRunByProject.has(pid)) {
         latestRunByProject.set(pid, run);

@@ -29,6 +29,7 @@ import {
   getCheckpointRetryLabel,
   isCheckpointRetryEnabled,
 } from '@/lib/runs/checkpointRetry';
+import { isAnalysisComputeRun, selectPrimaryProjectRun } from '@/lib/runs/selectPrimaryRun';
 import { parseRunResult } from '@/schemas/runResultSchema';
 import {
   deriveMethodologyFromLegacy,
@@ -380,8 +381,10 @@ export default function ProjectDetailPage({
   const isLoading = project === undefined || runs === undefined;
   const loadingTimedOut = useLoadingTimeout(isLoading);
 
-  // Latest run (runs are sorted desc)
-  const latestRun = runs?.[0];
+  // Completed derived runs become the project default; failed or active derived
+  // runs fall back to the latest primary run.
+  const latestRun = selectPrimaryProjectRun(runs);
+  const isDerivedRun = isAnalysisComputeRun(latestRun);
   const runResult = parseRunResult(latestRun?.result);
   const summary = runResult?.summary;
   const r2Files = runResult?.r2Files;
@@ -654,6 +657,16 @@ export default function ProjectDetailPage({
           )}
           {/* Internal Quality UI removed from user-facing surface */}
         </div>
+
+        {isDerivedRun && (
+          <div className="mb-8 flex flex-col gap-2 rounded-md border border-border/60 bg-muted/20 px-4 py-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">Derived output</Badge>
+              <span>This output includes a confirmed added cut from Chat with your data.</span>
+            </div>
+            <span className="text-xs">Original run unchanged</span>
+          </div>
+        )}
 
         {/* Pipeline Progress Timeline (replaces old Processing Banner) */}
         {(status === 'in_progress' || status === 'resuming' || status === 'pending_review') && (

@@ -21,6 +21,10 @@ function routeErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function isMissingParentArtifactError(error: unknown): boolean {
+  return error instanceof Error && error.message.startsWith("Parent run is missing required artifact:");
+}
+
 function formatProposedGroupMessage(params: {
   groupName: string;
   requiresClarification: boolean;
@@ -182,6 +186,14 @@ export async function POST(
   } catch (error) {
     if (error instanceof AuthenticationError) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (isMissingParentArtifactError(error)) {
+      return NextResponse.json(
+        {
+          error: "This run is missing the planning artifacts required to create a derived run. Start from a newer completed run, or rerun this project before using Create derived run.",
+        },
+        { status: 409 },
+      );
     }
     return NextResponse.json({ error: routeErrorMessage(error, "Preflight failed") }, { status: 500 });
   }

@@ -48,3 +48,4 @@ Before the analysis surface moves to production, remove the temporary backward-c
 - Remove `rowFilter` / `cutFilter` compatibility handling from replay / persistence paths once old history no longer needs to be rehydrated.
 - Simplify type/back-compat fields on persisted table-card artifacts after the migration window closes.
 - Keep prompt text and tests aligned to the native structured-answer contract; do not reintroduce marker-era guidance into active surfaces.
+- Audit R2 persistence coverage for the newer analysis and compute-lane state before production: structured assistant parts, rendered artifacts, citation/context evidence, traces, feedback/corrections that should survive outside Convex, compute-job lineage, child-run outputs, and derived artifacts. Every durable UI state should either be intentionally Convex-only or have a clear R2 upload/export path.

@@ -143,4 +143,29 @@ describe("analysis compute preflight route", () => {
     expect(assistantMessage).not.toContain("REGION == 1");
     expect(assistantMessage).not.toContain("REGION=1");
   });
+
+  it("returns a clear eligibility error when parent planning artifacts are missing", async () => {
+    mocks.query
+      .mockResolvedValueOnce({ _id: "run-1", status: "success", result: {}, config: {} })
+      .mockResolvedValueOnce({ _id: "session-1", runId: "run-1", projectId: "project-1" })
+      .mockResolvedValueOnce({ _id: "project-1", name: "Study", config: {}, intake: {} });
+    mocks.loadAnalysisGroundingContext.mockResolvedValueOnce({ questions: [], projectContext: {} });
+    mocks.loadAnalysisParentRunArtifacts.mockRejectedValueOnce(
+      new Error("Parent run is missing required artifact: planning/20-banner-plan.json"),
+    );
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/runs/run-1/analysis/compute/preflight", {
+        method: "POST",
+        body: JSON.stringify({ sessionId: "session-1", requestText: "Add region" }),
+      }),
+      { params: Promise.resolve({ runId: "run-1" }) },
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "This run is missing the planning artifacts required to create a derived run. Start from a newer completed run, or rerun this project before using Create derived run.",
+    });
+    expect(mocks.mutateInternal).not.toHaveBeenCalled();
+  });
 });

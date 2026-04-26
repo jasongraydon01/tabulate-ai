@@ -1,6 +1,7 @@
 import { processGroupV2 } from '@/agents/CrosstabAgentV2';
 import { draftAnalysisBannerExtensionGroup } from '@/agents/AnalysisBannerExtensionAgent';
 import type { AnalysisGroundingContext } from '@/lib/analysis/grounding';
+import { getPipelineContext, runWithPipelineContext } from '@/lib/pipeline/PipelineContext';
 import { extractAllColumns } from '@/lib/questionContext';
 import type { BannerGroupType } from '@/schemas/bannerPlanSchema';
 import type { ValidatedGroupType } from '@/schemas/agentOutputSchema';
@@ -37,6 +38,11 @@ function buildClarificationValidatedGroup(group: BannerGroupType, reason: string
   };
 }
 
+function derivePreflightPipelineId(parentRunId: string, outputDir?: string): string {
+  const outputFolder = outputDir?.split(/[\\/]/).filter(Boolean).at(-1);
+  return outputFolder || `analysis-preflight-${parentRunId}`;
+}
+
 export async function runAnalysisBannerExtensionPreflight(params: {
   parentRunId: string;
   requestText: string;
@@ -68,18 +74,29 @@ export async function runAnalysisBannerExtensionPreflight(params: {
     (max, question) => Math.max(max, question.loop?.iterationCount ?? 0),
     0,
   );
+  const validateDraftedGroup = () => processGroupV2(
+    params.groundingContext.questions,
+    allColumns,
+    drafted.group,
+    {
+      abortSignal: params.abortSignal,
+      outputDir: params.outputDir,
+      loopCount,
+    },
+  );
+
   const frozenValidatedGroup = drafted.needsClarification
     ? buildClarificationValidatedGroup(drafted.group, drafted.clarifyingQuestion || drafted.reasoning)
-    : await processGroupV2(
-      params.groundingContext.questions,
-      allColumns,
-      drafted.group,
-      {
-        abortSignal: params.abortSignal,
-        outputDir: params.outputDir,
-        loopCount,
-      },
-    );
+    : getPipelineContext()
+      ? await validateDraftedGroup()
+      : await runWithPipelineContext(
+        {
+          pipelineId: derivePreflightPipelineId(params.parentRunId, params.outputDir),
+          runId: params.parentRunId,
+          source: 'analysisPreflight',
+        },
+        validateDraftedGroup,
+      );
 
   const reviewFlags = drafted.needsClarification
     ? {

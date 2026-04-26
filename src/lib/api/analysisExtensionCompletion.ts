@@ -28,6 +28,7 @@ import {
 } from '@/schemas/loopSemanticsPolicySchema';
 import { compileLoopContract } from '@/lib/v3/runtime/compileLoopContract';
 import type { WorkerPipelineContext } from '@/lib/worker/recovery';
+import { runWithPipelineContext } from '@/lib/pipeline/PipelineContext';
 
 const QUESTION_ID_FINAL_PATH = 'enrichment/12-questionid-final.json';
 const TABLE_ENRICHED_PATH = 'tables/13e-table-enriched.json';
@@ -217,10 +218,19 @@ export async function runAnalysisBannerExtensionRun(params: {
   loopStatTestingMode?: 'suppress' | 'complement';
   abortSignal?: AbortSignal;
 }): Promise<void> {
-  const stopHeartbeat = startHeartbeatInterval(params.runId, 30_000, params.workerId);
   const outputDir = params.pipelineContext.outputDir;
   const pipelineId = params.pipelineContext.pipelineId;
   const datasetName = params.pipelineContext.datasetName;
+
+  return runWithPipelineContext(
+    {
+      pipelineId,
+      runId: params.runId,
+      sessionId: params.sessionId,
+      source: 'analysisExtension',
+    },
+    async () => {
+  const stopHeartbeat = startHeartbeatInterval(params.runId, 30_000, params.workerId);
 
   try {
     const assertNotCancelled = async () => {
@@ -471,4 +481,6 @@ export async function runAnalysisBannerExtensionRun(params: {
   } finally {
     stopHeartbeat();
   }
+    },
+  );
 }

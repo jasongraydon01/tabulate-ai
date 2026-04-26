@@ -33,6 +33,7 @@ import { useAuthContext } from "@/providers/auth-provider";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { getProductEntryCta } from "@/lib/billing/pricingFlow";
+import { isProjectDefaultCandidate } from "@/lib/runs/selectPrimaryRun";
 
 function StatusIcon({ status }: { status: string }) {
   switch (status) {
@@ -95,6 +96,7 @@ export function AppSidebar() {
 
     const latestRunByProject = new Map<string, (typeof runs)[number]>();
     for (const run of runs) {
+      if (!isProjectDefaultCandidate(run)) continue;
       const pid = String(run.projectId);
       if (!latestRunByProject.has(pid)) {
         latestRunByProject.set(pid, run);
