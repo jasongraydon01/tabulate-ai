@@ -114,20 +114,48 @@ Verification run for Slice 2:
 
 **Status:** next.
 
-Add smaller compute-backed derivations for a single table or a small related set of tables. This is the required next slice for requests where the user or agent is not asking for a whole derived run, but for an added cut, NET, or derived view on one table or a small table cluster.
+Add compute-backed derivations for one table or a small related set of tables. This is the required next slice for requests where the user or agent is not asking for a whole derived run, but for a table-level computed follow-up.
 
-Required scope:
+Product decisions for Slice 3:
 
-- add one cut, NET, or derived view to one table or a small table cluster
-- let the agent distinguish: full crosstab-set banner extension → Tier B derived run; table-specific or few-table request → Tier A path
-- when the scope is ambiguous, ask whether the user wants a full-set derived run or a table-specific derivation
-- persist a derived artifact with lineage to source run, source table, derivation type, requested-by user, and frozen inputs
-- keep output separate from canonical parent-run artifacts
-- reuse the Slice 1/2 pattern: align in chat, freeze input, compute server-side, render from persisted result
+- Start with **answer-option roll-ups**. A user may ask to combine rows/options into a new view, such as top/middle/bottom boxes, positive/neutral/negative, or custom groupings that test whether separate rows become meaningful when rolled up.
+- Keep **selected-table cuts** in scope for Tier A, but treat them as the second operation after the derived-artifact/result model is settled. Example: add region or company-size cuts to one table or a few selected tables, not the full crosstab set.
+- The agent can select one or several source tables, but only a small table set. Broad “all tabs” requests remain Tier B derived-run proposals.
+- If scope is ambiguous, the agent asks whether the user wants a full-set derived run or a table-specific derivation.
+- Tier A should not create a new project default run by default. It should persist a separate derived analysis artifact with lineage to source run, source table(s), derivation type, requested-by user, and frozen inputs.
+- The parent run's canonical artifacts remain unchanged.
+- The agent aligns and proposes; backend compute produces the numbers. The agent never authors or hand-calculates the derived result.
+- After compute completes, TabulateAI should continue the analysis loop with the derived table in context. The derived result should become grounded evidence for the analysis agent, and the agent should re-analyze it in the same conversation without requiring the user to manually ask a second time.
 
-Key design decision before implementation:
+Expected flow:
 
-- Should Tier A produce child runs, sibling analysis artifacts, or a separate `analysisDerivedArtifacts` table? This should be decided before writing schema.
+1. User asks for a roll-up or table-scoped cut.
+2. Agent identifies the source table(s), operation type, and proposed derivation.
+3. Backend persists a frozen proposal and a safe client view.
+4. User confirms with a button.
+5. Worker/server-side compute produces a derived table artifact.
+6. The UI renders the derived table card with clear lineage.
+7. The analysis agent is re-entered or continued with the derived artifact in context, then explains what the new computed table shows.
+
+This post-compute continuation is part of the product contract, not a cosmetic convenience. A Tier A request should feel like "compute this table-level follow-up and tell me what it means," while still keeping the computation itself deterministic and grounded.
+
+Open implementation decision before schema work:
+
+- Persist Tier A outputs in a new `analysisDerivedArtifacts` table, or extend `analysisArtifacts`/`analysisComputeJobs` with enough lineage and lifecycle state. The product behavior above should drive the schema choice.
+
+## V1 Polish — Compute Reuse And Smoothness
+
+This should come after the core Tier A product path is working, but it is still part of making the compute lane feel production-smooth.
+
+Today, derived-run recompute is intentionally conservative: it reuses parent artifacts where the Slice 2 lane already freezes them, but it still re-enters more of the pipeline than the ideal steady-state path. In particular, follow-up compute can end up re-sending settled artifacts through agents such as loop semantics and recomputing work that should be cacheable once the parent run is known-good.
+
+Optimization goals:
+
+- Reuse settled parent-run semantic decisions when the derived request does not change the underlying table/question structure.
+- Avoid re-running agents whose inputs are unchanged by the derived request.
+- Cache or fingerprint reusable compute inputs so identical or near-identical follow-up requests do not repeat expensive preparation work.
+- Keep the same safety contract: frozen confirmed inputs, worker-queued execution, parent-run immutability, and deterministic backend-computed results.
+- Treat reuse as an execution optimization only. It must not weaken validation for newly requested cuts, roll-ups, or derived table definitions.
 
 ## Deferred / Not Required for V1 Readiness
 
