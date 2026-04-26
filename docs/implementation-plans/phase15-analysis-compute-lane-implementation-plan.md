@@ -1,6 +1,6 @@
 # Phase 15 Sub-Plan — Analysis Compute Lane
 
-**Status:** Slices 1-2 are implemented for Tier B one-group banner-extension recompute. Slice 3, Tier A single-table derivations, is next.
+**Status:** Tier B one-group banner-extension recompute is implemented, including native agent initiation. Slice 3, Tier A table-scoped derivations, is next.
 
 **Purpose:** give TabulateAI's analysis workspace a safe way to create computed follow-up outputs from a completed run without mutating the original run or reinterpreting settled pipeline decisions.
 
@@ -12,12 +12,12 @@ The base analysis surface remains artifact-grounded and read-only. It answers fr
 
 The compute lane is a separate path for analysis-triggered derived outputs. Today it supports one Tier B workflow:
 
-- The user asks for a new banner group across the full tab set.
+- The user asks, or the analysis agent identifies, a clear request for a new banner group across the full tab set.
 - The analysis workspace runs preflight against the completed parent run.
 - Preflight drafts exactly one appended banner group and validates only that group.
 - The user confirms from an in-chat proposal card.
 - Backend creates a child run through the worker queue.
-- The child run reuses the parent run's settled planning artifacts, appends the frozen group, recomputes outputs, and leaves the parent run unchanged.
+- The child run reuses the parent run's settled planning artifacts, appends the frozen group, recomputes outputs, and leaves the original tables in the parent run's table set unchanged.
 
 The important guarantee is unchanged: **what the user confirms in chat is what the child run consumes.**
 
@@ -69,11 +69,12 @@ Not included in Slice 1:
 
 **Status:** implemented.
 
-Slice 2 made the Slice 1 backend lane usable inside the analysis workspace.
+Slice 2 made the backend lane usable inside the analysis workspace.
 
 Implemented:
 
-- explicit composer action: “Create derived run”
+- native `AnalysisAgent` tool for clear full-set derived-run proposals
+- explicit plus-menu action for users who want to force proposal creation
 - compute-job cards in the chat timeline
 - proposal, clarification, queued, running, success, failed, cancelled, and expired states
 - sanitized public `analysisComputeJobs.listForSession({ orgId, sessionId, parentRunId })`
@@ -84,6 +85,8 @@ Implemented:
 - refresh-safe state from Convex, not parsed assistant breadcrumbs
 - completed-job handoff that creates or reuses a child-run analysis session
 - expired parent/child artifact handling
+- tool contract requiring explicit full-crosstab-set scope before native proposal creation
+- prompt guidance requiring clarification when the request may be table-specific
 
 Post-audit hardening completed:
 
@@ -92,6 +95,7 @@ Post-audit hardening completed:
 - preflight breadcrumbs no longer print executable expressions
 - cancellation does not overwrite terminal child runs
 - confirm rejects terminal jobs before existing-child idempotency
+- native agent proposal output omits raw expressions, R2 keys, frozen artifacts, fingerprints, confirm tokens, and parent artifact maps
 - Convex deploy typecheck passes with relative worker/compute-lane type imports
 
 Verification run for Slice 2:
@@ -104,17 +108,19 @@ Verification run for Slice 2:
 
 ---
 
-## Remaining Slices
+## Active Remaining Slice
 
-### Slice 3 — Tier A Single-Table Derivations
+### Slice 3 — Tier A Table-Scoped Derivations
 
 **Status:** next.
 
-Add smaller compute-backed derivations for a single table or a small related set of tables.
+Add smaller compute-backed derivations for a single table or a small related set of tables. This is the required next slice for requests where the user or agent is not asking for a whole derived run, but for an added cut, NET, or derived view on one table or a small table cluster.
 
-Likely scope:
+Required scope:
 
 - add one cut, NET, or derived view to one table or a small table cluster
+- let the agent distinguish: full crosstab-set banner extension → Tier B derived run; table-specific or few-table request → Tier A path
+- when the scope is ambiguous, ask whether the user wants a full-set derived run or a table-specific derivation
 - persist a derived artifact with lineage to source run, source table, derivation type, requested-by user, and frozen inputs
 - keep output separate from canonical parent-run artifacts
 - reuse the Slice 1/2 pattern: align in chat, freeze input, compute server-side, render from persisted result
@@ -123,45 +129,14 @@ Key design decision before implementation:
 
 - Should Tier A produce child runs, sibling analysis artifacts, or a separate `analysisDerivedArtifacts` table? This should be decided before writing schema.
 
-### Slice 4 — Clarification Repair and Job Continuation
+## Deferred / Not Required for V1 Readiness
 
-**Status:** deferred.
+These are usage-driven improvements, not blockers for the current production-ready Tier B lane or the next Tier A design:
 
-Make blocked jobs more useful without broadening compute scope.
-
-Possible scope:
-
-- revise a `needs_clarification` job in place
-- preserve the job's original request, clarification history, and replacement frozen input
-- keep confirmation button-driven
-- avoid typed natural-language confirmation unless real usage shows it is needed
-
-### Slice 5 — Compute History and Discovery
-
-**Status:** deferred.
-
-Improve discoverability once real usage creates multiple derived outputs.
-
-Possible scope:
-
-- run-level history of analysis-triggered compute jobs
-- parent/child run lineage display
-- filters for proposed, running, completed, failed, cancelled, expired
-- links from child analysis sessions back to the parent run and originating request
-
-### Slice 6 — Broader Extension Workflows
-
-**Status:** usage-driven and deliberately deferred.
-
-Only revisit after Tier B and Tier A have usage signal.
-
-Possible scope:
-
-- multi-group banner extension
-- old-group editing
-- broader “redesign this banner” workflows
-- promotion of derived outputs into delivery-grade artifacts
-- richer structured compute message parts if transcript breadcrumbs become insufficient
+- clarification repair against an existing blocked job instead of starting a revised request
+- broader compute history and discovery beyond the current chat timeline and derived-run handoff
+- multi-group banner extension, old-group editing, banner redesign, or promotion of derived outputs into delivery-grade artifacts
+- richer structured compute message parts if Convex timeline ordering becomes insufficient
 
 ---
 
@@ -174,4 +149,4 @@ The compute lane now has a stable shape:
 - worker-backed compute produces final outputs
 - parent runs stay immutable
 
-The next real product work is not more Tier B plumbing. It is deciding and implementing the smaller Tier A single-table derivation model.
+The next real product work is not more Tier B plumbing. It is deciding and implementing the Tier A table-scoped derivation model for cases where the user wants a table-level computed follow-up rather than a whole derived run.
