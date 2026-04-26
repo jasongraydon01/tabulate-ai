@@ -161,4 +161,58 @@ describe("AnalysisThread timeline entries", () => {
       "message-assistant-1",
     ]);
   });
+
+  it("places an agent-created proposal card from Convex state, not assistant prose", () => {
+    const messages: UIMessage[] = [
+      { id: "user-1", role: "user", parts: [{ type: "text", text: "Add region cuts across the tabs" }] },
+      {
+        id: "assistant-1",
+        role: "assistant",
+        parts: [{
+          type: "text",
+          text: "I prepared a derived-run proposal. Review the card before confirming.",
+        }],
+      },
+    ];
+    const computeJobs: AnalysisComputeJobView[] = [{
+      id: "job-agent-1",
+      jobType: "banner_extension_recompute",
+      status: "proposed",
+      effectiveStatus: "proposed",
+      requestText: "Add region cuts across the tabs",
+      proposedGroup: {
+        groupName: "Region",
+        cuts: [{
+          name: "North",
+          original: "North region",
+          userSummary: "Matched the region variable.",
+        }],
+      },
+      confirmToken: "opaque-token",
+      createdAt: 150,
+      updatedAt: 150,
+    }];
+
+    const entries = buildAnalysisTimelineEntries({
+      messages,
+      computeJobs,
+      messageCreatedAtById: {
+        "user-1": 100,
+        "assistant-1": 200,
+      },
+    });
+
+    expect(entries.map((entry) => entry.kind)).toEqual([
+      "message",
+      "compute-job",
+      "message",
+    ]);
+    expect(entries[1]).toMatchObject({
+      kind: "compute-job",
+      job: {
+        id: "job-agent-1",
+        proposedGroup: { groupName: "Region" },
+      },
+    });
+  });
 });

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { PromptComposer } from "@/components/analysis/PromptComposer";
 
 describe("PromptComposer", () => {
-  it("renders a separate derived-run action next to normal chat send", () => {
+  it("moves derived-run creation behind a subtle plus menu trigger", () => {
     const markup = renderToStaticMarkup(
       React.createElement(PromptComposer, {
         value: "Add a region banner",
@@ -18,8 +18,9 @@ describe("PromptComposer", () => {
       }),
     );
 
-    expect(markup).toContain("Create derived run");
+    expect(markup).toContain("title=\"More actions\"");
+    expect(markup).toContain("aria-haspopup=\"menu\"");
     expect(markup).toContain("title=\"Send message\"");
-    expect(markup).toContain("title=\"Create derived run\"");
+    expect(markup).not.toContain("title=\"Create derived run\"");
   });
 });

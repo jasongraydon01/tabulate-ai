@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   retryWithPolicyHandling: vi.fn(),
   recordAgentMetrics: vi.fn(),
   buildAnalysisSystemMessage: vi.fn(() => ({ role: "system", content: "system prompt" })),
+  createAnalysisBannerExtensionProposal: vi.fn(),
 }));
 
 vi.mock("ai", async (importOriginal) => {
@@ -34,6 +35,15 @@ vi.mock("@/lib/analysis/grounding", () => ({
   buildFetchTableModelMarkdown: vi.fn(() => "markdown table"),
   sanitizeGroundingToolOutput: vi.fn((value) => value),
   attachRetrievedContextXml: vi.fn((_toolName, value) => value),
+}));
+
+vi.mock("@/lib/analysis/computeLane/proposalService", () => ({
+  AnalysisComputeProposalError: class AnalysisComputeProposalError extends Error {
+    httpStatus = 409;
+    code = "not_eligible";
+  },
+  createAnalysisBannerExtensionProposal: mocks.createAnalysisBannerExtensionProposal,
+  formatAnalysisComputeProposalToolResult: vi.fn((value) => value.proposal),
 }));
 
 vi.mock("@/lib/analysis/promptPrefix", () => ({
@@ -217,6 +227,7 @@ describe("streamAnalysisResponse", () => {
         "getQuestionContext",
         "listBannerCuts",
         "confirmCitation",
+        "proposeDerivedRun",
         "submitAnswer",
       ]);
       expect(tools?.confirmCitation.providerOptions).toEqual({
@@ -250,6 +261,28 @@ describe("streamAnalysisResponse", () => {
         rowLabel: "Very satisfied",
         columnLabel: "Female",
         valueMode: "pct",
+      }).success).toBe(false);
+      expect(tools?.proposeDerivedRun.providerOptions).toBeUndefined();
+      expect(tools?.proposeDerivedRun.inputSchema.safeParse({
+        requestText: "Append region cuts across the full crosstab set",
+        targetScope: "full_crosstab_set",
+        tableSpecificDerivationExcluded: true,
+      }).success).toBe(true);
+      expect(tools?.proposeDerivedRun.inputSchema.safeParse({
+        requestText: "Append region cuts to Q1",
+        targetScope: "single_table",
+        tableSpecificDerivationExcluded: true,
+      }).success).toBe(false);
+      expect(tools?.proposeDerivedRun.inputSchema.safeParse({
+        requestText: "Append region cuts",
+        targetScope: "full_crosstab_set",
+        tableSpecificDerivationExcluded: false,
+      }).success).toBe(false);
+      expect(tools?.proposeDerivedRun.inputSchema.safeParse({
+        requestText: "Append region cuts",
+        targetScope: "full_crosstab_set",
+        tableSpecificDerivationExcluded: true,
+        rawExpression: "REGION == 1",
       }).success).toBe(false);
       expect(tools?.fetchTable.inputSchema.safeParse({
         tableId: "q1",
@@ -428,5 +461,145 @@ describe("streamAnalysisResponse", () => {
         ],
       },
     ]);
+  });
+
+  it("exposes a sanitized derived-run proposal tool without transcript breadcrumbs", async () => {
+    const proposal = {
+      jobId: "job-1",
+      jobType: "banner_extension_recompute",
+      status: "proposed",
+      groupName: "Region",
+      cuts: [{
+        name: "North",
+        userSummary: "Matched region.",
+        confidence: 0.95,
+        expressionType: "direct_variable",
+      }],
+      reviewFlags: {
+        requiresClarification: false,
+        requiresReview: false,
+        reasons: [],
+        averageConfidence: 0.95,
+        policyFallbackDetected: false,
+      },
+      message: "I prepared a derived-run proposal.",
+    };
+    mocks.createAnalysisBannerExtensionProposal.mockResolvedValueOnce({
+      proposal,
+      job: {
+        id: "job-1",
+        jobType: "banner_extension_recompute",
+        status: "proposed",
+        effectiveStatus: "proposed",
+        requestText: "Append region cuts across the full crosstab set",
+        confirmToken: "opaque-token",
+        proposedGroup: {
+          groupName: "Region",
+          cuts: [{
+            name: "North",
+            original: "North region",
+            rawExpression: "REGION == 1",
+          }],
+        },
+        createdAt: 100,
+        updatedAt: 100,
+      },
+    });
+    mocks.streamText.mockImplementationOnce(async ({ onFinish, tools }) => {
+      const output = await tools?.proposeDerivedRun.execute?.({
+        requestText: "Append region cuts across the full crosstab set",
+        targetScope: "full_crosstab_set",
+        tableSpecificDerivationExcluded: true,
+      }, { toolCallId: "derive-1" });
+      expect(output).toEqual(proposal);
+      expect(JSON.stringify(output)).not.toContain("REGION == 1");
+      expect(JSON.stringify(output)).not.toContain("opaque-token");
+
+      onFinish?.({
+        totalUsage: {
+          inputTokens: 12,
+          outputTokens: 4,
+        },
+      });
+      return {
+        toUIMessageStreamResponse: vi.fn(() => new Response("ok")),
+      };
+    });
+    mocks.retryWithPolicyHandling.mockImplementationOnce(async (fn: () => Promise<unknown>) => ({
+      success: true,
+      result: await fn(),
+      attempts: 1,
+      wasPolicyError: false,
+      finalClassification: null,
+    }));
+
+    await streamAnalysisResponse({
+      messages: [{ id: "u1", role: "user", parts: [{ type: "text", text: "Add region cuts to all tabs" }] }],
+      groundingContext: {
+        availability: "available",
+        missingArtifacts: [],
+        tables: {},
+        questions: [],
+        bannerGroups: [],
+        bannerRouteMetadata: null,
+        surveyMarkdown: null,
+        surveyQuestions: [],
+        bannerPlanGroups: [],
+        projectContext: {
+          projectName: "TabulateAI Study",
+          runStatus: "success",
+          studyMethodology: null,
+          analysisMethod: null,
+          bannerSource: null,
+          bannerMode: null,
+          tableCount: null,
+          bannerGroupCount: null,
+          totalCuts: null,
+          bannerGroupNames: [],
+          researchObjectives: null,
+          bannerHints: null,
+          intakeFiles: {
+            dataFile: null,
+            survey: null,
+            bannerPlan: null,
+            messageList: null,
+          },
+        },
+        tablesMetadata: {
+          significanceTest: null,
+          significanceLevel: null,
+          comparisonGroups: [],
+        },
+      },
+      computeProposalContext: {
+        orgId: "org-1" as never,
+        projectId: "project-1" as never,
+        parentRunId: "run-1" as never,
+        sessionId: "session-1" as never,
+        requestedBy: "user-1" as never,
+        parentRun: {
+          _id: "run-1" as never,
+          status: "success",
+          result: {},
+        },
+        project: {
+          _id: "project-1" as never,
+          name: "TabulateAI Study",
+          config: {},
+          intake: {},
+        },
+        session: {
+          _id: "session-1" as never,
+          runId: "run-1" as never,
+          projectId: "project-1" as never,
+        },
+      },
+    });
+
+    expect(mocks.createAnalysisBannerExtensionProposal).toHaveBeenCalledWith(expect.objectContaining({
+      requestText: "Append region cuts across the full crosstab set",
+      transcriptMode: "none",
+      abortSignal: undefined,
+    }));
   });
 });

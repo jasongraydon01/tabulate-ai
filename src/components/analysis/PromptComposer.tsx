@@ -1,8 +1,14 @@
 "use client";
 
-import { Square, ArrowUp, GitBranchPlus, Loader2 } from "lucide-react";
+import { Square, ArrowUp, GitBranchPlus, Loader2, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 
 interface PromptComposerProps {
@@ -37,44 +43,61 @@ export function PromptComposer({
           </div>
         ) : null}
         <div className="flex items-center gap-2">
-        <Textarea
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder="Ask anything"
-          rows={1}
-          className="min-h-[36px] max-h-[140px] resize-none border-0 bg-transparent p-0 text-sm shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
-          disabled={isComputeBusy}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
-              event.preventDefault();
-              void onSubmit();
-            }
-          }}
-        />
-        {isBusy ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="h-8 w-8 shrink-0 rounded-full"
-            onClick={onStop}
-          >
-            <Square className="h-3.5 w-3.5" />
-          </Button>
-        ) : (
-          <>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
+                disabled={isLocked}
+                title="More actions"
+                aria-label="More actions"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" side="top" className="w-56">
+              <DropdownMenuItem
+                disabled={isInputEmpty || isLocked}
+                onSelect={(event) => {
+                  if (isInputEmpty || isLocked) {
+                    event.preventDefault();
+                    return;
+                  }
+                  void onComputeSubmit();
+                }}
+              >
+                <GitBranchPlus className="h-4 w-4" />
+                <span>Create derived run</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Textarea
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder="Ask anything"
+            rows={1}
+            className="min-h-[36px] max-h-[140px] resize-none border-0 bg-transparent p-0 text-sm shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
+            disabled={isComputeBusy}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
+                event.preventDefault();
+                void onSubmit();
+              }
+            }}
+          />
+          {isBusy ? (
             <Button
               type="button"
               variant="outline"
-              size="sm"
-              className="h-8 shrink-0 rounded-full px-3 text-xs"
-              onClick={() => { void onComputeSubmit(); }}
-              disabled={isInputEmpty || isLocked}
-              title="Create derived run"
+              size="icon"
+              className="h-8 w-8 shrink-0 rounded-full"
+              onClick={onStop}
             >
-              <GitBranchPlus className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Create derived run</span>
+              <Square className="h-3.5 w-3.5" />
             </Button>
+          ) : (
             <Button
               type="button"
               size="icon"
@@ -85,8 +108,7 @@ export function PromptComposer({
             >
               <ArrowUp className="h-4 w-4" />
             </Button>
-          </>
-        )}
+          )}
         </div>
       </div>
     </div>

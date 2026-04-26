@@ -6,6 +6,11 @@ import {
   getAnalysisUIMessageText,
 } from "@/lib/analysis/messages";
 import {
+  AnalysisComputeProposalError,
+  createAnalysisBannerExtensionProposal,
+  formatAnalysisComputeProposalToolResult,
+} from "@/lib/analysis/computeLane/proposalService";
+import {
   getAnalysisModel,
   getAnalysisModelName,
   getAnalysisProviderOptions,
@@ -38,6 +43,7 @@ import {
 import { AnalysisStructuredAnswerSchema } from "@/schemas/analysisStructuredAnswerSchema";
 import { calculateCostSync, recordAgentMetrics } from "@/lib/observability";
 import { retryWithPolicyHandling } from "@/lib/retryWithPolicyHandling";
+import type { Id } from "../../../convex/_generated/dataModel";
 
 const confirmCitationInputSchema = z.object({
   tableId: z.string().min(1).max(200),
@@ -50,10 +56,36 @@ const confirmCitationInputSchema = z.object({
 export async function streamAnalysisResponse({
   messages,
   groundingContext,
+  computeProposalContext,
   abortSignal,
 }: {
   messages: AnalysisUIMessage[];
   groundingContext: AnalysisGroundingContext;
+  computeProposalContext?: {
+    orgId: Id<"organizations">;
+    projectId: Id<"projects">;
+    parentRunId: Id<"runs">;
+    sessionId: Id<"analysisSessions">;
+    requestedBy: Id<"users">;
+    parentRun: {
+      _id: Id<"runs">;
+      status: string;
+      result?: unknown;
+      expiredAt?: number;
+      artifactsPurgedAt?: number;
+    };
+    project: {
+      _id: Id<"projects">;
+      name: string;
+      config?: Record<string, unknown> | null;
+      intake?: Record<string, unknown> | null;
+    };
+    session: {
+      _id: Id<"analysisSessions">;
+      runId: Id<"runs">;
+      projectId: Id<"projects">;
+    };
+  };
   abortSignal?: AbortSignal;
 }) {
   const startTime = Date.now();
@@ -206,6 +238,54 @@ export async function streamAnalysisResponse({
               () => confirmCitation(groundingContext, input),
               { toolCallId: options.toolCallId },
             ),
+          }),
+          proposeDerivedRun: tool({
+            description: [
+              "Create a persisted derived-run proposal for exactly one new banner group/cut set appended across the full crosstab table set.",
+              "Use only when the user clearly wants the new cut or banner group added across the full tab set. Do not use for a single table, a few tables, edits to existing banner groups, multi-group redesigns, recoding raw data, or open-end coding.",
+              "If the request could mean either full-set recompute or a table-specific derivation, ask a clarification via submitAnswer instead of calling this tool.",
+              "The input must explicitly mark targetScope as full_crosstab_set and tableSpecificDerivationExcluded as true. If you cannot truthfully provide both, do not call this tool.",
+              "The tool persists the proposal for the UI card, but does not queue compute. Confirmation remains button-driven.",
+            ].join("\n"),
+            inputSchema: z.object({
+              requestText: z.string().min(1).max(1000),
+              targetScope: z.literal("full_crosstab_set"),
+              tableSpecificDerivationExcluded: z.literal(true),
+            }).strict(),
+            execute: async ({ requestText }) => {
+              if (!computeProposalContext) {
+                return {
+                  status: "unavailable" as const,
+                  message: "Derived-run proposals are not available in this chat context.",
+                };
+              }
+
+              try {
+                const result = await createAnalysisBannerExtensionProposal({
+                  ...computeProposalContext,
+                  requestText,
+                  groundingContext,
+                  transcriptMode: "none",
+                  abortSignal,
+                });
+                return formatAnalysisComputeProposalToolResult(result);
+              } catch (error) {
+                if (error instanceof AnalysisComputeProposalError) {
+                  return {
+                    status: "unavailable" as const,
+                    code: error.code,
+                    message: error.code === "preflight_failed"
+                      ? "TabulateAI could not prepare a derived-run proposal for this request."
+                      : error.message,
+                  };
+                }
+                return {
+                  status: "unavailable" as const,
+                  code: "preflight_failed",
+                  message: "TabulateAI could not prepare a derived-run proposal for this request.",
+                };
+              }
+            },
           }),
           submitAnswer: tool({
             description: "Finalize the user-visible reply as structured assistant parts. This is the only valid answer-delivery contract for the turn: if you do not call submitAnswer, the turn fails; if you emit user-visible prose outside submitAnswer, the turn fails. Call this exactly once after all needed fetchTable and confirmCitation calls. Use text parts for prose, render parts for inline tables, and cite parts for the sentence-end citations that anchor quoted numbers. After calling submitAnswer, stop.",

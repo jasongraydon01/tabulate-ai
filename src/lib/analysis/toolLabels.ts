@@ -13,6 +13,7 @@ export const ANALYSIS_TOOL_ACTIVITY_LABELS: Record<string, string> = {
   "tool-getQuestionContext": "Checking question metadata",
   "tool-listBannerCuts": "Listing available cuts",
   "tool-confirmCitation": "Confirming cell",
+  "tool-proposeDerivedRun": "Preparing derived run proposal",
 };
 
 export const FETCH_TABLE_TOOL_TYPE = "tool-fetchTable";

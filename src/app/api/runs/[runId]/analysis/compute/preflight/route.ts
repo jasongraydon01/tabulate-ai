@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { loadAnalysisGroundingContext } from "@/lib/analysis/grounding";
-import { loadAnalysisParentRunArtifacts } from "@/lib/analysis/computeLane/artifactLoader";
-import { buildAnalysisComputeJobView } from "@/lib/analysis/computeLane/jobView";
-import { runAnalysisBannerExtensionPreflight } from "@/lib/analysis/computeLane/preflight";
-import { getConvexClient, mutateInternal } from "@/lib/convex";
+import {
+  AnalysisComputeProposalError,
+  createAnalysisBannerExtensionProposal,
+} from "@/lib/analysis/computeLane/proposalService";
+import { getConvexClient } from "@/lib/convex";
 import { requireConvexAuth, AuthenticationError } from "@/lib/requireConvexAuth";
 import { applyRateLimit } from "@/lib/withRateLimit";
-import { resolvePipelineOutputDir } from "@/lib/paths/outputs";
-import { sanitizeDatasetName } from "@/lib/api/fileHandler";
-import { api, internal } from "../../../../../../../../convex/_generated/api";
+import { api } from "../../../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../../../convex/_generated/dataModel";
 
 const CONVEX_ID_RE = /^[a-zA-Z0-9_.-]+$/;
@@ -19,29 +17,6 @@ function routeErrorMessage(error: unknown, fallback: string): string {
     return error.message;
   }
   return fallback;
-}
-
-function isMissingParentArtifactError(error: unknown): boolean {
-  return error instanceof Error && error.message.startsWith("Parent run is missing required artifact:");
-}
-
-function formatProposedGroupMessage(params: {
-  groupName: string;
-  requiresClarification: boolean;
-  reasons: string[];
-}): string {
-  if (params.requiresClarification) {
-    return [
-      "TabulateAI needs one clarification before creating a derived run.",
-      ...params.reasons.map((reason) => `- ${reason}`),
-    ].join("\n");
-  }
-
-  return [
-    `TabulateAI found a proposed banner extension: ${params.groupName}.`,
-    "",
-    "Review the proposal card before confirming. The original run will remain unchanged.",
-  ].join("\n");
 }
 
 export async function POST(
@@ -100,99 +75,33 @@ export async function POST(
     });
     if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
 
-    const [groundingContext, parentArtifacts] = await Promise.all([
-      loadAnalysisGroundingContext({
-        runResultValue: run.result,
-        projectName: project.name,
-        runStatus: run.status,
-        projectConfig: project.config,
-        projectIntake: project.intake,
-      }),
-      loadAnalysisParentRunArtifacts(run.result),
-    ]);
-
-    const preflightOutputDir = resolvePipelineOutputDir({
-      datasetName: sanitizeDatasetName(`analysis-preflight-${String(run._id)}`),
-      pipelineId: `preflight-${new Date().toISOString().replace(/[:.]/g, "-")}`,
-    });
-
-    const preflight = await runAnalysisBannerExtensionPreflight({
-      parentRunId: runId,
-      requestText,
-      groundingContext,
-      parentArtifacts,
-      outputDir: preflightOutputDir,
-      abortSignal: request.signal,
-    });
-
-    await mutateInternal(internal.analysisMessages.create, {
-      sessionId: session._id,
-      orgId: auth.convexOrgId,
-      role: "user",
-      content: requestText,
-      parts: [{ type: "text", text: requestText }],
-    });
-
-    const jobId = await mutateInternal(internal.analysisComputeJobs.createFromPreflight, {
+    const result = await createAnalysisBannerExtensionProposal({
       orgId: auth.convexOrgId,
       projectId: session.projectId,
       parentRunId: run._id,
       sessionId: session._id,
       requestedBy: auth.convexUserId,
       requestText,
-      status: preflight.reviewFlags.requiresClarification ? "needs_clarification" : "proposed",
-      frozenBannerGroup: preflight.frozenBannerGroup,
-      frozenValidatedGroup: preflight.frozenValidatedGroup,
-      reviewFlags: preflight.reviewFlags,
-      fingerprint: preflight.fingerprint,
-      promptSummary: preflight.promptSummary,
-    });
-
-    const message = formatProposedGroupMessage({
-      groupName: preflight.frozenBannerGroup.groupName,
-      requiresClarification: preflight.reviewFlags.requiresClarification,
-      reasons: preflight.reviewFlags.reasons,
-    });
-
-    await mutateInternal(internal.analysisMessages.create, {
-      sessionId: session._id,
-      orgId: auth.convexOrgId,
-      role: "assistant",
-      content: message,
-      parts: [{ type: "text", text: message }],
-    });
-
-    const job = buildAnalysisComputeJobView({
-      job: {
-        _id: jobId,
-        projectId: session.projectId,
-        jobType: "banner_extension_recompute",
-        status: preflight.reviewFlags.requiresClarification ? "needs_clarification" : "proposed",
-        requestText,
-        frozenBannerGroup: preflight.frozenBannerGroup,
-        frozenValidatedGroup: preflight.frozenValidatedGroup,
-        reviewFlags: preflight.reviewFlags,
-        fingerprint: preflight.fingerprint,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      },
+      parentRun: run,
+      project,
+      session,
+      transcriptMode: "route_breadcrumbs",
+      abortSignal: request.signal,
     });
 
     return NextResponse.json({
-      jobId: String(jobId),
-      status: job.status,
-      job,
+      jobId: result.proposal.jobId,
+      status: result.proposal.status,
+      job: result.job,
     });
   } catch (error) {
     if (error instanceof AuthenticationError) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (isMissingParentArtifactError(error)) {
+    if (error instanceof AnalysisComputeProposalError) {
       return NextResponse.json(
-        {
-          error: "This run is missing the planning artifacts required to create a derived run. Start from a newer completed run, or rerun this project before using Create derived run.",
-        },
-        { status: 409 },
+        { error: routeErrorMessage(error, error.code === "preflight_failed" ? "Preflight failed" : error.message) },
+        { status: error.httpStatus },
       );
     }
     return NextResponse.json({ error: routeErrorMessage(error, "Preflight failed") }, { status: 500 });

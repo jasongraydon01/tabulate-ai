@@ -572,6 +572,16 @@ export async function POST(
     } = await streamAnalysisResponse({
       messages: conversationMessages,
       groundingContext,
+      computeProposalContext: {
+        orgId: auth.convexOrgId,
+        projectId: session.projectId,
+        parentRunId: run._id,
+        sessionId: session._id,
+        requestedBy: auth.convexUserId,
+        parentRun: run,
+        project,
+        session,
+      },
       abortSignal: request.signal,
     });
 

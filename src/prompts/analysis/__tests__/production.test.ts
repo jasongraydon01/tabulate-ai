@@ -142,6 +142,20 @@ describe("analysis agent production prompt", () => {
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("confirmCitation");
   });
 
+  it("documents native derived-run proposal boundaries in both prompt variants", () => {
+    for (const prompt of [ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION, ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE]) {
+      expect(prompt).toContain("proposeDerivedRun");
+      expect(prompt).toContain("append one new banner cut or banner group across the full crosstab");
+      expect(prompt).toContain("one table or a small set of tables");
+      expect(prompt).toContain("Do not imply single-table compute is available yet");
+      expect(prompt).toContain("button before any worker-queued compute starts");
+      expect(prompt).toContain('targetScope: "full_crosstab_set"');
+      expect(prompt).toContain("tableSpecificDerivationExcluded: true");
+      expect(prompt).toContain("original tables in this\nrun's table set will stay as they are");
+      expect(prompt).toContain("raw expressions, R2 keys, frozen artifacts, fingerprints");
+    }
+  });
+
   it("appends grounding status for available artifacts", () => {
     const result = buildAnalysisInstructions({
       availability: "available",
