@@ -5,16 +5,16 @@ import { buildAnalysisComputeFingerprint } from '@/lib/analysis/computeLane/fing
 
 const mocks = vi.hoisted(() => ({
   query: vi.fn(),
+  queryInternal: vi.fn(),
   mutateInternal: vi.fn(),
   loadAnalysisParentRunArtifacts: vi.fn(),
+  requireConvexAuth: vi.fn(),
+  AuthenticationError: class AuthenticationError extends Error {},
 }));
 
 vi.mock('@/lib/requireConvexAuth', () => ({
-  requireConvexAuth: vi.fn(async () => ({
-    convexOrgId: 'org-1',
-    convexUserId: 'user-1',
-    role: 'admin',
-  })),
+  requireConvexAuth: mocks.requireConvexAuth,
+  AuthenticationError: mocks.AuthenticationError,
 }));
 
 vi.mock('@/lib/withRateLimit', () => ({
@@ -24,6 +24,7 @@ vi.mock('@/lib/withRateLimit', () => ({
 vi.mock('@/lib/convex', () => ({
   getConvexClient: () => ({ query: mocks.query }),
   mutateInternal: mocks.mutateInternal,
+  queryInternal: mocks.queryInternal,
 }));
 
 vi.mock('@/lib/analysis/computeLane/artifactLoader', () => ({
@@ -82,6 +83,7 @@ function makeJob(fingerprint: string) {
     projectId: 'project-1',
     parentRunId: 'run-1',
     sessionId: 'session-1',
+    status: 'proposed',
     requestText: 'Add region',
     fingerprint,
     reviewFlags: {
@@ -104,6 +106,28 @@ describe('analysis compute confirm route', () => {
       ({ POST } = await import('@/app/api/runs/[runId]/analysis/compute/jobs/[jobId]/confirm/route'));
     }
     vi.clearAllMocks();
+    mocks.requireConvexAuth.mockResolvedValue({
+      convexOrgId: 'org-1',
+      convexUserId: 'user-1',
+      role: 'admin',
+    });
+  });
+
+  it('returns 401 for unauthenticated requests', async () => {
+    mocks.requireConvexAuth.mockRejectedValueOnce(new mocks.AuthenticationError('no session'));
+
+    const response = await POST(
+      new NextRequest('http://localhost/api/runs/run-1/analysis/compute/jobs/job-1/confirm', {
+        method: 'POST',
+        body: JSON.stringify({ fingerprint: 'token' }),
+      }),
+      { params: Promise.resolve({ runId: 'run-1', jobId: 'job-1' }) },
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: 'Unauthorized' });
+    expect(mocks.query).not.toHaveBeenCalled();
+    expect(mocks.queryInternal).not.toHaveBeenCalled();
   });
 
   it('rejects confirmation when parent artifact keys changed since preflight', async () => {
@@ -117,8 +141,8 @@ describe('analysis compute confirm route', () => {
 
     mocks.query
       .mockResolvedValueOnce({ _id: 'run-1', status: 'success', config: {}, result: {} })
-      .mockResolvedValueOnce(makeJob(fingerprint))
       .mockResolvedValueOnce({ _id: 'project-1', name: 'Study' });
+    mocks.queryInternal.mockResolvedValueOnce(makeJob(fingerprint));
     mocks.loadAnalysisParentRunArtifacts.mockResolvedValueOnce(makeParentArtifacts({
       ...baseArtifactKeys,
       crosstabPlan: 'r2/planning/21-crosstab-plan-v2.json',
@@ -148,8 +172,8 @@ describe('analysis compute confirm route', () => {
 
     mocks.query
       .mockResolvedValueOnce({ _id: 'run-1', status: 'success', config: {}, result: {} })
-      .mockResolvedValueOnce(makeJob(fingerprint))
       .mockResolvedValueOnce({ _id: 'project-1', name: 'Study' });
+    mocks.queryInternal.mockResolvedValueOnce(makeJob(fingerprint));
     mocks.loadAnalysisParentRunArtifacts.mockResolvedValueOnce(makeParentArtifacts());
     mocks.mutateInternal
       .mockResolvedValueOnce({ childRunId: 'child-run-1', alreadyQueued: false })
@@ -182,5 +206,28 @@ describe('analysis compute confirm route', () => {
       frozenBannerGroup,
       frozenValidatedGroup,
     });
+  });
+
+  it('rejects terminal jobs even when a child run id is attached', async () => {
+    mocks.query.mockResolvedValueOnce({ _id: 'run-1', status: 'success', config: {}, result: {} });
+    mocks.queryInternal.mockResolvedValueOnce({
+      ...makeJob('token'),
+      status: 'cancelled',
+      childRunId: 'child-run-1',
+    });
+
+    const response = await POST(
+      new NextRequest('http://localhost/api/runs/run-1/analysis/compute/jobs/job-1/confirm', {
+        method: 'POST',
+        body: JSON.stringify({ fingerprint: 'token' }),
+      }),
+      { params: Promise.resolve({ runId: 'run-1', jobId: 'job-1' }) },
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: 'Analysis compute job cannot be confirmed from status cancelled',
+    });
+    expect(mocks.mutateInternal).not.toHaveBeenCalled();
   });
 });

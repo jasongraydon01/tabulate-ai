@@ -4,7 +4,7 @@ import type {
   WorkerPipelineContext,
   WorkerRecoveryManifest,
 } from './recovery';
-import type { AnalysisBannerExtensionPayload } from '@/lib/analysis/computeLane/types';
+import type { AnalysisBannerExtensionPayload } from '../analysis/computeLane/types';
 
 export type WorkerExecutionState =
   | 'queued'

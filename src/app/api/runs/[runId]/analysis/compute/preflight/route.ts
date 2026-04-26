@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { loadAnalysisGroundingContext } from "@/lib/analysis/grounding";
 import { loadAnalysisParentRunArtifacts } from "@/lib/analysis/computeLane/artifactLoader";
+import { buildAnalysisComputeJobView } from "@/lib/analysis/computeLane/jobView";
 import { runAnalysisBannerExtensionPreflight } from "@/lib/analysis/computeLane/preflight";
 import { getConvexClient, mutateInternal } from "@/lib/convex";
-import { requireConvexAuth } from "@/lib/requireConvexAuth";
+import { requireConvexAuth, AuthenticationError } from "@/lib/requireConvexAuth";
 import { applyRateLimit } from "@/lib/withRateLimit";
 import { resolvePipelineOutputDir } from "@/lib/paths/outputs";
 import { sanitizeDatasetName } from "@/lib/api/fileHandler";
@@ -22,7 +23,6 @@ function routeErrorMessage(error: unknown, fallback: string): string {
 
 function formatProposedGroupMessage(params: {
   groupName: string;
-  columns: Array<{ name: string; original: string; adjusted?: string; confidence?: number }>;
   requiresClarification: boolean;
   reasons: string[];
 }): string {
@@ -36,12 +36,7 @@ function formatProposedGroupMessage(params: {
   return [
     `TabulateAI found a proposed banner extension: ${params.groupName}.`,
     "",
-    ...params.columns.map((column) => {
-      const confidence = typeof column.confidence === "number" ? ` (${Math.round(column.confidence * 100)}% confidence)` : "";
-      return `- ${column.name}: ${column.adjusted ?? column.original}${confidence}`;
-    }),
-    "",
-    "Confirm this group to create a derived run. The original run will remain unchanged.",
+    "Review the proposal card before confirming. The original run will remain unchanged.",
   ].join("\n");
 }
 
@@ -91,6 +86,9 @@ export async function POST(
     if (run.status !== "success" && run.status !== "partial") {
       return NextResponse.json({ error: "Analysis compute requires a completed parent run" }, { status: 409 });
     }
+    if (run.expiredAt || run.artifactsPurgedAt) {
+      return NextResponse.json({ error: "Parent run artifacts have expired" }, { status: 410 });
+    }
 
     const project = await convex.query(api.projects.get, {
       projectId: session.projectId,
@@ -123,6 +121,14 @@ export async function POST(
       abortSignal: request.signal,
     });
 
+    await mutateInternal(internal.analysisMessages.create, {
+      sessionId: session._id,
+      orgId: auth.convexOrgId,
+      role: "user",
+      content: requestText,
+      parts: [{ type: "text", text: requestText }],
+    });
+
     const jobId = await mutateInternal(internal.analysisComputeJobs.createFromPreflight, {
       orgId: auth.convexOrgId,
       projectId: session.projectId,
@@ -140,15 +146,6 @@ export async function POST(
 
     const message = formatProposedGroupMessage({
       groupName: preflight.frozenBannerGroup.groupName,
-      columns: preflight.frozenBannerGroup.columns.map((column) => {
-        const validated = preflight.frozenValidatedGroup.columns.find((entry) => entry.name === column.name);
-        return {
-          name: column.name,
-          original: column.original,
-          adjusted: validated?.adjusted,
-          confidence: validated?.confidence,
-        };
-      }),
       requiresClarification: preflight.reviewFlags.requiresClarification,
       reasons: preflight.reviewFlags.reasons,
     });
@@ -161,15 +158,31 @@ export async function POST(
       parts: [{ type: "text", text: message }],
     });
 
+    const job = buildAnalysisComputeJobView({
+      job: {
+        _id: jobId,
+        projectId: session.projectId,
+        jobType: "banner_extension_recompute",
+        status: preflight.reviewFlags.requiresClarification ? "needs_clarification" : "proposed",
+        requestText,
+        frozenBannerGroup: preflight.frozenBannerGroup,
+        frozenValidatedGroup: preflight.frozenValidatedGroup,
+        reviewFlags: preflight.reviewFlags,
+        fingerprint: preflight.fingerprint,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+    });
+
     return NextResponse.json({
       jobId: String(jobId),
-      status: preflight.reviewFlags.requiresClarification ? "needs_clarification" : "proposed",
-      fingerprint: preflight.fingerprint,
-      proposedGroup: preflight.frozenBannerGroup,
-      validatedGroup: preflight.frozenValidatedGroup,
-      reviewFlags: preflight.reviewFlags,
+      status: job.status,
+      job,
     });
   } catch (error) {
+    if (error instanceof AuthenticationError) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     return NextResponse.json({ error: routeErrorMessage(error, "Preflight failed") }, { status: 500 });
   }
 }

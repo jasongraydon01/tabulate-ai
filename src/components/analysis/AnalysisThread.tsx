@@ -5,6 +5,7 @@ import { DefaultChatTransport, isDataUIPart } from "ai";
 import { useChat } from "@ai-sdk/react";
 import { AlertCircle } from "lucide-react";
 
+import { AnalysisComputeJobCard } from "@/components/analysis/AnalysisComputeJobCard";
 import { AnalysisMessage } from "@/components/analysis/AnalysisMessage";
 import {
   isAnalysisThreadNearBottom,
@@ -15,6 +16,7 @@ import {
 import { PromptComposer } from "@/components/analysis/PromptComposer";
 import { GridLoader } from "@/components/ui/grid-loader";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import type { AnalysisComputeJobView } from "@/lib/analysis/computeLane/jobView";
 import type { AnalysisUIMessage } from "@/lib/analysis/ui";
 import type { AnalysisMessageFeedbackRecord, AnalysisMessageFeedbackVote } from "@/lib/analysis/types";
 
@@ -24,6 +26,8 @@ interface AnalysisThreadProps {
   sessionTitle: string;
   initialMessages: AnalysisUIMessage[];
   persistedMessages: AnalysisUIMessage[];
+  persistedMessageCreatedAtById: Record<string, number>;
+  computeJobs: AnalysisComputeJobView[];
   persistedAssistantMessageIds: string[];
   persistedUserMessageIds: string[];
   // Full message id list in the order Convex holds them for this session.
@@ -39,6 +43,41 @@ interface AnalysisThreadProps {
   // Called with just the messageId to truncate. The thread owns the client
   // state dance (stop → setMessages truncate → resend) internally.
   onTruncateFromMessage: (messageId: string) => Promise<void>;
+  onStartComputePreflight: (requestText: string) => Promise<void>;
+  onConfirmComputeJob: (job: AnalysisComputeJobView) => Promise<void>;
+  onCancelComputeJob: (job: AnalysisComputeJobView) => Promise<void>;
+  onContinueInDerivedRun: (job: AnalysisComputeJobView) => Promise<void>;
+}
+
+type AnalysisTimelineEntry =
+  | { kind: "message"; key: string; createdAt: number; message: AnalysisUIMessage; messageIndex: number }
+  | { kind: "compute-job"; key: string; createdAt: number; job: AnalysisComputeJobView };
+
+export function buildAnalysisTimelineEntries(params: {
+  messages: AnalysisUIMessage[];
+  computeJobs: AnalysisComputeJobView[];
+  messageCreatedAtById: Record<string, number>;
+}): AnalysisTimelineEntry[] {
+  const liveBase = Number.MAX_SAFE_INTEGER - params.messages.length - params.computeJobs.length - 1;
+  return [
+    ...params.messages.map((message, messageIndex): AnalysisTimelineEntry => ({
+      kind: "message",
+      key: `message-${message.id}`,
+      createdAt: params.messageCreatedAtById[message.id] ?? liveBase + messageIndex,
+      message,
+      messageIndex,
+    })),
+    ...params.computeJobs.map((job): AnalysisTimelineEntry => ({
+      kind: "compute-job",
+      key: `compute-job-${job.id}`,
+      createdAt: job.createdAt,
+      job,
+    })),
+  ].sort((left, right) => {
+    if (left.createdAt !== right.createdAt) return left.createdAt - right.createdAt;
+    if (left.kind === right.kind) return left.key.localeCompare(right.key);
+    return left.kind === "message" ? -1 : 1;
+  });
 }
 
 export function shouldShowAnalysisMessageActions(
@@ -113,14 +152,21 @@ export function AnalysisThread({
   sessionTitle,
   initialMessages,
   persistedMessages,
+  persistedMessageCreatedAtById,
+  computeJobs,
   persistedAssistantMessageIds,
   persistedUserMessageIds,
   persistedMessageIdsInOrder,
   messageFeedbackById,
   onSubmitMessageFeedback,
   onTruncateFromMessage,
+  onStartComputePreflight,
+  onConfirmComputeJob,
+  onCancelComputeJob,
+  onContinueInDerivedRun,
 }: AnalysisThreadProps) {
   const [input, setInput] = useState("");
+  const [isComputePreflightPending, setIsComputePreflightPending] = useState(false);
   const lastMessageRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const prevMessageCountRef = useRef(initialMessages.length);
@@ -155,6 +201,14 @@ export function AnalysisThread({
 
   const isBusy = status === "submitted" || status === "streaming";
   const shouldShowPendingState = shouldShowAnalysisPendingState(messages, status);
+  const timelineEntries = useMemo(
+    () => buildAnalysisTimelineEntries({
+      messages,
+      computeJobs,
+      messageCreatedAtById: persistedMessageCreatedAtById,
+    }),
+    [computeJobs, messages, persistedMessageCreatedAtById],
+  );
 
   // Once the turn is settled and Convex has replayed the canonical message
   // shape, snap the chat state to the persisted session so current-turn and
@@ -196,8 +250,8 @@ export function AnalysisThread({
     const frame = window.requestAnimationFrame(() => {
       const shouldAutoScroll = shouldStickToBottomRef.current;
 
-      if (messages.length > prevMessageCountRef.current && lastMessageRef.current) {
-        prevMessageCountRef.current = messages.length;
+      if (timelineEntries.length > prevMessageCountRef.current && lastMessageRef.current) {
+        prevMessageCountRef.current = timelineEntries.length;
         if (shouldAutoScroll) {
           scrollAnalysisThreadToMessageStart(viewport, lastMessageRef.current);
         }
@@ -210,17 +264,31 @@ export function AnalysisThread({
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [messages, shouldShowPendingState, status]);
+  }, [shouldShowPendingState, status, timelineEntries.length]);
 
   async function handleSubmit() {
     const nextInput = input.trim();
-    if (!nextInput || isBusy) return;
+    if (!nextInput || isBusy || isComputePreflightPending) return;
     setInput("");
     shouldStickToBottomRef.current = true;
     await sendMessage(
       { text: nextInput },
       { body: { sessionId } },
     );
+  }
+
+  async function handleComputeSubmit() {
+    const nextInput = input.trim();
+    if (!nextInput || isBusy || isComputePreflightPending) return;
+
+    setIsComputePreflightPending(true);
+    shouldStickToBottomRef.current = true;
+    try {
+      await onStartComputePreflight(nextInput);
+      setInput("");
+    } finally {
+      setIsComputePreflightPending(false);
+    }
   }
 
   async function handleFollowUpSuggestion(suggestion: string) {
@@ -286,7 +354,7 @@ export function AnalysisThread({
         viewportClassName="[&>div]:!block [&>div]:!w-full"
       >
         <div className="min-w-0 space-y-4 px-5 py-3 pb-24">
-          {messages.length === 0 ? (
+          {timelineEntries.length === 0 ? (
             <div className="flex min-h-[calc(100vh-18rem)] items-center justify-center px-6 py-10">
               <div className="mx-auto flex max-w-xl flex-col items-center gap-3 text-center">
                 <h3 className="font-serif text-3xl tracking-tight text-foreground sm:text-4xl">
@@ -298,7 +366,23 @@ export function AnalysisThread({
               </div>
             </div>
           ) : (
-            messages.map((message, index) => {
+            timelineEntries.map((entry, timelineIndex) => {
+              const isLastEntry = timelineIndex === timelineEntries.length - 1;
+              if (entry.kind === "compute-job") {
+                return (
+                  <div key={entry.key} ref={isLastEntry ? lastMessageRef : undefined}>
+                    <AnalysisComputeJobCard
+                      job={entry.job}
+                      onConfirm={onConfirmComputeJob}
+                      onCancel={onCancelComputeJob}
+                      onContinue={onContinueInDerivedRun}
+                      onRevise={setInput}
+                    />
+                  </div>
+                );
+              }
+
+              const { message, messageIndex: index } = entry;
               const isLastMessage = index === messages.length - 1;
               const isPendingAssistantShell = isBusy
                 && isLastMessage
@@ -313,7 +397,7 @@ export function AnalysisThread({
               const isPersistedUserMessage = message.role === "user"
                 && persistedUserMessageIdSet.has(message.id);
               return (
-                <div key={message.id} ref={isLastMessage ? lastMessageRef : undefined}>
+                <div key={entry.key} ref={isLastEntry ? lastMessageRef : undefined}>
                   <AnalysisMessage
                     message={message}
                     isStreaming={isLastMessage && isBusy}
@@ -359,8 +443,10 @@ export function AnalysisThread({
             value={input}
             onChange={setInput}
             onSubmit={handleSubmit}
+            onComputeSubmit={handleComputeSubmit}
             onStop={stop}
             isBusy={isBusy}
+            isComputeBusy={isComputePreflightPending}
           />
         </div>
       </div>

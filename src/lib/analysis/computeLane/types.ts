@@ -1,5 +1,5 @@
-import type { BannerGroupType } from '@/schemas/bannerPlanSchema';
-import type { ValidatedGroupType, ValidationResultType } from '@/schemas/agentOutputSchema';
+import type { ValidatedGroupType, ValidationResultType } from '../../../schemas/agentOutputSchema';
+import type { BannerGroupType } from '../../../schemas/bannerPlanSchema';
 
 export type AnalysisComputeJobStatus =
   | 'drafting'

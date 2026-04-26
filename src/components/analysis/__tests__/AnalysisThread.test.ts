@@ -3,11 +3,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildAnalysisTimelineEntries,
   hasVisibleAnalysisMessageParts,
   PendingAnalysisMessage,
   shouldShowAnalysisMessageActions,
   shouldShowAnalysisPendingState,
 } from "@/components/analysis/AnalysisThread";
+import type { AnalysisComputeJobView } from "@/lib/analysis/computeLane/jobView";
 import type { AnalysisUIMessage as UIMessage } from "@/lib/analysis/ui";
 
 describe("AnalysisThread action visibility", () => {
@@ -125,5 +127,38 @@ describe("AnalysisThread pending state", () => {
     expect(markup).not.toContain("Checking the run artifacts");
     expect(markup).not.toContain("Grounding the answer");
     expect(markup).not.toContain("<svg");
+  });
+});
+
+describe("AnalysisThread timeline entries", () => {
+  it("merges persisted messages and compute job cards by creation time", () => {
+    const messages: UIMessage[] = [
+      { id: "user-1", role: "user", parts: [{ type: "text", text: "Add region cuts" }] },
+      { id: "assistant-1", role: "assistant", parts: [{ type: "text", text: "Proposal created" }] },
+    ];
+    const computeJobs: AnalysisComputeJobView[] = [{
+      id: "job-1",
+      jobType: "banner_extension_recompute",
+      status: "proposed",
+      effectiveStatus: "proposed",
+      requestText: "Add region cuts",
+      createdAt: 200,
+      updatedAt: 200,
+    }];
+
+    const entries = buildAnalysisTimelineEntries({
+      messages,
+      computeJobs,
+      messageCreatedAtById: {
+        "user-1": 100,
+        "assistant-1": 300,
+      },
+    });
+
+    expect(entries.map((entry) => entry.key)).toEqual([
+      "message-user-1",
+      "compute-job-job-1",
+      "message-assistant-1",
+    ]);
   });
 });

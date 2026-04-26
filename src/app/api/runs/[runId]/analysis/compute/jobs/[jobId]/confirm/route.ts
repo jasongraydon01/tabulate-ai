@@ -3,8 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { loadAnalysisParentRunArtifacts } from "@/lib/analysis/computeLane/artifactLoader";
 import { buildAnalysisComputeFingerprint } from "@/lib/analysis/computeLane/fingerprint";
 import { buildWorkerExecutionPayload, buildWorkerPipelineContext, normalizeWizardWorkerInputRefs } from "@/lib/worker/buildExecutionPayload";
-import { getConvexClient, mutateInternal } from "@/lib/convex";
-import { requireConvexAuth } from "@/lib/requireConvexAuth";
+import { getConvexClient, mutateInternal, queryInternal } from "@/lib/convex";
+import { requireConvexAuth, AuthenticationError } from "@/lib/requireConvexAuth";
 import { applyRateLimit } from "@/lib/withRateLimit";
 import { BannerGroupSchema } from "@/schemas/bannerPlanSchema";
 import { ValidatedGroupSchema } from "@/schemas/agentOutputSchema";
@@ -76,7 +76,7 @@ export async function POST(
         runId: runId as Id<"runs">,
         orgId: auth.convexOrgId,
       }),
-      convex.query(api.analysisComputeJobs.getById, {
+      queryInternal(internal.analysisComputeJobs.getById, {
         orgId: auth.convexOrgId,
         jobId: jobId as Id<"analysisComputeJobs">,
       }),
@@ -89,11 +89,17 @@ export async function POST(
     if (run.status !== "success" && run.status !== "partial") {
       return NextResponse.json({ error: "Analysis compute requires a completed parent run" }, { status: 409 });
     }
+    if (run.expiredAt || run.artifactsPurgedAt) {
+      return NextResponse.json({ error: "Parent run artifacts have expired" }, { status: 410 });
+    }
     if (job.fingerprint !== fingerprint) {
       return NextResponse.json({ error: "Analysis compute job changed; rerun preflight" }, { status: 409 });
     }
     if (job.reviewFlags?.requiresClarification || job.reviewFlags?.requiresReview) {
       return NextResponse.json({ error: "This proposed group needs clarification before compute" }, { status: 409 });
+    }
+    if (job.status !== "proposed" && job.status !== "confirmed" && job.status !== "queued") {
+      return NextResponse.json({ error: `Analysis compute job cannot be confirmed from status ${job.status}` }, { status: 409 });
     }
     if (job.childRunId) {
       return NextResponse.json({ accepted: true, childRunId: String(job.childRunId), alreadyQueued: true });
@@ -201,6 +207,9 @@ export async function POST(
       analysisUrl: `/projects/${encodeURIComponent(String(job.projectId))}/runs/${encodeURIComponent(String(childRunId))}/analysis`,
     });
   } catch (error) {
+    if (error instanceof AuthenticationError) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     return NextResponse.json({ error: routeErrorMessage(error, "Confirmation failed") }, { status: 500 });
   }
 }

@@ -17,6 +17,7 @@ import {
   normalizePersistedAnalysisMessageRecord,
   persistedAnalysisMessagesToUIMessages,
 } from "@/lib/analysis/messages";
+import type { AnalysisComputeJobView } from "@/lib/analysis/computeLane/jobView";
 import type { AnalysisMessageFeedbackRecord, AnalysisMessageFeedbackVote } from "@/lib/analysis/types";
 import { useAuthContext } from "@/providers/auth-provider";
 
@@ -75,6 +76,15 @@ export function AnalysisWorkspace({
       orgId: convexOrgId as Id<"organizations">,
       sessionId: selectedSession._id,
       userId: convexUserId as Id<"users">,
+    } : "skip",
+  );
+
+  const computeJobs = useQuery(
+    api.analysisComputeJobs.listForSession,
+    convexOrgId && selectedSession ? {
+      orgId: convexOrgId as Id<"organizations">,
+      sessionId: selectedSession._id,
+      parentRunId: runId as Id<"runs">,
     } : "skip",
   );
 
@@ -232,6 +242,90 @@ export function AnalysisWorkspace({
     }
   }
 
+  async function handleStartComputePreflight(requestText: string) {
+    if (!selectedSession) {
+      throw new Error("No active analysis session");
+    }
+
+    const response = await fetch(`/api/runs/${encodeURIComponent(runId)}/analysis/compute/preflight`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sessionId: String(selectedSession._id),
+        requestText,
+      }),
+    });
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+    if (!response.ok) {
+      throw new Error(payload.error ?? "Failed to prepare derived run");
+    }
+
+    toast.success("Derived run proposal created");
+  }
+
+  async function handleConfirmComputeJob(job: AnalysisComputeJobView) {
+    if (!job.confirmToken) {
+      throw new Error("This proposed group is not ready to confirm");
+    }
+
+    const response = await fetch(
+      `/api/runs/${encodeURIComponent(runId)}/analysis/compute/jobs/${encodeURIComponent(job.id)}/confirm`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ fingerprint: job.confirmToken }),
+      },
+    );
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+    if (!response.ok) {
+      throw new Error(payload.error ?? "Failed to queue derived run");
+    }
+
+    toast.success("Derived run queued");
+  }
+
+  async function handleCancelComputeJob(job: AnalysisComputeJobView) {
+    const response = await fetch(
+      `/api/runs/${encodeURIComponent(runId)}/analysis/compute/jobs/${encodeURIComponent(job.id)}/cancel`,
+      { method: "POST" },
+    );
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+    if (!response.ok) {
+      throw new Error(payload.error ?? "Failed to cancel derived run");
+    }
+
+    toast.success("Derived run cancelled");
+  }
+
+  async function handleContinueInDerivedRun(job: AnalysisComputeJobView) {
+    if (!job.childRun) {
+      throw new Error("Derived run is not available yet");
+    }
+
+    if (job.childRun.analysisSessionId) {
+      router.push(`${job.childRun.analysisUrl}?sessionId=${encodeURIComponent(job.childRun.analysisSessionId)}`);
+      return;
+    }
+
+    const response = await fetch(`/api/runs/${encodeURIComponent(job.childRun.id)}/analysis/sessions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ title: "Derived run analysis" }),
+    });
+    const payload = await response.json().catch(() => ({})) as { error?: string; sessionId?: string };
+    if (!response.ok || !payload.sessionId) {
+      throw new Error(payload.error ?? "Failed to create derived run chat");
+    }
+
+    router.push(`${job.childRun.analysisUrl}?sessionId=${encodeURIComponent(payload.sessionId)}`);
+  }
+
   function renderThreadContent() {
     if (sessions === undefined) {
       return (
@@ -254,6 +348,7 @@ export function AnalysisWorkspace({
     if (
       messages === undefined
       || artifacts === undefined
+      || computeJobs === undefined
       || (convexUserId && feedback === undefined)
     ) {
       return (
@@ -270,7 +365,11 @@ export function AnalysisWorkspace({
         runId={runId}
         sessionId={String(selectedSession._id)}
         sessionTitle={selectedSession.title}
+        computeJobs={(computeJobs ?? []) as AnalysisComputeJobView[]}
         persistedMessages={persistedUIMessages}
+        persistedMessageCreatedAtById={Object.fromEntries(
+          (messages ?? []).map((message) => [String(message._id), message.createdAt]),
+        )}
         persistedAssistantMessageIds={messages
           .filter((message) => message.role === "assistant")
           .map((message) => String(message._id))}
@@ -294,6 +393,46 @@ export function AnalysisWorkspace({
             await handleTruncateFromMessage(messageId);
           } catch (error) {
             toast.error("Failed to edit message", {
+              description: error instanceof Error ? error.message : "Unknown error",
+            });
+            throw error;
+          }
+        }}
+        onStartComputePreflight={async (requestText) => {
+          try {
+            await handleStartComputePreflight(requestText);
+          } catch (error) {
+            toast.error("Failed to prepare derived run", {
+              description: error instanceof Error ? error.message : "Unknown error",
+            });
+            throw error;
+          }
+        }}
+        onConfirmComputeJob={async (job) => {
+          try {
+            await handleConfirmComputeJob(job);
+          } catch (error) {
+            toast.error("Failed to queue derived run", {
+              description: error instanceof Error ? error.message : "Unknown error",
+            });
+            throw error;
+          }
+        }}
+        onCancelComputeJob={async (job) => {
+          try {
+            await handleCancelComputeJob(job);
+          } catch (error) {
+            toast.error("Failed to cancel derived run", {
+              description: error instanceof Error ? error.message : "Unknown error",
+            });
+            throw error;
+          }
+        }}
+        onContinueInDerivedRun={async (job) => {
+          try {
+            await handleContinueInDerivedRun(job);
+          } catch (error) {
+            toast.error("Failed to open derived run", {
               description: error instanceof Error ? error.message : "Unknown error",
             });
             throw error;

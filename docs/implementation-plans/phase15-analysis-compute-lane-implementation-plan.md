@@ -1,16 +1,16 @@
 # Phase 15 Sub-Plan — Analysis Compute Lane
 
-**Status:** Slice 1 backend/API/worker lane implemented. Slice 2 is the next implementation slice.
+**Status:** Slices 1-2 implemented for Tier B banner-extension recompute. Slice 3 / Tier A single-table derivations is the next compute-lane product slice.
 
 **Purpose:** define the compute-lane architecture for Phase 15 so the analysis surface can extend a completed run without mutating the original run or re-litigating banner work that is already settled.
 
-This document now records the implemented Slice 1 boundary and the recommended Slice 2 scope. Slice 1 should be treated as complete for the backend compute-lane foundation; Slice 2 should build the user-facing analysis workspace handoff on top of that foundation.
+This document records the implemented Slice 1 backend/API/worker boundary and the implemented Slice 2 analysis-workspace handoff. The current compute lane supports one appended banner group at a time and creates a child run without mutating the parent run.
 
 ---
 
 ## Current state
 
-The base analysis surface is still read-only with respect to settled parent-run artifacts, but Slice 1 has added a separate analysis-triggered compute lane for Tier B banner extensions.
+The base analysis surface remains read-only with respect to settled parent-run artifacts, but the analysis workspace now has a separate analysis-triggered compute lane for Tier B banner extensions.
 
 - `src/app/api/runs/[runId]/analysis/route.ts` streams grounded answers over settled run artifacts.
 - `src/lib/analysis/grounding.ts` reads:
@@ -30,7 +30,7 @@ The base analysis surface is still read-only with respect to settled parent-run 
   - review resumes
   - analysis-triggered banner-extension child runs
 
-Slice 1 added:
+Slices 1-2 added:
 
 - `analysisComputeJobs` lifecycle persistence
 - optional child-run lineage on `runs`
@@ -40,8 +40,13 @@ Slice 1 added:
 - frozen fingerprinted job artifacts
 - an analysis-extension worker payload and worker dispatch path
 - a child-run executor that hydrates parent artifacts, merges the frozen appended group, runs compute/finalization under the child run id, and posts durable status messages back to the originating analysis session
-
-The remaining limitation is now user-facing, not architectural: the analysis workspace does not yet provide a polished in-chat control flow for requesting preflight, reviewing the proposed group, confirming it, tracking the derived run, and resuming into the child run. That is Slice 2.
+- a sanitized read-only `analysisComputeJobs.listForSession` query for the analysis workspace
+- explicit in-chat compute controls separate from normal assistant turns
+- proposal, clarification, queued/running, complete, failed, cancelled, and expired job cards
+- persisted cancel/reject through the compute-job API
+- refresh-safe resume from the parent analysis session
+- a completed-run handoff that creates or reuses a child-run analysis session
+- internal-only raw compute-job reads for API routes; browser-visible compute-job state goes through the sanitized read model
 
 ---
 
@@ -353,13 +358,13 @@ Not included in Slice 1:
 
 ### Slice 2 — Analysis workspace handoff and child-run resume
 
-**Status:** next implementation slice.
+**Status:** implemented.
 
-Slice 2 should make the Slice 1 backend lane feel native inside the analysis workspace. The backend can already preflight, confirm, queue, compute, and post durable breadcrumbs; Slice 2 should wire those capabilities into clear user-facing states and controls.
+Slice 2 makes the Slice 1 backend lane feel native inside the analysis workspace. Compute-job cards are now authoritative for UI state; Slice 1 assistant breadcrumbs remain in the transcript as historical context and are not parsed for state.
 
-### Recommended Slice 2 scope
+### Implemented Slice 2 scope
 
-Slice 2 should include:
+Slice 2 includes:
 
 - in-chat banner-extension preflight controls
 - a proposed-group confirmation UI
@@ -367,23 +372,27 @@ Slice 2 should include:
 - derived-run queued/running/complete status inside the analysis workspace
 - a clear "continue in derived run" handoff when the child run is ready
 - old-session resume behavior that makes prior compute jobs visible when the user reopens the parent analysis session
+- persisted cancel/reject for proposed, blocked, queued, and running jobs
+- parent/child artifact-expiration handling in the read model and API routes
 
-Slice 2 should not include:
+Slice 2 does not include:
 
 - multi-group banner extension
 - old-group editing
 - single-table derivations
 - derived artifact history beyond what is needed to resume the current job
 - a second review system separate from the existing job review flags
+- typed natural-language confirmation
+- clarification repair against the same job
 
-### UX states to implement
+### Implemented UX states
 
-The analysis workspace should support these states for a banner-extension request:
+The analysis workspace supports these states for a banner-extension request:
 
 1. **Eligible parent run**
    - parent run is `success` or `partial`
    - analysis session belongs to the run/project/org
-   - compute action can be offered
+   - compute action is offered as a separate composer action, not as normal chat send
 
 2. **Preflight running**
    - user sees that TabulateAI is inspecting the settled run and drafting one appended group
@@ -392,7 +401,8 @@ The analysis workspace should support these states for a banner-extension reques
 3. **Proposal ready**
    - show group name
    - show each proposed cut
-   - show validated expression summaries only if they are understandable and safe to expose
+   - show human-readable summaries first
+   - keep raw executable expressions behind a details toggle
    - show confidence/review warnings when present
    - provide explicit confirm and cancel/reject actions
 
@@ -404,73 +414,83 @@ The analysis workspace should support these states for a banner-extension reques
 
 5. **Queued / running**
    - show that a derived run has been queued
-   - show child run id or a derived-run label
-   - subscribe to child run status if practical
+   - show child run progress, stage, and message when available
+   - subscribe to child run status through the compute-job read model
    - keep the user in the parent analysis chat until outputs are ready
 
 6. **Complete**
    - show that the derived run is ready
-   - provide a prominent link to `/projects/[projectId]/runs/[childRunId]/analysis`
+   - provide a prominent "continue in derived run" action
+   - create or reuse a child-run analysis session before navigation
    - explain that the new run is derived from the original and includes the confirmed appended group
 
-7. **Failed / cancelled**
+7. **Failed / cancelled / expired**
    - show failure or cancellation state from the job/run
    - provide a retry path that reruns preflight instead of blindly reusing stale artifacts
 
 ### Frontend/API integration
 
-Slice 2 should call the existing Slice 1 routes:
+Slice 2 calls the existing Slice 1 routes:
 
 - `POST /api/runs/[runId]/analysis/compute/preflight`
   - body: `sessionId`, `requestText`
-  - returns: `jobId`, `status`, `fingerprint`, `proposedGroup`, `validatedGroup`, `reviewFlags`
+  - returns: `jobId`, `status`, and a sanitized `job` view
+  - also persists the user's compute request as a normal user message when preflight succeeds
+  - does not return raw frozen groups, validated artifacts, R2 keys, or parent output maps
 
 - `POST /api/runs/[runId]/analysis/compute/jobs/[jobId]/confirm`
   - body: `fingerprint`
   - returns: `childRunId`, `projectId`, `analysisUrl`
+  - rejects terminal jobs before any existing-child idempotency shortcut
+  - rejects expired parent artifacts with `410`
 
-The UI should treat `fingerprint` as an opaque concurrency token. It should not recompute or inspect the fingerprint client-side.
+- `POST /api/runs/[runId]/analysis/compute/jobs/[jobId]/cancel`
+  - cancels proposed / blocked jobs directly
+  - requests child-run cancellation for queued / running jobs
+  - is idempotent for terminal jobs
 
-### Data subscription needs
+The UI treats `fingerprint` as an opaque confirmation token. It does not recompute or inspect the fingerprint client-side. Raw compute-job documents are not public Convex API; confirm/cancel routes read full jobs through internal queries, while the browser subscribes only to `listForSession`.
 
-Slice 2 likely needs one or both of:
+### Data subscription
 
-- a public Convex query to list analysis compute jobs for a session
-- a public Convex query to fetch one analysis compute job by id for the current org/session context
+Implemented:
 
-Those queries should be read-only and org-scoped. Client-side code should not mutate compute jobs directly; confirmations and retries should continue to go through API routes.
+- `analysisComputeJobs.listForSession({ orgId, sessionId, parentRunId })`
 
-The session resume view should use those queries to reconstruct:
+The query is read-only, org-scoped, and returns a sanitized client view rather than raw job documents. It includes proposed cut summaries, blocking review flags, an opaque confirm token only when confirmation is allowed, child-run progress/status, and the first active child-run analysis session id when available. It does not expose R2 keys, full parent artifact maps, or raw frozen job objects.
+
+The session resume view uses this query to reconstruct:
 
 - latest proposed or blocked job
 - queued/running child run status
 - completed child run link
 - failed/cancelled state
+- expired proposal or child-run state when parent or child artifacts are no longer available
 
 This is the durable answer to the "resume from a previous chat session" requirement. The Slice 1 assistant breadcrumbs are useful, but Slice 2 should not rely only on message text parsing.
 
-### Component-level starting points
+### Component-level implementation
 
-Likely frontend touch points:
+Implemented across:
 
 - `src/components/analysis/AnalysisWorkspace.tsx`
 - `src/components/analysis/AnalysisThread.tsx`
-- `src/components/analysis/AnalysisMessage.tsx`
 - `src/components/analysis/PromptComposer.tsx`
-- `src/components/analysis/AnalysisSessionList.tsx`
+- `src/components/analysis/AnalysisComputeJobCard.tsx`
+- `src/lib/analysis/computeLane/jobView.ts`
 
-Expected new UI can be small and stateful:
+The UI remains deliberately small:
 
 - a banner-extension proposal card
 - confirm/reject controls
-- job status badge or inline status row
-- completed derived-run link
+- job status/progress display
+- completed derived-run handoff
 
-Avoid building a broad history dashboard in Slice 2. The parent-session resume path only needs to surface active/recent jobs attached to that session.
+No broad history dashboard was added. The parent-session resume path surfaces jobs attached to the selected analysis session.
 
-### Slice 2 acceptance criteria
+### Slice 2 acceptance status
 
-Slice 2 is complete when:
+Complete:
 
 - a user can initiate a one-group banner-extension preflight from the analysis workspace
 - the proposed group/cuts are shown in a structured confirmation UI
@@ -481,19 +501,44 @@ Slice 2 is complete when:
 - reopening the original parent analysis session shows enough status to continue or understand what happened
 - completed jobs link cleanly into the derived child run analysis page
 - no frontend path mutates parent artifacts or bypasses the worker queue
+- cancel/reject is persisted through an authenticated API route
+- compute requests use a separate composer action and do not rely on assistant intent detection
+- raw compute-job lookup is internal-only
+- preflight returns a sanitized job view and keeps executable expressions out of transcript breadcrumbs
+- cancel is idempotent against stale job state when the child run is already terminal
+- confirm rejects terminal jobs before returning an existing child run
+- unauthenticated compute route calls return `401 Unauthorized`
+- expired parent/child artifact state is represented as `expired` in job cards
 
-### Slice 2 testing plan
+Post-audit hardening completed for Slice 2:
 
-Add focused tests around:
+- `analysisComputeJobs.getById` moved from public query to internal query
+- compute preflight/confirm/cancel routes now handle `AuthenticationError`
+- preflight response no longer exposes frozen preflight artifacts
+- proposal breadcrumbs no longer print raw expressions; detailed expressions remain available only through the job card details toggle
+- cancellation checks child-run terminal state before mutating the child run
+- confirm validates job status before the existing-child idempotency path
+- read model derives `expired` for unconfirmed jobs whose parent artifacts expired and completed child runs whose artifacts expired
 
-- rendering a proposed banner-extension card
-- confirm button disabled for `needs_clarification` / `requiresReview`
-- confirm request includes the opaque fingerprint
-- completed job renders the child analysis link
-- session reload restores job state from Convex query data
-- route error states render without losing the original chat thread
+### Slice 2 tests
 
-Run at minimum:
+Added focused coverage around:
+
+- sanitized compute-job projection
+- internal-only raw compute-job lookup
+- route-level auth failures returning `401`
+- confirm-token exposure only for confirmable jobs
+- child-run status/session projection
+- parent/child artifact-expiration projection
+- proposed, blocked, queued/running, complete, failed, cancelled, and expired card rendering
+- timeline merge between chat messages and compute-job cards
+- cancel route behavior for proposed, queued/running, wrong-parent, and terminal jobs
+- existing confirm route fingerprint/idempotency regression
+- confirm rejection for terminal jobs with an attached child run
+- preflight sanitized response and transcript breadcrumb behavior
+- explicit composer action rendering for derived-run creation
+
+Run before merge:
 
 - targeted component tests for the analysis workspace additions
 - targeted route/query tests for any new Convex queries
@@ -512,6 +557,7 @@ Focus:
 - appended cuts, NETs, or derived views
 - persistent derived artifacts with clear lineage
 - no mutation of the canonical run results
+- reusing the explicit alignment / freeze / backend-compute pattern established by Slices 1-2
 
 This slice should reuse the same overall philosophy as Slice 1:
 
@@ -527,10 +573,14 @@ After both lanes exist, broaden the surface.
 
 Possible focus areas:
 
+- clarification repair against the existing job
+- typed confirmation after an unambiguous active proposal
 - re-discovery of prior derivations within a run
 - history of analysis-triggered compute jobs
 - richer follow-up flows after recompute
 - broader multi-group extension workflows if real usage supports them
+- old-group editing if real usage supports it
+- structured compute message parts if breadcrumbs need richer transcript integration
 
 This slice should remain usage-driven. It is intentionally deferred.
 
