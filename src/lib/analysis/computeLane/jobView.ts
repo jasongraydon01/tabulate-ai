@@ -26,6 +26,9 @@ export interface AnalysisComputeJobView {
   status: AnalysisComputeJobClientStatus;
   effectiveStatus: AnalysisComputeJobClientStatus;
   requestText: string;
+  originClientTurnId?: string;
+  originUserMessageId?: string;
+  originAssistantMessageId?: string;
   proposedGroup?: {
     groupName: string;
     cuts: AnalysisComputeJobCutView[];
@@ -92,6 +95,9 @@ interface RawAnalysisComputeJob {
   jobType: string;
   status: AnalysisComputeJobClientStatus;
   requestText: string;
+  originClientTurnId?: string;
+  originUserMessageId?: unknown;
+  originAssistantMessageId?: unknown;
   frozenBannerGroup?: unknown;
   frozenValidatedGroup?: unknown;
   frozenTableRollupSpec?: unknown;
@@ -328,6 +334,9 @@ export function buildAnalysisComputeJobView(params: {
     status: params.job.status,
     effectiveStatus,
     requestText: params.job.requestText,
+    ...(params.job.originClientTurnId ? { originClientTurnId: params.job.originClientTurnId } : {}),
+    ...(params.job.originUserMessageId ? { originUserMessageId: String(params.job.originUserMessageId) } : {}),
+    ...(params.job.originAssistantMessageId ? { originAssistantMessageId: String(params.job.originAssistantMessageId) } : {}),
     ...(buildProposedGroup(params.job) ? { proposedGroup: buildProposedGroup(params.job) } : {}),
     ...(buildProposedTableRollup(params.job) ? { proposedTableRollup: buildProposedTableRollup(params.job) } : {}),
     ...(buildProposedSelectedTableCut(params.job) ? { proposedSelectedTableCut: buildProposedSelectedTableCut(params.job) } : {}),

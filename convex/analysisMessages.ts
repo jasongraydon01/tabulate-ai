@@ -167,6 +167,7 @@ export const create = internalMutation({
   args: {
     sessionId: v.id("analysisSessions"),
     orgId: v.id("organizations"),
+    clientTurnId: v.optional(v.string()),
     role: v.union(
       v.literal("user"),
       v.literal("assistant"),
@@ -189,7 +190,62 @@ export const create = internalMutation({
     const messageId = await ctx.db.insert("analysisMessages", {
       sessionId: args.sessionId,
       orgId: args.orgId,
+      ...(args.clientTurnId ? { clientTurnId: args.clientTurnId } : {}),
       role: args.role,
+      content: args.content,
+      createdAt,
+      ...(args.parts ? { parts: args.parts } : {}),
+      ...(args.groundingRefs ? { groundingRefs: args.groundingRefs } : {}),
+      ...(args.contextEvidence ? { contextEvidence: args.contextEvidence } : {}),
+      ...(args.followUpSuggestions ? { followUpSuggestions: args.followUpSuggestions } : {}),
+      ...(args.agentMetrics ? { agentMetrics: args.agentMetrics } : {}),
+    });
+
+    await ctx.db.patch(args.sessionId, {
+      lastMessageAt: createdAt,
+    });
+
+    return messageId;
+  },
+});
+
+export const createAssistantForTurn = internalMutation({
+  args: {
+    sessionId: v.id("analysisSessions"),
+    orgId: v.id("organizations"),
+    clientTurnId: v.string(),
+    content: v.string(),
+    parts: v.optional(v.array(messagePartValidator)),
+    groundingRefs: v.optional(v.array(groundingRefValidator)),
+    contextEvidence: v.optional(v.array(groundingRefValidator)),
+    followUpSuggestions: v.optional(v.array(v.string())),
+    agentMetrics: v.optional(agentMetricsValidator),
+  },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session || session.orgId !== args.orgId) {
+      throw new Error("Analysis session not found");
+    }
+
+    const existing = await ctx.db
+      .query("analysisMessages")
+      .withIndex("by_session_created", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+    const existingAssistant = existing.find((message) =>
+      message.orgId === args.orgId
+      && message.role === "assistant"
+      && message.clientTurnId === args.clientTurnId
+    );
+    if (existingAssistant) {
+      return existingAssistant._id;
+    }
+
+    const createdAt = Date.now();
+    const messageId = await ctx.db.insert("analysisMessages", {
+      sessionId: args.sessionId,
+      orgId: args.orgId,
+      clientTurnId: args.clientTurnId,
+      role: "assistant",
       content: args.content,
       createdAt,
       ...(args.parts ? { parts: args.parts } : {}),

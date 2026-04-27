@@ -132,6 +132,8 @@ export async function createAnalysisBannerExtensionProposal(params: {
   parentRunId: Id<"runs">;
   sessionId: Id<"analysisSessions">;
   requestedBy: Id<"users">;
+  originClientTurnId?: string;
+  originUserMessageId?: Id<"analysisMessages">;
   requestText: string;
   parentRun: ParentRunForProposal;
   project: ProjectForProposal;
@@ -141,6 +143,7 @@ export async function createAnalysisBannerExtensionProposal(params: {
   abortSignal?: AbortSignal;
 }): Promise<CreateAnalysisBannerExtensionProposalResult> {
   const requestText = params.requestText.trim();
+  let originUserMessageId = params.originUserMessageId;
   if (!requestText) {
     throw new AnalysisComputeProposalError("Request text is required", 400, "not_eligible");
   }
@@ -184,9 +187,10 @@ export async function createAnalysisBannerExtensionProposal(params: {
     });
 
     if (params.transcriptMode === "route_breadcrumbs") {
-      await mutateInternal(internal.analysisMessages.create, {
+      originUserMessageId = await mutateInternal(internal.analysisMessages.create, {
         sessionId: params.sessionId,
         orgId: params.orgId,
+        ...(params.originClientTurnId ? { clientTurnId: params.originClientTurnId } : {}),
         role: "user",
         content: requestText,
         parts: [{ type: "text", text: requestText }],
@@ -202,6 +206,8 @@ export async function createAnalysisBannerExtensionProposal(params: {
       parentRunId: params.parentRunId,
       sessionId: params.sessionId,
       requestedBy: params.requestedBy,
+      ...(params.originClientTurnId ? { originClientTurnId: params.originClientTurnId } : {}),
+      ...(originUserMessageId ? { originUserMessageId } : {}),
       requestText,
       status,
       frozenBannerGroup: preflight.frozenBannerGroup,
@@ -221,6 +227,7 @@ export async function createAnalysisBannerExtensionProposal(params: {
       await mutateInternal(internal.analysisMessages.create, {
         sessionId: params.sessionId,
         orgId: params.orgId,
+        ...(params.originClientTurnId ? { clientTurnId: params.originClientTurnId } : {}),
         role: "assistant",
         content: message,
         parts: [{ type: "text", text: message }],

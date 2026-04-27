@@ -73,6 +73,8 @@ export async function streamAnalysisResponse({
     parentRunId: Id<"runs">;
     sessionId: Id<"analysisSessions">;
     requestedBy: Id<"users">;
+    originClientTurnId?: string;
+    originUserMessageId?: Id<"analysisMessages">;
     parentRun: {
       _id: Id<"runs">;
       status: string;

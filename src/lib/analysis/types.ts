@@ -52,6 +52,12 @@ export interface AnalysisEvidenceItem {
 }
 
 export interface AnalysisMessageMetadata {
+  clientTurnId?: string;
+  persistedMessageId?: string;
+  persistence?: {
+    status: "persisted" | "unsaved";
+    warning?: string;
+  };
   hasGroundedClaims?: boolean;
   evidence?: AnalysisEvidenceItem[];
   contextEvidence?: AnalysisEvidenceItem[];

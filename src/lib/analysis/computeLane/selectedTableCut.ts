@@ -124,6 +124,8 @@ export async function createAnalysisSelectedTableCutProposal(params: {
   parentRunId: Id<"runs">;
   sessionId: Id<"analysisSessions">;
   requestedBy: Id<"users">;
+  originClientTurnId?: string;
+  originUserMessageId?: Id<"analysisMessages">;
   requestText: string;
   candidate: AnalysisSelectedTableCutCandidate;
   parentRun: ParentRunForSelectedTableCut;
@@ -276,6 +278,8 @@ export async function createAnalysisSelectedTableCutProposal(params: {
     parentRunId: params.parentRunId,
     sessionId: params.sessionId,
     requestedBy: params.requestedBy,
+    ...(params.originClientTurnId ? { originClientTurnId: params.originClientTurnId } : {}),
+    ...(params.originUserMessageId ? { originUserMessageId: params.originUserMessageId } : {}),
     requestText,
     frozenSelectedTableCutSpec,
     reviewFlags: {

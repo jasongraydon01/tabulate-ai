@@ -12,6 +12,17 @@ import type { Id } from "../../../../../../../../convex/_generated/dataModel";
 
 const CONVEX_ID_RE = /^[a-zA-Z0-9_.-]+$/;
 
+function createAnalysisClientTurnId(): string {
+  return `turn-${crypto.randomUUID()}`;
+}
+
+function normalizeClientTurnId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || !CONVEX_ID_RE.test(trimmed)) return null;
+  return trimmed;
+}
+
 function routeErrorMessage(error: unknown, fallback: string): string {
   if (process.env.NODE_ENV === "development" && error instanceof Error) {
     return error.message;
@@ -36,11 +47,16 @@ export async function POST(
     const body = await request.json().catch(() => null) as {
       sessionId?: unknown;
       requestText?: unknown;
+      clientTurnId?: unknown;
     } | null;
     const sessionId = typeof body?.sessionId === "string" ? body.sessionId : "";
     const requestText = typeof body?.requestText === "string" ? body.requestText.trim() : "";
+    const clientTurnId = normalizeClientTurnId(body?.clientTurnId) ?? createAnalysisClientTurnId();
     if (!sessionId || !CONVEX_ID_RE.test(sessionId)) {
       return NextResponse.json({ error: "Invalid session ID" }, { status: 400 });
+    }
+    if (body?.clientTurnId !== undefined && !normalizeClientTurnId(body.clientTurnId)) {
+      return NextResponse.json({ error: "Invalid client turn ID" }, { status: 400 });
     }
     if (!requestText) {
       return NextResponse.json({ error: "Request text is required" }, { status: 400 });
@@ -85,6 +101,7 @@ export async function POST(
       parentRun: run,
       project,
       session,
+      originClientTurnId: clientTurnId,
       transcriptMode: "route_breadcrumbs",
       abortSignal: request.signal,
     });

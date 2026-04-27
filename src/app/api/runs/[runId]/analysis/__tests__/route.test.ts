@@ -178,6 +178,20 @@ function makeStreamResult(options: {
             });
           }
 
+          if (typeof part.type === "string" && part.type.startsWith("tool-propose")) {
+            writer.write({
+              type: "tool-input-available",
+              toolCallId: String(part.toolCallId ?? "proposal-1"),
+              toolName: part.type.replace(/^tool-/, ""),
+              input: part.input ?? {},
+            });
+            writer.write({
+              type: "tool-output-available",
+              toolCallId: String(part.toolCallId ?? "proposal-1"),
+              output: part.output,
+            });
+          }
+
           if (part.type === "tool-submitAnswer") {
             writer.write({
               type: "tool-input-available",
@@ -235,6 +249,24 @@ describe("analysis chat route", () => {
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "Invalid session ID" });
+  });
+
+  it("returns 400 when the client turn id is invalid", async () => {
+    const response = await POST(
+      new NextRequest("http://localhost/api/runs/run-1/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          clientTurnId: "../bad",
+          messages: [{ id: "user-1", role: "user", parts: [{ type: "text", text: "Hello" }] }],
+        }),
+      }),
+      { params: Promise.resolve({ runId: "run-1" }) },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Invalid client turn ID" });
   });
 
   it("returns 404 when the session is not attached to the run", async () => {
@@ -298,13 +330,14 @@ describe("analysis chat route", () => {
     expect(mocks.mutateInternal.mock.calls[0][1]).toEqual({
       sessionId: "session-1",
       orgId: "org-1",
+      clientTurnId: expect.any(String),
       role: "user",
       content: "What should I look at next?",
     });
     expect(mocks.mutateInternal.mock.calls[1][1]).toEqual({
       sessionId: "session-1",
       orgId: "org-1",
-      role: "assistant",
+      clientTurnId: expect.any(String),
       content: "Here is a careful next step.",
       parts: [
         { type: "text", text: "Here is a careful next step." },
@@ -339,6 +372,162 @@ describe("analysis chat route", () => {
       projectIntake: {},
       derivedArtifacts: [],
     });
+  });
+
+  it("streams a validated answer with an unsaved warning when assistant persistence fails after retry", async () => {
+    mocks.query
+      .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
+      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Audit Session", titleSource: "manual" })
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
+    mocks.mutateInternal
+      .mockResolvedValueOnce("user-msg-1")
+      .mockRejectedValueOnce(new Error("convex unavailable"))
+      .mockRejectedValueOnce(new Error("convex unavailable"));
+    mocks.streamAnalysisResponse.mockResolvedValueOnce({
+      streamResult: makeStreamResult({
+        responseMessage: {
+          parts: [makeSubmitAnswerPart([
+            { type: "text", text: "This answer is validated." },
+          ])],
+        },
+      }),
+      getTraceCapture: () => makeTraceCapture(),
+      getGroundingCapture: () => [],
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/runs/run-1/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          clientTurnId: "turn-test-1",
+          messages: [{ id: "user-1", role: "user", parts: [{ type: "text", text: "Answer this" }] }],
+        }),
+      }),
+      { params: Promise.resolve({ runId: "run-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("This answer is validated.");
+    expect(body).toContain("unsaved");
+    expect(body).toContain("could not save");
+    expect(mocks.mutateInternal).toHaveBeenCalledTimes(3);
+    expect(mocks.writeAnalysisTurnErrorTrace).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: "session-1",
+      assistantText: "This answer is validated.",
+    }));
+  });
+
+  it("retries assistant persistence idempotently after origin patch failure", async () => {
+    mocks.query
+      .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
+      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Audit Session", titleSource: "manual" })
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
+    mocks.mutateInternal
+      .mockResolvedValueOnce("user-msg-1")
+      .mockResolvedValueOnce("artifact-1")
+      .mockResolvedValueOnce("assistant-msg-1")
+      .mockRejectedValueOnce(new Error("origin patch failed"))
+      .mockResolvedValueOnce("assistant-msg-1")
+      .mockResolvedValueOnce({ updated: 1 });
+    mocks.streamAnalysisResponse.mockResolvedValueOnce({
+      streamResult: makeStreamResult({
+        responseMessage: {
+          parts: [
+            {
+              type: "tool-fetchTable",
+              toolCallId: "tool-1",
+              state: "output-available",
+              input: { tableId: "q1", cutGroups: null },
+              output: {
+                status: "available",
+                tableId: "q1",
+                title: "Q1 overall",
+                questionId: "Q1",
+                questionText: "How satisfied are you?",
+                tableType: "frequency",
+                surveySection: null,
+                baseText: "All respondents",
+                tableSubtitle: null,
+                userNote: null,
+                valueMode: "pct",
+                columns: [],
+                columnGroups: [{ groupKey: "__total__", groupName: "Total", columns: [] }],
+                rows: [],
+                totalRows: 0,
+                totalColumns: 0,
+                truncatedRows: 0,
+                truncatedColumns: 0,
+                defaultScope: "total_only",
+                initialVisibleRowCount: 0,
+                initialVisibleGroupCount: 0,
+                hiddenRowCount: 0,
+                hiddenGroupCount: 0,
+                focusedCutIds: null,
+                requestedCutGroups: null,
+                focusedRowKeys: null,
+                focusedGroupKeys: null,
+                significanceTest: null,
+                significanceLevel: null,
+                comparisonGroups: [],
+                sourceRefs: [],
+              },
+            },
+            {
+              type: "tool-proposeRowRollup",
+              toolCallId: "rollup-1",
+              state: "output-available",
+              input: { requestText: "Roll these up" },
+              output: { status: "proposed", jobId: "job-1" },
+            },
+            makeSubmitAnswerPart([
+              { type: "text", text: "Here is the grounded table." },
+              { type: "render", tableId: "q1" },
+            ]),
+          ],
+        },
+      }),
+      getTraceCapture: () => makeTraceCapture(),
+      getGroundingCapture: () => [],
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/runs/run-1/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          clientTurnId: "turn-test-1",
+          messages: [{ id: "user-1", role: "user", parts: [{ type: "text", text: "Show me Q1" }] }],
+        }),
+      }),
+      { params: Promise.resolve({ runId: "run-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("Here is the grounded table.");
+    expect(body).toContain("assistant-msg-1");
+    expect(body).not.toContain("unsaved");
+    expect(mocks.mutateInternal).toHaveBeenCalledTimes(6);
+    const artifactCreates = mocks.mutateInternal.mock.calls
+      .map((call) => call[1])
+      .filter((args) => args?.artifactType === "table_card");
+    const assistantCreates = mocks.mutateInternal.mock.calls
+      .map((call) => call[1])
+      .filter((args) => args?.content === "Here is the grounded table.");
+    const originPatches = mocks.mutateInternal.mock.calls
+      .map((call) => call[1])
+      .filter((args) => args?.originAssistantMessageId === "assistant-msg-1");
+    expect(artifactCreates).toHaveLength(1);
+    expect(assistantCreates).toHaveLength(2);
+    expect(originPatches).toHaveLength(2);
   });
 
   it("does not persist proposal tool breadcrumbs in assistant messages", async () => {
@@ -391,7 +580,6 @@ describe("analysis chat route", () => {
     expect(response.status).toBe(200);
     await response.text();
     expect(mocks.mutateInternal.mock.calls[1][1]).toMatchObject({
-      role: "assistant",
       parts: [
         { type: "text", text: "I need the exact source rows before TabulateAI can prepare that roll-up." },
       ],
@@ -625,6 +813,11 @@ describe("analysis chat route", () => {
         {
           id: "user-msg-1",
           role: "user",
+          metadata: {
+            clientTurnId: expect.any(String),
+            persistedMessageId: "user-msg-1",
+            persistence: { status: "persisted" },
+          },
           parts: [{ type: "text", text: "Use the prior grounding" }],
         },
       ],
@@ -727,7 +920,7 @@ describe("analysis chat route", () => {
     expect(mocks.mutateInternal.mock.calls[2][1]).toEqual({
       sessionId: "session-1",
       orgId: "org-1",
-      role: "assistant",
+      clientTurnId: expect.any(String),
       content: "Here is the grounded table.",
       parts: [
         {

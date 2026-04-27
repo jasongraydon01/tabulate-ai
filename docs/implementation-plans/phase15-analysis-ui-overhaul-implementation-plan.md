@@ -1,6 +1,6 @@
 # Phase 15 Sub-Plan - Analysis UI Overhaul
 
-**Status:** active. Slice 0 is complete; Slices 1-7 are not yet started. This is a product-shape plan, not a per-ticket implementation spec. Each implementation slice should get its own focused plan before code work begins.
+**Status:** active. Slice 0 and Slice 1 are complete; Slices 2-7 remain. This is a product-shape plan, not a per-ticket implementation spec. Each implementation slice should get its own focused plan before code work begins.
 
 **Purpose:** clean up the Phase 15 analysis chat foundation before Tier A Bucket 3 work. The goal is a calmer, more predictable, more premium chat experience: grounded answers reveal smoothly after validation, thinking/tool activity carries the wait honestly, and live turns render the same way as reloaded sessions.
 
@@ -90,21 +90,32 @@ Completed baseline package: [slice-0/baseline.md](/Users/jasongraydon01/tabulate
 
 Exit criteria: the overhaul has a concrete baseline, a list of representative states, and a QA checklist each later slice can run against.
 
-### Slice 1 - Settled Answer Model And Timeline Ordering
+### Slice 1 - Settled Answer Model And Timeline Ordering - Complete
 
 Do the architectural correction before swapping most UI primitives. The current backend already withholds final answer text until trust validation; this slice makes the frontend consume that reality explicitly.
 
-- Introduce a normalized settled answer model derived from `AnalysisUIMessage.parts` plus message metadata.
-- Make this model the single input to answer rendering for both live turns and persisted messages.
-- Decide and document the live-turn source of truth after validation:
-  - either reveal from the streamed final parts and then reconcile to persisted Convex state without changing DOM shape
-  - or wait for Convex replay and reveal from the persisted message
-- Replace timestamp-sensitive timeline interleaving with a single deterministic ordering policy for messages and compute jobs.
-- Fix the derived-cut proposal ordering bug as part of that ordering policy.
-- Keep the server's strict finalization path intact: validate `submitAnswer`, validate citations/render parts, resolve trust, then produce the settled answer model.
-- Separate "answer is validated" from "artifacts/messages are persisted" so the implementation is explicit about what the user is seeing and what can be safely reloaded.
+Implemented shape:
 
-Exit criteria: live and refreshed sessions render the same assistant answer structure in the same order. Compute proposals no longer move around after refresh. The answer renderer no longer depends on whether a message has "ever streamed."
+- Added a normalized settled answer model derived from `AnalysisUIMessage.parts` plus message metadata. `AnalysisMessage` now uses this model for streamed and persisted assistant answers.
+- Chose the live-turn source of truth: reveal from validated streamed final parts, then reconcile to persisted Convex state without changing the answer DOM shape. Persistence-dependent actions wait for a persisted assistant message ID.
+- Added durable turn identity with `clientTurnId` on analysis messages and origin fields on compute jobs. These fields are additive and legacy timestamp-only records still fall back to timestamp attachment.
+- Replaced timestamp-first message/job interleaving with turn-scoped ordering. Compute proposal cards attach to the originating turn and render in that turn's artifact slot, below the triggering request and below that turn's assistant reasoning/tool activity. Explicitly turn-scoped jobs wait until their originating turn is visible; only legacy jobs with no origin fields use timestamp fallback.
+- Fixed the derived-cut proposal ordering issue through the same turn-ordering policy rather than by hard-coding a fixed proposal-confirmation position.
+- Kept server finalization strict: `submitAnswer`, citations, render parts, and trust validation still gate the final answer.
+- Separated "answer is validated" from "answer is persisted." If assistant-message persistence fails after bounded retry, TabulateAI can show the validated answer with an unsaved warning while disabling persistence-dependent actions. Persistence retry is idempotent at the assistant-message layer, keyed by `sessionId + clientTurnId`; table artifacts are created once and are not re-created by retry.
+- Kept `GroundedTableCard` bespoke and preserved citation identity, grounded answer behavior, and the structured-parts trust contract.
+- Left the production analysis prompt unchanged. Light proposal-card handoff guidance was added only to the alternative prompt and covered by prompt tests.
+
+Exit criteria met: live and refreshed sessions render the same assistant answer structure in the same order. Compute proposals no longer move above the triggering turn after refresh. The answer renderer no longer depends on whether a message has "ever streamed."
+
+Remaining after Slice 1:
+
+- The conversation shell and scroll behavior are still custom and move to Slice 2.
+- AI Elements response/loading primitives wait for Slice 3.
+- Thinking/tool display polish remains Slice 4.
+- Fine-grained answer choreography, citation hover polish, sources, suggestions, and actions primitives remain Slice 5.
+- Compute-lane confirmation/progress polish remains Slice 6.
+- Old reveal/scroll machinery cleanup and component ownership splits remain Slice 7.
 
 ### Slice 2 - Conversation Shell And Auto-Scroll
 

@@ -202,6 +202,8 @@ export const createFromPreflight = internalMutation({
     parentRunId: v.id("runs"),
     sessionId: v.id("analysisSessions"),
     requestedBy: v.id("users"),
+    originClientTurnId: v.optional(v.string()),
+    originUserMessageId: v.optional(v.id("analysisMessages")),
     requestText: v.string(),
     status: v.union(v.literal("proposed"), v.literal("needs_clarification")),
     frozenBannerGroup: v.any(),
@@ -230,6 +232,8 @@ export const createFromPreflight = internalMutation({
       parentRunId: args.parentRunId,
       sessionId: args.sessionId,
       requestedBy: args.requestedBy,
+      ...(args.originClientTurnId ? { originClientTurnId: args.originClientTurnId } : {}),
+      ...(args.originUserMessageId ? { originUserMessageId: args.originUserMessageId } : {}),
       jobType: "banner_extension_recompute",
       status: args.status,
       requestText: args.requestText,
@@ -251,6 +255,8 @@ export const createTableRollupProposal = internalMutation({
     parentRunId: v.id("runs"),
     sessionId: v.id("analysisSessions"),
     requestedBy: v.id("users"),
+    originClientTurnId: v.optional(v.string()),
+    originUserMessageId: v.optional(v.id("analysisMessages")),
     requestText: v.string(),
     frozenTableRollupSpec: tableRollupSpecValidator,
     reviewFlags: reviewFlagsValidator,
@@ -277,6 +283,8 @@ export const createTableRollupProposal = internalMutation({
       parentRunId: args.parentRunId,
       sessionId: args.sessionId,
       requestedBy: args.requestedBy,
+      ...(args.originClientTurnId ? { originClientTurnId: args.originClientTurnId } : {}),
+      ...(args.originUserMessageId ? { originUserMessageId: args.originUserMessageId } : {}),
       jobType: "table_rollup_derivation",
       status: "proposed",
       requestText: args.requestText,
@@ -297,6 +305,8 @@ export const createSelectedTableCutProposal = internalMutation({
     parentRunId: v.id("runs"),
     sessionId: v.id("analysisSessions"),
     requestedBy: v.id("users"),
+    originClientTurnId: v.optional(v.string()),
+    originUserMessageId: v.optional(v.id("analysisMessages")),
     requestText: v.string(),
     frozenSelectedTableCutSpec: selectedTableCutSpecValidator,
     reviewFlags: reviewFlagsValidator,
@@ -323,6 +333,8 @@ export const createSelectedTableCutProposal = internalMutation({
       parentRunId: args.parentRunId,
       sessionId: args.sessionId,
       requestedBy: args.requestedBy,
+      ...(args.originClientTurnId ? { originClientTurnId: args.originClientTurnId } : {}),
+      ...(args.originUserMessageId ? { originUserMessageId: args.originUserMessageId } : {}),
       jobType: "selected_table_cut_derivation",
       status: "proposed",
       requestText: args.requestText,
@@ -421,6 +433,51 @@ export const confirmSelectedTableCutJob = internalMutation({
       updatedAt: now,
     });
     return { alreadyQueued: false, derivedArtifactId: job.derivedArtifactId };
+  },
+});
+
+export const attachOriginAssistantMessageForTurn = internalMutation({
+  args: {
+    orgId: v.id("organizations"),
+    sessionId: v.id("analysisSessions"),
+    originClientTurnId: v.string(),
+    originAssistantMessageId: v.id("analysisMessages"),
+  },
+  handler: async (ctx, args) => {
+    const [session, assistantMessage] = await Promise.all([
+      ctx.db.get(args.sessionId),
+      ctx.db.get(args.originAssistantMessageId),
+    ]);
+    if (!session || session.orgId !== args.orgId) {
+      throw new Error("Analysis session not found");
+    }
+    if (
+      !assistantMessage
+      || assistantMessage.orgId !== args.orgId
+      || assistantMessage.sessionId !== args.sessionId
+      || assistantMessage.role !== "assistant"
+    ) {
+      throw new Error("Origin assistant message not found");
+    }
+
+    const jobs = await ctx.db
+      .query("analysisComputeJobs")
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+    const matchingJobs = jobs.filter((job) =>
+      job.orgId === args.orgId
+      && job.originClientTurnId === args.originClientTurnId
+      && !job.originAssistantMessageId
+    );
+    const now = Date.now();
+    for (const job of matchingJobs) {
+      await ctx.db.patch(job._id, {
+        originAssistantMessageId: args.originAssistantMessageId,
+        updatedAt: now,
+      });
+    }
+
+    return { updated: matchingJobs.length };
   },
 });
 

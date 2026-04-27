@@ -334,6 +334,8 @@ export async function createAnalysisTableRollupProposal(params: {
   parentRunId: Id<"runs">;
   sessionId: Id<"analysisSessions">;
   requestedBy: Id<"users">;
+  originClientTurnId?: string;
+  originUserMessageId?: Id<"analysisMessages">;
   requestText: string;
   candidates: AnalysisTableRollupCandidate[];
   parentRun: ParentRunForRollup;
@@ -537,6 +539,8 @@ export async function createAnalysisTableRollupProposal(params: {
     parentRunId: params.parentRunId,
     sessionId: params.sessionId,
     requestedBy: params.requestedBy,
+    ...(params.originClientTurnId ? { originClientTurnId: params.originClientTurnId } : {}),
+    ...(params.originUserMessageId ? { originUserMessageId: params.originUserMessageId } : {}),
     requestText,
     frozenTableRollupSpec,
     reviewFlags: {

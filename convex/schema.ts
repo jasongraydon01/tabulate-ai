@@ -436,6 +436,7 @@ export default defineSchema({
   analysisMessages: defineTable({
     sessionId: v.id("analysisSessions"),
     orgId: v.id("organizations"),
+    clientTurnId: v.optional(v.string()),
     role: v.union(
       v.literal("user"),
       v.literal("assistant"),
@@ -501,6 +502,9 @@ export default defineSchema({
     childRunId: v.optional(v.id("runs")),
     sessionId: v.id("analysisSessions"),
     requestedBy: v.id("users"),
+    originClientTurnId: v.optional(v.string()),
+    originUserMessageId: v.optional(v.id("analysisMessages")),
+    originAssistantMessageId: v.optional(v.id("analysisMessages")),
     jobType: analysisComputeJobTypeValidator,
     status: analysisComputeJobStatusValidator,
     requestText: v.string(),

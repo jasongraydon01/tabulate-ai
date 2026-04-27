@@ -346,6 +346,10 @@ describe("analysis message helpers", () => {
           }),
         ],
         followUpSuggestions: ["Show me the base sizes"],
+        persistedMessageId: "msg-1",
+        persistence: {
+          status: "persisted",
+        },
       },
       parts: [
         {

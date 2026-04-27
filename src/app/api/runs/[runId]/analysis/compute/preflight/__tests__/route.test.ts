@@ -77,7 +77,7 @@ describe("analysis compute preflight route", () => {
     const response = await POST(
       new NextRequest("http://localhost/api/runs/run-1/analysis/compute/preflight", {
         method: "POST",
-        body: JSON.stringify({ sessionId: "session-1", requestText: "Add region" }),
+        body: JSON.stringify({ sessionId: "session-1", requestText: "Add region", clientTurnId: "turn-direct-1" }),
       }),
       { params: Promise.resolve({ runId: "run-1" }) },
     );
@@ -115,7 +115,7 @@ describe("analysis compute preflight route", () => {
     const response = await POST(
       new NextRequest("http://localhost/api/runs/run-1/analysis/compute/preflight", {
         method: "POST",
-        body: JSON.stringify({ sessionId: "session-1", requestText: "Add region" }),
+        body: JSON.stringify({ sessionId: "session-1", requestText: "Add region", clientTurnId: "turn-direct-1" }),
       }),
       { params: Promise.resolve({ runId: "run-1" }) },
     );
@@ -139,6 +139,18 @@ describe("analysis compute preflight route", () => {
     expect(payload.job).not.toHaveProperty("frozenValidatedGroup");
 
     const assistantMessage = mocks.mutateInternal.mock.calls[2][1].content as string;
+    expect(mocks.mutateInternal.mock.calls[0][1]).toMatchObject({
+      clientTurnId: "turn-direct-1",
+      role: "user",
+    });
+    expect(mocks.mutateInternal.mock.calls[1][1]).toMatchObject({
+      originClientTurnId: "turn-direct-1",
+      originUserMessageId: "user-message-1",
+    });
+    expect(mocks.mutateInternal.mock.calls[2][1]).toMatchObject({
+      clientTurnId: "turn-direct-1",
+      role: "assistant",
+    });
     expect(assistantMessage).toContain("Review the proposal card");
     expect(assistantMessage).not.toContain("REGION == 1");
     expect(assistantMessage).not.toContain("REGION=1");

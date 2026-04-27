@@ -17,6 +17,7 @@ import { PromptComposer } from "@/components/analysis/PromptComposer";
 import { GridLoader } from "@/components/ui/grid-loader";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { AnalysisComputeJobView } from "@/lib/analysis/computeLane/jobView";
+import { getAnalysisMessageMetadata } from "@/lib/analysis/messages";
 import type { AnalysisUIMessage } from "@/lib/analysis/ui";
 import type { AnalysisMessageFeedbackRecord, AnalysisMessageFeedbackVote } from "@/lib/analysis/types";
 
@@ -43,7 +44,7 @@ interface AnalysisThreadProps {
   // Called with just the messageId to truncate. The thread owns the client
   // state dance (stop → setMessages truncate → resend) internally.
   onTruncateFromMessage: (messageId: string) => Promise<void>;
-  onStartComputePreflight: (requestText: string) => Promise<void>;
+  onStartComputePreflight: (requestText: string, clientTurnId: string) => Promise<void>;
   onConfirmComputeJob: (job: AnalysisComputeJobView) => Promise<void>;
   onCancelComputeJob: (job: AnalysisComputeJobView) => Promise<void>;
   onContinueInDerivedRun: (job: AnalysisComputeJobView) => Promise<void>;
@@ -52,6 +53,23 @@ interface AnalysisThreadProps {
 type AnalysisTimelineEntry =
   | { kind: "message"; key: string; createdAt: number; message: AnalysisUIMessage; messageIndex: number }
   | { kind: "compute-job"; key: string; createdAt: number; job: AnalysisComputeJobView };
+type AnalysisMessageTimelineEntry = Extract<AnalysisTimelineEntry, { kind: "message" }>;
+type AnalysisComputeJobTimelineEntry = Extract<AnalysisTimelineEntry, { kind: "compute-job" }>;
+
+function createClientTurnId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `turn-${crypto.randomUUID()}`;
+  }
+  return `turn-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function getMessageClientTurnId(message: AnalysisUIMessage): string | null {
+  return getAnalysisMessageMetadata(message)?.clientTurnId ?? null;
+}
+
+function getMessagePersistedId(message: AnalysisUIMessage): string {
+  return getAnalysisMessageMetadata(message)?.persistedMessageId ?? message.id;
+}
 
 export function buildAnalysisTimelineEntries(params: {
   messages: AnalysisUIMessage[];
@@ -59,25 +77,125 @@ export function buildAnalysisTimelineEntries(params: {
   messageCreatedAtById: Record<string, number>;
 }): AnalysisTimelineEntry[] {
   const liveBase = Number.MAX_SAFE_INTEGER - params.messages.length - params.computeJobs.length - 1;
-  return [
-    ...params.messages.map((message, messageIndex): AnalysisTimelineEntry => ({
+  const messageEntries = params.messages.map((message, messageIndex): AnalysisMessageTimelineEntry => ({
       kind: "message",
       key: `message-${message.id}`,
       createdAt: params.messageCreatedAtById[message.id] ?? liveBase + messageIndex,
       message,
       messageIndex,
-    })),
-    ...params.computeJobs.map((job): AnalysisTimelineEntry => ({
+  }));
+  const messageByPersistedId = new Map(
+    messageEntries.map((entry) => [getMessagePersistedId(entry.message), entry] as const),
+  );
+  const turnIdByMessageKey = new Map<string, string>();
+  let activeTurnId: string | null = null;
+  let syntheticTurnIndex = 0;
+
+  for (const entry of messageEntries) {
+    const explicitTurnId = getMessageClientTurnId(entry.message);
+    if (entry.message.role === "user") {
+      activeTurnId = explicitTurnId ?? `legacy-turn-${syntheticTurnIndex}`;
+      syntheticTurnIndex += explicitTurnId ? 0 : 1;
+    } else if (explicitTurnId) {
+      activeTurnId = explicitTurnId;
+    } else if (!activeTurnId) {
+      activeTurnId = `legacy-turn-${syntheticTurnIndex}`;
+      syntheticTurnIndex += 1;
+    }
+    turnIdByMessageKey.set(entry.key, activeTurnId);
+  }
+  const knownTurnIds = new Set(turnIdByMessageKey.values());
+
+  const computeEntries = params.computeJobs.map((job): AnalysisComputeJobTimelineEntry => ({
       kind: "compute-job",
       key: `compute-job-${job.id}`,
       createdAt: job.createdAt,
       job,
-    })),
-  ].sort((left, right) => {
-    if (left.createdAt !== right.createdAt) return left.createdAt - right.createdAt;
-    if (left.kind === right.kind) return left.key.localeCompare(right.key);
-    return left.kind === "message" ? -1 : 1;
-  });
+  }));
+
+  const jobsByTurnId = new Map<string, AnalysisComputeJobTimelineEntry[]>();
+  const legacyJobs: AnalysisComputeJobTimelineEntry[] = [];
+
+  function pushJob(turnId: string, jobEntry: AnalysisComputeJobTimelineEntry) {
+    const jobs = jobsByTurnId.get(turnId) ?? [];
+    jobs.push(jobEntry);
+    jobsByTurnId.set(turnId, jobs);
+  }
+
+  for (const jobEntry of computeEntries) {
+    const job = jobEntry.job;
+    if (job.originAssistantMessageId) {
+      const assistantEntry = messageByPersistedId.get(job.originAssistantMessageId);
+      const turnId = assistantEntry ? turnIdByMessageKey.get(assistantEntry.key) : null;
+      if (turnId) {
+        pushJob(turnId, jobEntry);
+        continue;
+      }
+    }
+    if (job.originUserMessageId) {
+      const userEntry = messageByPersistedId.get(job.originUserMessageId);
+      const turnId = userEntry ? turnIdByMessageKey.get(userEntry.key) : null;
+      if (turnId) {
+        pushJob(turnId, jobEntry);
+        continue;
+      }
+    }
+    if (job.originAssistantMessageId || job.originUserMessageId) {
+      continue;
+    }
+    if (job.originClientTurnId) {
+      if (knownTurnIds.has(job.originClientTurnId)) {
+        pushJob(job.originClientTurnId, jobEntry);
+      }
+      continue;
+    }
+    legacyJobs.push(jobEntry);
+  }
+
+  for (const jobEntry of legacyJobs) {
+    const previousMessage = [...messageEntries]
+      .filter((entry) => entry.createdAt <= jobEntry.createdAt)
+      .sort((left, right) => right.createdAt - left.createdAt)[0];
+    const fallbackTurnId = previousMessage ? turnIdByMessageKey.get(previousMessage.key) : null;
+    if (fallbackTurnId) {
+      pushJob(fallbackTurnId, jobEntry);
+    } else {
+      pushJob(`legacy-orphan-${jobEntry.key}`, jobEntry);
+    }
+  }
+
+  const output: AnalysisTimelineEntry[] = [];
+  const emittedTurnJobs = new Set<string>();
+  const entriesByTurnId = new Map<string, AnalysisMessageTimelineEntry[]>();
+  for (const entry of messageEntries) {
+    const turnId = turnIdByMessageKey.get(entry.key);
+    if (!turnId) continue;
+    const entries = entriesByTurnId.get(turnId) ?? [];
+    entries.push(entry);
+    entriesByTurnId.set(turnId, entries);
+  }
+
+  for (const entry of messageEntries) {
+    output.push(entry);
+    const turnId = turnIdByMessageKey.get(entry.key);
+    if (!turnId || emittedTurnJobs.has(turnId)) continue;
+
+    const turnEntries = entriesByTurnId.get(turnId) ?? [];
+    const lastMessageForTurn = turnEntries[turnEntries.length - 1];
+    if (lastMessageForTurn?.key !== entry.key) continue;
+
+    const jobs = (jobsByTurnId.get(turnId) ?? [])
+      .sort((left, right) => left.createdAt - right.createdAt || left.key.localeCompare(right.key));
+    output.push(...jobs);
+    emittedTurnJobs.add(turnId);
+  }
+
+  for (const [turnId, jobs] of jobsByTurnId.entries()) {
+    if (emittedTurnJobs.has(turnId)) continue;
+    output.push(...jobs.sort((left, right) => left.createdAt - right.createdAt || left.key.localeCompare(right.key)));
+  }
+
+  return output;
 }
 
 export function shouldShowAnalysisMessageActions(
@@ -218,6 +336,7 @@ export function AnalysisThread({
     if (persistedMessages.length === 0 || persistedMessageIdsInOrder.length === 0) return;
 
     setMessages((current) => {
+      if (current.length < persistedMessages.length) return persistedMessages;
       if (current.length !== persistedMessages.length) return current;
 
       const currentSnapshot = JSON.stringify(current);
@@ -226,7 +345,7 @@ export function AnalysisThread({
         return current;
       }
 
-      return persistedMessages;
+      return current;
     });
   }, [persistedMessageIdsInOrder, persistedMessages, setMessages, status]);
 
@@ -269,11 +388,17 @@ export function AnalysisThread({
   async function handleSubmit() {
     const nextInput = input.trim();
     if (!nextInput || isBusy || isComputePreflightPending) return;
+    const clientTurnId = createClientTurnId();
     setInput("");
     shouldStickToBottomRef.current = true;
     await sendMessage(
-      { text: nextInput },
-      { body: { sessionId } },
+      {
+        text: nextInput,
+        metadata: {
+          clientTurnId,
+        },
+      },
+      { body: { sessionId, clientTurnId } },
     );
   }
 
@@ -283,8 +408,9 @@ export function AnalysisThread({
 
     setIsComputePreflightPending(true);
     shouldStickToBottomRef.current = true;
+    const clientTurnId = createClientTurnId();
     try {
-      await onStartComputePreflight(nextInput);
+      await onStartComputePreflight(nextInput, clientTurnId);
       setInput("");
     } finally {
       setIsComputePreflightPending(false);
@@ -295,10 +421,16 @@ export function AnalysisThread({
     const nextSuggestion = suggestion.trim();
     if (!nextSuggestion || isBusy) return;
 
+    const clientTurnId = createClientTurnId();
     shouldStickToBottomRef.current = true;
     await sendMessage(
-      { text: nextSuggestion },
-      { body: { sessionId } },
+      {
+        text: nextSuggestion,
+        metadata: {
+          clientTurnId,
+        },
+      },
+      { body: { sessionId, clientTurnId } },
     );
   }
 
@@ -323,10 +455,30 @@ export function AnalysisThread({
     await onTruncateFromMessage(input.messageId);
 
     shouldStickToBottomRef.current = true;
+    const clientTurnId = createClientTurnId();
     await sendMessage(
-      { text: input.text },
-      { body: { sessionId } },
+      {
+        text: input.text,
+        metadata: {
+          clientTurnId,
+        },
+      },
+      { body: { sessionId, clientTurnId } },
     );
+  }
+
+  function resolvePersistedMessageId(message: AnalysisUIMessage, messageIndex: number): string | null {
+    const metadataPersistedId = getAnalysisMessageMetadata(message)?.persistedMessageId;
+    if (metadataPersistedId) return metadataPersistedId;
+    if (message.role === "assistant" && persistedAssistantMessageIdSet.has(message.id)) return message.id;
+    if (message.role === "user" && persistedUserMessageIdSet.has(message.id)) return message.id;
+
+    const persistedAtIndex = persistedMessages[messageIndex];
+    if (persistedAtIndex?.role === message.role) {
+      return persistedAtIndex.id;
+    }
+
+    return null;
   }
 
   function handleAssistantRevealProgress(event: "answer-start" | "text-step" | "table-shell" | "table-ready") {
@@ -394,8 +546,9 @@ export function AnalysisThread({
 
               const shouldShowMessageActions = shouldShowAnalysisMessageActions(messages, index);
               const showFollowUps = shouldShowMessageActions && !isBusy;
-              const isPersistedUserMessage = message.role === "user"
-                && persistedUserMessageIdSet.has(message.id);
+              const persistedMessageId = resolvePersistedMessageId(message, index);
+              const isPersistedAssistantMessage = message.role === "assistant" && Boolean(persistedMessageId);
+              const isPersistedUserMessage = message.role === "user" && Boolean(persistedMessageId);
               return (
                 <div key={entry.key} ref={isLastEntry ? lastMessageRef : undefined}>
                   <AnalysisMessage
@@ -405,13 +558,15 @@ export function AnalysisThread({
                       ? handleAssistantRevealProgress
                       : undefined}
                     onSelectFollowUpSuggestion={showFollowUps ? handleFollowUpSuggestion : undefined}
-                    feedback={shouldShowMessageActions && persistedAssistantMessageIdSet.has(message.id)
-                      ? (messageFeedbackById[message.id] ?? null)
+                    feedback={shouldShowMessageActions && isPersistedAssistantMessage && persistedMessageId
+                      ? (messageFeedbackById[persistedMessageId] ?? null)
                       : null}
-                    onSubmitFeedback={shouldShowMessageActions && persistedAssistantMessageIdSet.has(message.id)
+                    onSubmitFeedback={shouldShowMessageActions && isPersistedAssistantMessage
                       ? onSubmitMessageFeedback
                       : undefined}
-                    onEditUserMessage={isPersistedUserMessage ? handleEditUserMessage : undefined}
+                    onEditUserMessage={isPersistedUserMessage && persistedMessageId
+                      ? (input) => handleEditUserMessage({ ...input, messageId: persistedMessageId })
+                      : undefined}
                   />
                 </div>
               );

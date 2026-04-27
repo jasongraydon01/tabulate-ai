@@ -246,7 +246,7 @@ export function AnalysisWorkspace({
     }
   }
 
-  async function handleStartComputePreflight(requestText: string) {
+  async function handleStartComputePreflight(requestText: string, clientTurnId: string) {
     if (!selectedSession) {
       throw new Error("No active analysis session");
     }
@@ -259,6 +259,7 @@ export function AnalysisWorkspace({
       body: JSON.stringify({
         sessionId: String(selectedSession._id),
         requestText,
+        clientTurnId,
       }),
     });
     const payload = await response.json().catch(() => ({})) as { error?: string };
@@ -402,9 +403,9 @@ export function AnalysisWorkspace({
             throw error;
           }
         }}
-        onStartComputePreflight={async (requestText) => {
+        onStartComputePreflight={async (requestText, clientTurnId) => {
           try {
-            await handleStartComputePreflight(requestText);
+            await handleStartComputePreflight(requestText, clientTurnId);
           } catch (error) {
             toast.error("Failed to prepare derived run", {
               description: error instanceof Error ? error.message : "Unknown error",

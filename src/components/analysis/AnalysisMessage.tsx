@@ -19,9 +19,7 @@ import {
 } from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  getAnalysisMessageContextEvidenceItems,
   getAnalysisMessageMetadata,
-  getAnalysisMessageFollowUpSuggestions,
   getAnalysisUIMessageText,
 } from "@/lib/analysis/messages";
 import {
@@ -29,17 +27,17 @@ import {
   getAnalysisEvidenceAnchorId,
 } from "@/lib/analysis/anchors";
 import {
-  buildAnalysisRenderableBlocks,
   type AnalysisRenderableInlineSegment,
   type AnalysisRenderableBlock,
 } from "@/lib/analysis/renderAnchors";
+import {
+  buildSettledAnalysisAnswer,
+  getSettledAnalysisEvidenceItemCellId,
+  getSettledAnalysisVisibleEvidenceItems,
+} from "@/lib/analysis/settledAnswer";
 import { getAnalysisToolActivityLabel } from "@/lib/analysis/toolLabels";
+import { type AnalysisUIMessage } from "@/lib/analysis/ui";
 import {
-  isAnalysisCiteDataUIPart,
-  type AnalysisUIMessage,
-} from "@/lib/analysis/ui";
-import {
-  buildAnalysisCellId,
   isAnalysisCellSummary,
   isAnalysisTableCard,
   parseAnalysisCellId,
@@ -382,20 +380,7 @@ interface CitationChipLookup {
 }
 
 function getEvidenceItemCellId(item: AnalysisEvidenceItem): string | null {
-  if (
-    item.evidenceKind !== "cell"
-    || !item.sourceTableId
-    || !item.rowKey
-    || !item.cutKey
-  ) {
-    return null;
-  }
-
-  return buildAnalysisCellId({
-    tableId: item.sourceTableId,
-    rowKey: item.rowKey,
-    cutKey: item.cutKey,
-  });
+  return getSettledAnalysisEvidenceItemCellId(item);
 }
 
 function buildCitationChipLookup(message: AnalysisUIMessage): CitationChipLookup {
@@ -661,38 +646,14 @@ export function getAnalysisMessageEvidenceItems(message: AnalysisUIMessage): Ana
 }
 
 export function getAnalysisMessageFollowUpItems(message: AnalysisUIMessage): string[] {
-  return getAnalysisMessageFollowUpSuggestions(message);
-}
-
-function getInlineCitedCellIds(message: Pick<AnalysisUIMessage, "parts">): Set<string> {
-  const citedCellIds = new Set<string>();
-
-  for (const part of message.parts) {
-    if (!isAnalysisCiteDataUIPart(part)) continue;
-    for (const cellId of part.data.cellIds) {
-      citedCellIds.add(cellId);
-    }
-  }
-
-  return citedCellIds;
+  return buildSettledAnalysisAnswer(message).followUpSuggestions;
 }
 
 export function getVisibleEvidenceItems(
   message: AnalysisUIMessage,
   evidenceItems: AnalysisEvidenceItem[],
 ): AnalysisEvidenceItem[] {
-  if (evidenceItems.length === 0) return [];
-
-  const citedCellIds = getInlineCitedCellIds(message);
-
-  return evidenceItems.filter((item) => {
-    const cellId = getEvidenceItemCellId(item);
-    if (!cellId) {
-      return true;
-    }
-
-    return !item.renderedInCurrentMessage || !citedCellIds.has(cellId);
-  });
+  return getSettledAnalysisVisibleEvidenceItems(message, evidenceItems);
 }
 
 function scrollToEvidenceAnchor(anchorId: string) {
@@ -813,15 +774,9 @@ export function AnalysisMessage({
   const previousAnswerRevealBeginsRef = useRef(false);
 
   const traceEntries = getAnalysisTraceEntries(message);
-  const evidenceItems = getAnalysisMessageEvidenceItems(message);
-  const contextEvidenceItems = getAnalysisMessageContextEvidenceItems(message);
-  const visibleEvidenceItems = getVisibleEvidenceItems(message, evidenceItems);
-  const sourceItems = [...visibleEvidenceItems, ...contextEvidenceItems];
-  const followUpSuggestions = getAnalysisMessageFollowUpItems(message);
   const effectiveFeedback = optimisticFeedback ?? feedback ?? null;
   const isDownvoteOpen = effectiveFeedback?.vote === "down";
   const citeLookup = buildCitationChipLookup(message);
-  const shouldShowSources = sourceItems.length > 0;
   const hasTrace = traceEntries.length > 0;
   const rawAssistantText = isUser ? "" : getAnalysisUIMessageText(message);
 
@@ -835,12 +790,20 @@ export function AnalysisMessage({
     [isStreaming, rawAssistantText, shouldUseRevealController],
   );
 
-  const renderableBlocks = useMemo(
-    () => buildAnalysisRenderableBlocks(message, {
+  const settledAnswer = useMemo(
+    () => buildSettledAnalysisAnswer(message, {
       isStreaming: shouldUseRevealController && (isStreaming || unstableTail.length > 0),
     }),
     [isStreaming, message, shouldUseRevealController, unstableTail.length],
   );
+  const {
+    renderableBlocks,
+    sourceItems,
+    followUpSuggestions,
+    persistenceWarning,
+    persistedMessageId,
+  } = settledAnswer;
+  const shouldShowSources = sourceItems.length > 0;
   const revealEntries = useMemo(
     () => buildAnalysisRevealEntries(renderableBlocks),
     [renderableBlocks],
@@ -1032,7 +995,7 @@ export function AnalysisMessage({
 
     const trimmedCorrectionText = correctionText?.trim() || null;
     const nextFeedback: AnalysisMessageFeedbackRecord = {
-      messageId: message.id,
+      messageId: persistedMessageId ?? message.id,
       vote,
       correctionText: vote === "down" ? trimmedCorrectionText : null,
       updatedAt: Date.now(),
@@ -1044,7 +1007,7 @@ export function AnalysisMessage({
 
     try {
       await onSubmitFeedback({
-        messageId: message.id,
+        messageId: persistedMessageId ?? message.id,
         vote,
         correctionText: vote === "down" ? trimmedCorrectionText : null,
       });
@@ -1271,6 +1234,12 @@ export function AnalysisMessage({
                 </div>
               );
             })}
+
+            {persistenceWarning ? (
+              <div className="rounded-xl border border-ct-amber/30 bg-ct-amber-dim px-3 py-2 text-xs leading-5 text-foreground/85">
+                {persistenceWarning}
+              </div>
+            ) : null}
 
             {isFooterReady && rawAssistantText.length > 0 ? (
               <div className="-mt-2 flex justify-start">

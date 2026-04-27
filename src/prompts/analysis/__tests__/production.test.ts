@@ -179,6 +179,18 @@ describe("analysis agent production prompt", () => {
     expect(prompt).toContain("raw expressions, R2 keys, frozen artifacts, fingerprints");
   });
 
+  it("keeps proposal card handoff guidance in the alternative prompt only", () => {
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("PROPOSAL CARD HANDOFF");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain(
+      "Proposal tools create UI cards outside the `submitAnswer` parts.",
+    );
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain("Do not assume a fixed visual position for the card");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).not.toContain("PROPOSAL CARD HANDOFF");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).not.toContain(
+      "Proposal tools create UI cards outside the `submitAnswer` parts.",
+    );
+  });
+
   it("documents native derived-run proposal boundaries in both prompt variants", () => {
     for (const prompt of [ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION, ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE]) {
       expect(prompt).toContain("proposeDerivedRun");

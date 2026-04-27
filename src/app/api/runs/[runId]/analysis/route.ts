@@ -62,8 +62,10 @@ import { api, internal } from "../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
 
 const CONVEX_ID_RE = /^[a-zA-Z0-9_.-]+$/;
-const HIDDEN_PROPOSAL_TOOL_NAMES = new Set(["proposeDerivedRun", "proposeRowRollup"]);
-const HIDDEN_PROPOSAL_TOOL_TYPES = new Set(["tool-proposeDerivedRun", "tool-proposeRowRollup"]);
+const HIDDEN_PROPOSAL_TOOL_NAMES = new Set(["proposeDerivedRun", "proposeRowRollup", "proposeSelectedTableCut"]);
+const HIDDEN_PROPOSAL_TOOL_TYPES = new Set(["tool-proposeDerivedRun", "tool-proposeRowRollup", "tool-proposeSelectedTableCut"]);
+const ANALYSIS_PERSISTENCE_RETRY_ATTEMPTS = 2;
+const UNSAVED_ANALYSIS_WARNING = "This answer was generated, but TabulateAI could not save it. It may disappear after refresh.";
 
 function isAnalysisMessageCandidate(value: unknown): value is AnalysisUIMessage[] {
   return Array.isArray(value);
@@ -250,12 +252,20 @@ function toStreamMetadata(
   groundingRefs: AnalysisGroundingRef[],
   contextEvidence: AnalysisGroundingRef[],
   followUpSuggestions: string[],
-): AnalysisMessageMetadata | undefined {
-  if (groundingRefs.length === 0 && contextEvidence.length === 0 && followUpSuggestions.length === 0) {
-    return undefined;
-  }
-
+  persistence: {
+    clientTurnId: string;
+    persistedMessageId?: string;
+    status: "persisted" | "unsaved";
+    warning?: string;
+  },
+): AnalysisMessageMetadata {
   return {
+    clientTurnId: persistence.clientTurnId,
+    ...(persistence.persistedMessageId ? { persistedMessageId: persistence.persistedMessageId } : {}),
+    persistence: {
+      status: persistence.status,
+      ...(persistence.warning ? { warning: persistence.warning } : {}),
+    },
     ...(groundingRefs.length > 0
       ? {
           hasGroundedClaims: true,
@@ -361,6 +371,30 @@ function formatRenderValidationIssue(issue: ReturnType<typeof validateAnalysisSt
   return `${issue.tableId}:${issue.reason}${detail}`;
 }
 
+function createAnalysisClientTurnId(): string {
+  return `turn-${crypto.randomUUID()}`;
+}
+
+function normalizeClientTurnId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || !CONVEX_ID_RE.test(trimmed)) return null;
+  return trimmed;
+}
+
+async function withAnalysisPersistenceRetry<T>(resolve: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < ANALYSIS_PERSISTENCE_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      return await resolve();
+    } catch (error) {
+      lastError = error;
+      if (attempt + 1 >= ANALYSIS_PERSISTENCE_RETRY_ATTEMPTS) break;
+    }
+  }
+  throw lastError;
+}
+
 function buildFinalAssistantParts(params: {
   originalParts: AnalysisUIMessage["parts"];
   structuredAssistantParts: AnalysisStructuredAssistantPart[];
@@ -411,6 +445,10 @@ function buildFinalAssistantParts(params: {
     ...injectedParts,
     ...structuredParts,
   ];
+}
+
+function hasHiddenProposalToolPart(parts: AnalysisUIMessage["parts"]): boolean {
+  return parts.some((part) => HIDDEN_PROPOSAL_TOOL_TYPES.has(part.type));
 }
 
 async function persistAssistantMessageParts(params: {
@@ -486,15 +524,22 @@ export async function POST(
     const body = await request.json().catch(() => null) as {
       messages?: unknown;
       sessionId?: unknown;
+      clientTurnId?: unknown;
     } | null;
 
     const sessionId = typeof body?.sessionId === "string" ? body.sessionId : "";
     if (!sessionId || !CONVEX_ID_RE.test(sessionId)) {
       return NextResponse.json({ error: "Invalid session ID" }, { status: 400 });
     }
+    if (body?.clientTurnId !== undefined && !normalizeClientTurnId(body.clientTurnId)) {
+      return NextResponse.json({ error: "Invalid client turn ID" }, { status: 400 });
+    }
 
     const submittedMessages = isAnalysisMessageCandidate(body?.messages) ? body?.messages : [];
     const latestUserMessage = [...submittedMessages].reverse().find((message) => message.role === "user");
+    const clientTurnId = normalizeClientTurnId(body?.clientTurnId)
+      ?? normalizeClientTurnId(latestUserMessage?.metadata?.clientTurnId)
+      ?? createAnalysisClientTurnId();
     const latestUserText = latestUserMessage
       ? sanitizeAnalysisMessageContent(getAnalysisUIMessageText(latestUserMessage))
       : "";
@@ -540,6 +585,10 @@ export async function POST(
 
     const lastPersistedMessage = persistedMessages[persistedMessages.length - 1];
     const hasExistingAssistantMessage = persistedMessages.some((message) => message.role === "assistant");
+    let originUserMessageId: Id<"analysisMessages"> | undefined = lastPersistedMessage?.role === "user"
+      && lastPersistedMessage.content === latestUserText
+      ? lastPersistedMessage._id
+      : undefined;
     let conversationMessages = persistedAnalysisMessagesToUIMessages(
       persistedMessages.map((message) => normalizePersistedAnalysisMessageRecord(message)),
       persistedArtifacts.map((artifact) => normalizePersistedAnalysisArtifactRecord(artifact)),
@@ -553,15 +602,22 @@ export async function POST(
       const userMessageId = await mutateInternal(internal.analysisMessages.create, {
         sessionId: session._id,
         orgId: auth.convexOrgId,
+        clientTurnId,
         role: "user",
         content: latestUserText,
       });
+      originUserMessageId = userMessageId;
 
       conversationMessages = [
         ...conversationMessages,
         {
           id: String(userMessageId),
           role: "user",
+          metadata: {
+            clientTurnId,
+            persistedMessageId: String(userMessageId),
+            persistence: { status: "persisted" },
+          },
           parts: [
             {
               type: "text",
@@ -600,6 +656,8 @@ export async function POST(
         parentRun: run,
         project,
         session,
+        originClientTurnId: clientTurnId,
+        ...(originUserMessageId ? { originUserMessageId } : {}),
       },
       abortSignal: request.signal,
     });
@@ -775,85 +833,125 @@ export async function POST(
             const assistantTitleBasis = persistedAssistantText || summarizeAssistantResponseForTitle(finalResponseParts);
             const traceCapture = getTraceCapture();
 
+            let assistantMessageId: Id<"analysisMessages"> | null = null;
+            if (persistedAssistantText || finalResponseParts.length > 0) {
+              try {
+                const { persistedParts, artifactIdsByToolCallId } = await persistAssistantMessageParts({
+                  parts: finalResponseParts,
+                  structuredAssistantParts: trustResult.assistantParts,
+                  sessionId: session._id,
+                  orgId: auth.convexOrgId,
+                  projectId: session.projectId,
+                  runId: session.runId,
+                  createdBy: auth.convexUserId,
+                });
+                const persistedGroundingRefs = applyArtifactIdsToGroundingRefsForPersistence(
+                  trustResult.groundingRefs,
+                  artifactIdsByToolCallId,
+                );
+                const persistedContextEvidence = buildPersistedGroundingRefs(trustResult.contextEvidence);
+                if (!persistedAssistantText && persistedParts.length === 0) {
+                  throw new Error("No assistant content was available to persist.");
+                }
+
+                assistantMessageId = await withAnalysisPersistenceRetry(async () => {
+                  const nextAssistantMessageId = await mutateInternal(internal.analysisMessages.createAssistantForTurn, {
+                    sessionId: session._id,
+                    orgId: auth.convexOrgId,
+                    clientTurnId,
+                    content: persistedAssistantText,
+                    ...(persistedParts.length > 0 ? { parts: persistedParts } : {}),
+                    ...(persistedGroundingRefs.length > 0 ? { groundingRefs: persistedGroundingRefs } : {}),
+                    ...(persistedContextEvidence.length > 0 ? { contextEvidence: persistedContextEvidence } : {}),
+                    ...(followUpSuggestions.length > 0 ? { followUpSuggestions } : {}),
+                    agentMetrics: {
+                      model: traceCapture.usage.model,
+                      inputTokens: traceCapture.usage.inputTokens,
+                      outputTokens: traceCapture.usage.outputTokens,
+                      nonCachedInputTokens: traceCapture.usage.nonCachedInputTokens,
+                      cachedInputTokens: traceCapture.usage.cachedInputTokens,
+                      cacheWriteInputTokens: traceCapture.usage.cacheWriteInputTokens,
+                      durationMs: traceCapture.usage.durationMs,
+                      estimatedCostUsd: traceCapture.usage.estimatedCostUsd,
+                    },
+                  });
+
+                  if (hasHiddenProposalToolPart(finalEvent.responseMessage.parts)) {
+                    await mutateInternal(internal.analysisComputeJobs.attachOriginAssistantMessageForTurn, {
+                      orgId: auth.convexOrgId,
+                      sessionId: session._id,
+                      originClientTurnId: clientTurnId,
+                      originAssistantMessageId: nextAssistantMessageId,
+                    });
+                  }
+
+                  return nextAssistantMessageId;
+                });
+              } catch (persistenceError) {
+                console.warn("[Analysis Chat POST] Failed to persist validated assistant answer:", persistenceError);
+                persistAnalysisErrorTrace({
+                  error: persistenceError,
+                  responseMessage: {
+                    ...finalEvent.responseMessage,
+                    parts: finalResponseParts,
+                  },
+                });
+              }
+            }
+
             const streamMetadata = toStreamMetadata(
               trustResult.groundingRefs,
               trustResult.contextEvidence,
               followUpSuggestions,
+              assistantMessageId
+                ? {
+                    clientTurnId,
+                    persistedMessageId: String(assistantMessageId),
+                    status: "persisted",
+                  }
+                : {
+                    clientTurnId,
+                    status: "unsaved",
+                    warning: UNSAVED_ANALYSIS_WARNING,
+                  },
             );
             emitInjectedTableCards(writer, trustResult.injectedTableCards);
             emitStructuredAssistantParts(writer, trustResult.assistantParts);
-            if (streamMetadata) {
-              writer.write({
-                type: "message-metadata",
-                messageMetadata: streamMetadata,
-              });
-            }
+            writer.write({
+              type: "message-metadata",
+              messageMetadata: streamMetadata,
+            });
             writer.write({
               type: "finish",
               finishReason: finalEvent.finishReason ?? "stop",
             });
 
-            const { persistedParts, artifactIdsByToolCallId } = await persistAssistantMessageParts({
-              parts: finalResponseParts,
-              structuredAssistantParts: trustResult.assistantParts,
-              sessionId: session._id,
-              orgId: auth.convexOrgId,
-              projectId: session.projectId,
-              runId: session.runId,
-              createdBy: auth.convexUserId,
-            });
-            const persistedGroundingRefs = applyArtifactIdsToGroundingRefsForPersistence(
-              trustResult.groundingRefs,
-              artifactIdsByToolCallId,
-            );
-            const persistedContextEvidence = buildPersistedGroundingRefs(trustResult.contextEvidence);
-            if (!persistedAssistantText && persistedParts.length === 0) return;
-
-            const createdAt = new Date().toISOString();
-            const assistantMessageId = await mutateInternal(internal.analysisMessages.create, {
-              sessionId: session._id,
-              orgId: auth.convexOrgId,
-              role: "assistant",
-              content: persistedAssistantText,
-              ...(persistedParts.length > 0 ? { parts: persistedParts } : {}),
-              ...(persistedGroundingRefs.length > 0 ? { groundingRefs: persistedGroundingRefs } : {}),
-              ...(persistedContextEvidence.length > 0 ? { contextEvidence: persistedContextEvidence } : {}),
-              ...(followUpSuggestions.length > 0 ? { followUpSuggestions } : {}),
-              agentMetrics: {
-                model: traceCapture.usage.model,
-                inputTokens: traceCapture.usage.inputTokens,
-                outputTokens: traceCapture.usage.outputTokens,
-                nonCachedInputTokens: traceCapture.usage.nonCachedInputTokens,
-                cachedInputTokens: traceCapture.usage.cachedInputTokens,
-                cacheWriteInputTokens: traceCapture.usage.cacheWriteInputTokens,
-                durationMs: traceCapture.usage.durationMs,
-                estimatedCostUsd: traceCapture.usage.estimatedCostUsd,
-              },
-            });
-
-            try {
-              await writeAnalysisTurnTrace({
-                runResultValue: run.result,
-                orgId: String(auth.convexOrgId),
-                projectId: String(session.projectId),
-                runId: String(session.runId),
-                sessionId: String(session._id),
-                sessionTitle: session.title,
-                messageId: String(assistantMessageId),
-                createdAt,
-                assistantText: persistedAssistantText,
-                responseParts: finalResponseParts,
-                traceCapture,
-              });
-            } catch (traceError) {
-              console.warn("[Analysis Chat POST] Failed to write analysis turn trace:", traceError);
+            if (assistantMessageId) {
+              const createdAt = new Date().toISOString();
+              try {
+                await writeAnalysisTurnTrace({
+                  runResultValue: run.result,
+                  orgId: String(auth.convexOrgId),
+                  projectId: String(session.projectId),
+                  runId: String(session.runId),
+                  sessionId: String(session._id),
+                  sessionTitle: session.title,
+                  messageId: String(assistantMessageId),
+                  createdAt,
+                  assistantText: persistedAssistantText,
+                  responseParts: finalResponseParts,
+                  traceCapture,
+                });
+              } catch (traceError) {
+                console.warn("[Analysis Chat POST] Failed to write analysis turn trace:", traceError);
+              }
             }
 
             const shouldGenerateTitle = !hasExistingAssistantMessage
               && session.titleSource === "default"
               && isDefaultAnalysisSessionTitle(session.title);
 
-            if (!shouldGenerateTitle || !assistantTitleBasis) {
+            if (!assistantMessageId || !shouldGenerateTitle || !assistantTitleBasis) {
               return;
             }
 

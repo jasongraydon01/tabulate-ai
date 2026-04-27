@@ -79,6 +79,7 @@ interface PersistedAnalysisGroundingRefInput {
 
 export interface PersistedAnalysisMessageRecord {
   _id: string;
+  clientTurnId?: string;
   role: "user" | "assistant" | "system";
   content: string;
   parts?: PersistedAnalysisPartRecord[];
@@ -141,6 +142,7 @@ function normalizePersistedAnalysisGroundingRef(
 export function normalizePersistedAnalysisMessageRecord(
   message: {
     _id: unknown;
+    clientTurnId?: unknown;
     role: "user" | "assistant" | "system";
     content: string;
     parts?: PersistedAnalysisPartRecordInput[];
@@ -151,6 +153,7 @@ export function normalizePersistedAnalysisMessageRecord(
 ): PersistedAnalysisMessageRecord {
   return {
     _id: String(message._id),
+    ...(typeof message.clientTurnId === "string" ? { clientTurnId: message.clientTurnId } : {}),
     role: message.role,
     content: message.content,
     ...(message.parts ? { parts: message.parts.map(normalizePersistedAnalysisPartRecord) } : {}),
@@ -307,6 +310,9 @@ export function getAnalysisMessageMetadata(
   const candidate = message.metadata as AnalysisMessageMetadata;
   if (
     !candidate.hasGroundedClaims
+    && !candidate.clientTurnId
+    && !candidate.persistedMessageId
+    && !candidate.persistence
     && (!candidate.evidence || candidate.evidence.length === 0)
     && (!candidate.contextEvidence || candidate.contextEvidence.length === 0)
     && (!candidate.followUpSuggestions || candidate.followUpSuggestions.length === 0)
@@ -455,11 +461,15 @@ export function persistedAnalysisMessagesToUIMessages(
   return messages.map((message) => ({
     id: String(message._id),
     role: message.role,
-    ...((message.groundingRefs && message.groundingRefs.length > 0)
+    ...((message.clientTurnId && message.clientTurnId.length > 0)
+      || (message.groundingRefs && message.groundingRefs.length > 0)
       || (message.contextEvidence && message.contextEvidence.length > 0)
       || (message.followUpSuggestions && message.followUpSuggestions.length > 0)
       ? {
           metadata: {
+            persistedMessageId: String(message._id),
+            ...(message.clientTurnId ? { clientTurnId: message.clientTurnId } : {}),
+            persistence: { status: "persisted" },
             ...(message.groundingRefs && message.groundingRefs.length > 0
               ? {
                   hasGroundedClaims: true,
