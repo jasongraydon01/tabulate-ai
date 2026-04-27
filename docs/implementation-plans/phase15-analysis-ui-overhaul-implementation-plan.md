@@ -1,6 +1,6 @@
 # Phase 15 Sub-Plan - Analysis UI Overhaul
 
-**Status:** not yet started. This is a product-shape plan, not a per-ticket implementation spec. Each slice should get its own implementation plan before code work begins.
+**Status:** active. Slice 0 is complete; Slices 1-7 are not yet started. This is a product-shape plan, not a per-ticket implementation spec. Each implementation slice should get its own focused plan before code work begins.
 
 **Purpose:** clean up the Phase 15 analysis chat foundation before Tier A Bucket 3 work. The goal is a calmer, more predictable, more premium chat experience: grounded answers reveal smoothly after validation, thinking/tool activity carries the wait honestly, and live turns render the same way as reloaded sessions.
 
@@ -62,9 +62,11 @@ This is not a move away from streaming altogether. Streaming remains valuable fo
 
 ## Slices
 
-### Slice 0 - UX Baseline And Golden States
+### Slice 0 - UX Baseline And Golden States - Complete
 
 Create a lightweight visual and behavioral baseline before replacing primitives. This gives each later slice a target and prevents subjective "it feels smoother" debates.
+
+Completed baseline package: [slice-0/baseline.md](/Users/jasongraydon01/tabulate-ai/docs/implementation-plans/slice-0/baseline.md)
 
 - Capture the key chat states using fixtures, Storybook-style harnesses, or focused component tests/screenshots:
   - empty analysis session
