@@ -247,11 +247,15 @@ export function shouldShowAnalysisPendingState(
 }
 
 export function PendingAnalysisMessage() {
-  const summaryLabel = "TabulateAI is analyzing the artifacts...";
+  const summaryLabel = "TabulateAI is reading the run artifacts...";
 
   return (
     <div className="flex w-full justify-start">
-      <div className="min-w-0 max-w-[88%]">
+      <div
+        className="min-w-0 max-w-[88%] rounded-xl border border-border/50 bg-background/70 px-3 py-2 shadow-sm"
+        role="status"
+        aria-live="polite"
+      >
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
           <GridLoader size="sm" />
           <span className="min-w-0 truncate italic">{summaryLabel}</span>

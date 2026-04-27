@@ -123,7 +123,8 @@ describe("AnalysisThread pending state", () => {
       React.createElement(PendingAnalysisMessage),
     );
 
-    expect(markup).toContain("TabulateAI is analyzing the artifacts...");
+    expect(markup).toContain("TabulateAI is reading the run artifacts...");
+    expect(markup).not.toContain("TabulateAI is analyzing the artifacts...");
     expect(markup).not.toContain("Checking the run artifacts");
     expect(markup).not.toContain("Grounding the answer");
     expect(markup).not.toContain("<svg");

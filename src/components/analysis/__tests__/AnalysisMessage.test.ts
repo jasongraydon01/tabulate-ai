@@ -383,6 +383,47 @@ describe("AnalysisMessage trace presentation", () => {
     expect(markup).toContain("aria-label=\"Copy response\"");
   });
 
+  it("renders citation-free markdown as compact analysis response prose", () => {
+    const assistantMessage: UIMessage = {
+      id: "assistant-markdown-1",
+      role: "assistant",
+      parts: [{
+        type: "text",
+        text: "# Overall read\n\n- **Awareness** is strongest among younger respondents.\n- Check `Q1` before quoting.",
+      }],
+    };
+
+    const markup = renderToStaticMarkup(
+      React.createElement(AnalysisMessage, { message: assistantMessage, isStreaming: false }),
+    );
+
+    expect(markup).toContain("data-heading-level=\"1\"");
+    expect(markup).toContain("Overall read");
+    expect(markup).toContain("<li>");
+    expect(markup).toContain("<strong>Awareness</strong>");
+    expect(markup).toContain("<code>Q1</code>");
+    expect(markup).not.toContain("<h1");
+  });
+
+  it("demotes markdown tables in assistant prose to preformatted text", () => {
+    const assistantMessage: UIMessage = {
+      id: "assistant-markdown-table-1",
+      role: "assistant",
+      parts: [{
+        type: "text",
+        text: "Here is a quick summary:\n\n| Segment | Percent |\n| --- | --- |\n| Total | 45% |",
+      }],
+    };
+
+    const markup = renderToStaticMarkup(
+      React.createElement(AnalysisMessage, { message: assistantMessage, isStreaming: false }),
+    );
+
+    expect(markup).toContain("<pre>");
+    expect(markup).toContain("| Segment | Percent |");
+    expect(markup).not.toContain("<table");
+  });
+
   it("hides the copy affordance on assistant messages while streaming", () => {
     const assistantMessage: UIMessage = {
       id: "assistant-streaming-1",

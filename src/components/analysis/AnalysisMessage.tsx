@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { Streamdown } from "streamdown";
 import { toast } from "sonner";
 import {
   isReasoningUIPart,
@@ -11,6 +10,7 @@ import {
 import { Check, ChevronDown, Copy, Link2, Pencil, ThumbsDown, ThumbsUp } from "lucide-react";
 
 import { GroundedTableCard } from "@/components/analysis/GroundedTableCard";
+import { AnalysisResponseMarkdown } from "@/components/analysis/AnalysisResponseMarkdown";
 import { GridLoader } from "@/components/ui/grid-loader";
 import {
   Collapsible,
@@ -46,52 +46,6 @@ import {
   type AnalysisMessageFeedbackVote,
 } from "@/lib/analysis/types";
 import { cn } from "@/lib/utils";
-
-/**
- * Coalesces rapid value updates to one per animation frame while `enabled` is
- * true, and flushes the latest value immediately when `enabled` flips to false.
- * Used to smooth streaming markdown rendering without dropping the final text.
- */
-function useAnimationFrameThrottle<T>(value: T, enabled: boolean): T {
-  const [throttledValue, setThrottledValue] = useState(value);
-  const latestValueRef = useRef(value);
-  const frameRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    latestValueRef.current = value;
-
-    if (!enabled) {
-      if (frameRef.current !== null) {
-        cancelAnimationFrame(frameRef.current);
-        frameRef.current = null;
-      }
-      setThrottledValue(value);
-      return;
-    }
-
-    if (frameRef.current !== null) return;
-
-    frameRef.current = requestAnimationFrame(() => {
-      frameRef.current = null;
-      setThrottledValue(latestValueRef.current);
-    });
-  }, [value, enabled]);
-
-  useEffect(() => {
-    return () => {
-      if (frameRef.current !== null) {
-        cancelAnimationFrame(frameRef.current);
-      }
-    };
-  }, []);
-
-  return throttledValue;
-}
-
-function StreamingMarkdown({ text, isStreaming }: { text: string; isStreaming: boolean }) {
-  const throttledText = useAnimationFrameThrottle(text, isStreaming);
-  return <Streamdown>{throttledText}</Streamdown>;
-}
 
 export type AnalysisAnswerRevealPhase = "thinking" | "handoff" | "composing" | "settled";
 
@@ -1101,11 +1055,8 @@ export function AnalysisMessage({
 
                 if (!hasCiteMarkers) {
                   return (
-                    <div
-                      key={block.key}
-                      className="prose-analysis min-w-0 max-w-none break-words [overflow-wrap:anywhere]"
-                    >
-                      <StreamingMarkdown
+                    <div key={block.key}>
+                      <AnalysisResponseMarkdown
                         text={block.segments
                           .filter((segment): segment is Extract<AnalysisRenderableInlineSegment, { kind: "text" }> => segment.kind === "text")
                           .map((segment) => segment.text)

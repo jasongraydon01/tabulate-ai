@@ -204,6 +204,8 @@ Make the waiting period useful and transparent, since answer prose is intentiona
 - Auto-collapse thinking when the settled answer begins to reveal.
 - Preserve expand-on-demand for transparency after the answer is complete.
 - Tighten the language so the activity reads like meaningful analysis work, not a developer trace.
+- Observed follow-up from Slice 3 QA: pre-activity loading currently appears in a bordered assistant-side bubble, while the subsequent reasoning/tool header appears as unframed inline text. Decide whether thinking activity should share the same assistant container treatment, or whether the pre-activity placeholder should visually hand off without a bubble.
+- Observed follow-up from live QA: the reasoning trace currently opens by default during active turns, exposing verbose model reasoning and tool detail before the user asks for it. Revisit the default collapsed/expanded policy so the wait feels transparent without making the reasoning transcript the primary surface.
 
 Exit criteria: the wait between prompt and answer feels substantive. Reasoning/tool activity streams naturally, then gets out of the way when the answer is ready.
 
@@ -222,6 +224,7 @@ Polish the coordinated reveal of the settled answer: text, tables, citations, so
 - Adopt AI Elements **Suggestion** for follow-up chips.
 - Adopt AI Elements **Actions** for copy, edit, regenerate/resend-style message actions where the existing behavior maps cleanly.
 - Keep feedback affordances product-specific unless AI Elements provides a clean, accessible primitive that does not dilute the current workflow.
+- Observed follow-up from Slice 3 QA: on proposal/derived-table turns, copy/feedback/follow-up controls can float between the assistant text and the proposal/result card. Answer-phase choreography should treat those controls as the footer for the whole turn, not just the prose block, or intentionally suppress/defer them for compute proposal turns.
 
 Exit criteria: the end-of-turn answer reveal is smooth, anchored, and reload-stable. Citations work after refresh. Sources and follow-ups feel native instead of bolted on.
 
@@ -236,6 +239,8 @@ Bring compute proposals and job progress into the same chat experience without h
 - Replace hardcoded progress fallbacks where the backend can provide real progress. Where real progress is not available, label the state honestly rather than implying precise completion.
 - Coordinate with the compute-lane plan's *V1 Polish - Compute Reuse And Smoothness* section. Backend caching and parent-artifact reuse belong there; this slice is the chat UI half.
 - Smooth auto-continuation when a `computed_derivation` artifact lands, so the answer phase can continue without a visible refresh-and-replace.
+- Observed follow-up from Slice 3 QA: proposal-ready and derived-table-ready cards currently read as separate artifacts below the assistant text, while the assistant footer controls remain above them. Compute-lane polish should make proposal/result cards feel attached to the turn they complete, including confirmation, queued, and derived-ready states.
+- Observed follow-up from live QA: once a proposal is confirmed, the UI needs clearer traceability from proposal -> queued compute -> persisted `computed_derivation` artifact -> rendered table. A completed card should identify the persisted artifact/table it produced and make it obvious whether the user is looking at the result, waiting on compute, or still only looking at the original proposal. The card should answer "what state is this in?" without requiring the user to ask the agent again.
 
 Exit criteria: compute cards feel like first-class chat artifacts. Progress is either real or honestly indeterminate. Confirmation and continuation are clear.
 
