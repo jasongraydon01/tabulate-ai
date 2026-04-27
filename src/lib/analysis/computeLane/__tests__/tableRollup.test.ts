@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AnalysisGroundingContext } from "@/lib/analysis/grounding";
-import type { AnalysisTableCard } from "@/lib/analysis/types";
-import { createAnalysisTableRollupProposal } from "../tableRollup";
+import type { AnalysisTableCard, AnalysisTableCardRow } from "@/lib/analysis/types";
+import { computeTableRollupArtifact, createAnalysisTableRollupProposal } from "../tableRollup";
 
 const mocks = vi.hoisted(() => ({
   downloadFile: vi.fn(),
@@ -33,7 +33,85 @@ vi.mock("@/lib/analysis/grounding", async (importOriginal) => {
 
 const groundingContext = {} as AnalysisGroundingContext;
 
-function sourceTable(): AnalysisTableCard {
+function makeCell(count: number, n: number, cutKey: string, cutName: string) {
+  const pct = (count / n) * 100;
+  return {
+    cutKey,
+    cutName,
+    rawValue: pct,
+    displayValue: `${pct.toFixed(0)}%`,
+    count,
+    pct,
+    n,
+    mean: null,
+    sigHigherThan: [],
+    sigVsTotal: null,
+  };
+}
+
+function sourceTable(overrides: Partial<AnalysisTableCard> = {}): AnalysisTableCard {
+  const columns = [
+    { cutKey: "__total__::total", cutName: "Total", groupName: null, statLetter: null, baseN: 100, isTotal: true },
+    { cutKey: "age::young", cutName: "Young", groupName: "Age", statLetter: "A", baseN: 50 },
+  ];
+  const rows: AnalysisTableCardRow[] = [
+    {
+      rowKey: "row_1",
+      label: "Somewhat satisfied",
+      rowKind: "value",
+      statType: null,
+      valueType: "pct",
+      format: { kind: "percent" as const, decimals: 0 },
+      indent: 0,
+      isNet: false,
+      values: [
+        makeCell(20, 100, "__total__::total", "Total"),
+        makeCell(10, 50, "age::young", "Young"),
+      ],
+    },
+    {
+      rowKey: "row_2",
+      label: "Very satisfied",
+      rowKind: "value",
+      statType: null,
+      valueType: "pct",
+      format: { kind: "percent" as const, decimals: 0 },
+      indent: 0,
+      isNet: false,
+      values: [
+        makeCell(30, 100, "__total__::total", "Total"),
+        makeCell(15, 50, "age::young", "Young"),
+      ],
+    },
+    {
+      rowKey: "row_3",
+      label: "Neutral",
+      rowKind: "value",
+      statType: null,
+      valueType: "pct",
+      format: { kind: "percent" as const, decimals: 0 },
+      indent: 0,
+      isNet: false,
+      values: [
+        makeCell(10, 100, "__total__::total", "Total"),
+        makeCell(5, 50, "age::young", "Young"),
+      ],
+    },
+    {
+      rowKey: "row_4",
+      label: "Dissatisfied",
+      rowKind: "value",
+      statType: null,
+      valueType: "pct",
+      format: { kind: "percent" as const, decimals: 0 },
+      indent: 0,
+      isNet: false,
+      values: [
+        makeCell(15, 100, "__total__::total", "Total"),
+        makeCell(8, 50, "age::young", "Young"),
+      ],
+    },
+  ];
   return {
     status: "available",
     tableId: "q1",
@@ -46,103 +124,33 @@ function sourceTable(): AnalysisTableCard {
     tableSubtitle: null,
     userNote: null,
     valueMode: "pct",
-    columns: [
-      { cutKey: "__total__::total", cutName: "Total", groupName: null, statLetter: null, baseN: 100, isTotal: true },
-      { cutKey: "age::young", cutName: "Young", groupName: "Age", statLetter: "A", baseN: 50 },
-    ],
-    rows: [
-      {
-        rowKey: "row_1",
-        label: "Somewhat satisfied",
-        rowKind: "value",
-        statType: null,
-        valueType: "pct",
-        format: { kind: "percent", decimals: 0 },
-        indent: 0,
-        isNet: false,
-        values: [
-          {
-            cutKey: "__total__::total",
-            cutName: "Total",
-            rawValue: 20,
-            displayValue: "20%",
-            count: 20,
-            pct: 20,
-            n: 100,
-            mean: null,
-            sigHigherThan: [],
-            sigVsTotal: null,
-          },
-          {
-            cutKey: "age::young",
-            cutName: "Young",
-            rawValue: 20,
-            displayValue: "20%",
-            count: 10,
-            pct: 20,
-            n: 50,
-            mean: null,
-            sigHigherThan: [],
-            sigVsTotal: null,
-          },
-        ],
-      },
-      {
-        rowKey: "row_2",
-        label: "Very satisfied",
-        rowKind: "value",
-        statType: null,
-        valueType: "pct",
-        format: { kind: "percent", decimals: 0 },
-        indent: 0,
-        isNet: false,
-        values: [
-          {
-            cutKey: "__total__::total",
-            cutName: "Total",
-            rawValue: 30,
-            displayValue: "30%",
-            count: 30,
-            pct: 30,
-            n: 100,
-            mean: null,
-            sigHigherThan: [],
-            sigVsTotal: null,
-          },
-          {
-            cutKey: "age::young",
-            cutName: "Young",
-            rawValue: 30,
-            displayValue: "30%",
-            count: 15,
-            pct: 30,
-            n: 50,
-            mean: null,
-            sigHigherThan: [],
-            sigVsTotal: null,
-          },
-        ],
-      },
-    ],
-    totalRows: 2,
-    totalColumns: 2,
+    columns,
+    rows: rows.map((row) => ({
+      ...row,
+      cellsByCutKey: Object.fromEntries(row.values.map((value) => [value.cutKey, value])),
+    })),
+    totalRows: rows.length,
+    totalColumns: columns.length,
     truncatedRows: 0,
     truncatedColumns: 0,
     sourceRefs: [],
     significanceTest: null,
     significanceLevel: 0.1,
     comparisonGroups: [],
+    ...overrides,
   };
 }
 
-function canonicalArtifact(variable = "Q1") {
+function canonicalArtifact(rows = [
+  { variable: "Q1", label: "Somewhat satisfied", filterValue: "4", rowKind: "value", isNet: false },
+  { variable: "Q1", label: "Very satisfied", filterValue: "5", rowKind: "value", isNet: false },
+  { variable: "Q1", label: "Neutral", filterValue: "3", rowKind: "value", isNet: false },
+  { variable: "Q1", label: "Dissatisfied", filterValue: "2", rowKind: "value", isNet: false },
+]) {
   return {
     tables: [{
       tableId: "q1",
-      rows: [
-        { variable, label: "Somewhat satisfied", filterValue: "4", rowKind: "value", isNet: false },
-        { variable, label: "Very satisfied", filterValue: "5", rowKind: "value", isNet: false },
-      ],
+      rows,
     }],
   };
 }
@@ -154,7 +162,7 @@ function baseParams() {
     parentRunId: "run-1" as never,
     sessionId: "session-1" as never,
     requestedBy: "user-1" as never,
-    requestText: "Create Top 2 Box on Q1",
+    requestText: "Create row roll-ups on Q1",
     parentRun: {
       _id: "run-1" as never,
       status: "success",
@@ -179,15 +187,21 @@ describe("createAnalysisTableRollupProposal", () => {
     mocks.mutateInternal.mockResolvedValue("job-1");
   });
 
-  it("creates one sanitized proposal for a valid same-variable roll-up", async () => {
+  it("creates a sanitized proposal with multiple artifact-safe output rows", async () => {
     const result = await createAnalysisTableRollupProposal({
       ...baseParams(),
       candidates: [{
         tableId: "q1",
-        rollups: [{
-          label: "Top 2 Box",
-          components: [{ rowKey: "row_1" }, { rowKey: "row_2" }],
-        }],
+        outputRows: [
+          {
+            label: "Top 2 Box",
+            sourceRows: [{ rowKey: "row_1" }, { rowKey: "row_2" }],
+          },
+          {
+            label: "Bottom Box",
+            sourceRows: [{ rowKey: "row_3" }, { rowKey: "row_4" }],
+          },
+        ],
       }],
     });
 
@@ -195,25 +209,61 @@ describe("createAnalysisTableRollupProposal", () => {
       status: "validated_proposal",
       jobId: "job-1",
       jobType: "table_rollup_derivation",
-      sourceTables: [{
+      sourceTable: {
         tableId: "q1",
-        rollups: [{
+      },
+      outputRows: [
+        {
           label: "Top 2 Box",
-          components: [
+          mechanism: "artifact_exclusive_sum",
+          sourceRows: [
             { rowKey: "row_1", label: "Somewhat satisfied" },
             { rowKey: "row_2", label: "Very satisfied" },
           ],
-        }],
-      }],
+        },
+        {
+          label: "Bottom Box",
+          mechanism: "artifact_exclusive_sum",
+          sourceRows: [
+            { rowKey: "row_3", label: "Neutral" },
+            { rowKey: "row_4", label: "Dissatisfied" },
+          ],
+        },
+      ],
     });
     expect(JSON.stringify(result)).not.toContain("r2://canonical-table-key");
     expect(JSON.stringify(result)).not.toContain("fingerprint");
     expect(mocks.mutateInternal).toHaveBeenCalledTimes(1);
     expect(mocks.mutateInternal.mock.calls[0]?.[1]).toMatchObject({
-      requestText: "Create Top 2 Box on Q1",
+      requestText: "Create row roll-ups on Q1",
       frozenTableRollupSpec: {
-        schemaVersion: 1,
-        derivationType: "answer_option_rollup",
+        schemaVersion: 2,
+        derivationType: "row_rollup",
+        sourceTable: { tableId: "q1" },
+        outputRows: [
+          { label: "Top 2 Box", mechanism: "artifact_exclusive_sum" },
+          { label: "Bottom Box", mechanism: "artifact_exclusive_sum" },
+        ],
+        resolvedComputePlan: {
+          outputRows: [
+            {
+              label: "Top 2 Box",
+              mechanism: "artifact_exclusive_sum",
+              sourceRows: [
+                { rowKey: "row_1", label: "Somewhat satisfied", variable: "Q1", filterValue: "4" },
+                { rowKey: "row_2", label: "Very satisfied", variable: "Q1", filterValue: "5" },
+              ],
+            },
+            {
+              label: "Bottom Box",
+              mechanism: "artifact_exclusive_sum",
+              sourceRows: [
+                { rowKey: "row_3", label: "Neutral", variable: "Q1", filterValue: "3" },
+                { rowKey: "row_4", label: "Dissatisfied", variable: "Q1", filterValue: "2" },
+              ],
+            },
+          ],
+        },
       },
     });
   });
@@ -225,9 +275,9 @@ describe("createAnalysisTableRollupProposal", () => {
       ...baseParams(),
       candidates: [{
         tableId: "missing",
-        rollups: [{
+        outputRows: [{
           label: "Top 2 Box",
-          components: [{ rowKey: "row_1" }, { rowKey: "row_2" }],
+          sourceRows: [{ rowKey: "row_1" }, { rowKey: "row_2" }],
         }],
       }],
     });
@@ -245,9 +295,9 @@ describe("createAnalysisTableRollupProposal", () => {
       ...baseParams(),
       candidates: [{
         tableId: "q1",
-        rollups: [{
+        outputRows: [{
           label: "Top 2 Box",
-          components: [{ rowKey: "row_1" }, { rowKey: "row_missing" }],
+          sourceRows: [{ rowKey: "row_1" }, { rowKey: "row_missing" }],
         }],
       }],
     });
@@ -259,80 +309,303 @@ describe("createAnalysisTableRollupProposal", () => {
     expect(mocks.mutateInternal).not.toHaveBeenCalled();
   });
 
-  it("rejects unsupported cross-variable roll-ups before persistence", async () => {
-    mocks.downloadFile.mockResolvedValueOnce(Buffer.from(JSON.stringify({
-      tables: [{
-        tableId: "q1",
-        rows: [
-          { variable: "Q1_A", label: "Somewhat satisfied", filterValue: "1", rowKind: "value", isNet: false },
-          { variable: "Q1_B", label: "Very satisfied", filterValue: "1", rowKind: "value", isNet: false },
-        ],
-      }],
-    })));
+  it("classifies multi-variable binary rows as respondent any-of but creates no job until respondent-level compute is available", async () => {
+    mocks.downloadFile.mockResolvedValueOnce(Buffer.from(JSON.stringify(canonicalArtifact([
+      { variable: "Q1_A", label: "Somewhat satisfied", filterValue: "1", rowKind: "value", isNet: false },
+      { variable: "Q1_B", label: "Very satisfied", filterValue: "1", rowKind: "value", isNet: false },
+      { variable: "Q1_C", label: "Neutral", filterValue: "1", rowKind: "value", isNet: false },
+      { variable: "Q1_D", label: "Dissatisfied", filterValue: "1", rowKind: "value", isNet: false },
+    ]))));
 
     const result = await createAnalysisTableRollupProposal({
       ...baseParams(),
       candidates: [{
         tableId: "q1",
-        rollups: [{
+        outputRows: [{
           label: "Any satisfied",
-          components: [{ rowKey: "row_1" }, { rowKey: "row_2" }],
+          sourceRows: [{ rowKey: "row_1" }, { rowKey: "row_2" }],
         }],
       }],
     });
 
     expect(result.status).toBe("rejected_candidate");
     if (result.status === "rejected_candidate") {
-      expect(result.unsupportedCombinations.join(" ")).toContain("spans multiple variables");
+      expect(result.blockedMechanisms).toEqual([expect.objectContaining({
+        label: "Any satisfied",
+        mechanism: "respondent_any_of",
+      })]);
+      expect(result.unsupportedCombinations.join(" ")).not.toContain("spans multiple variables");
     }
     expect(mocks.mutateInternal).not.toHaveBeenCalled();
   });
 
-  it("rejects duplicate component rows before persistence", async () => {
+  it("classifies mean-row tables as metric aggregation but creates no job until metric compute is available", async () => {
+    mocks.fetchTable.mockReturnValueOnce(sourceTable({ tableType: "mean_rows" }));
+    mocks.downloadFile.mockResolvedValueOnce(Buffer.from(JSON.stringify(canonicalArtifact([
+      { variable: "Q1_A", label: "Somewhat satisfied", filterValue: "", rowKind: "value", isNet: false },
+      { variable: "Q1_B", label: "Very satisfied", filterValue: "", rowKind: "value", isNet: false },
+      { variable: "Q1_C", label: "Neutral", filterValue: "", rowKind: "value", isNet: false },
+      { variable: "Q1_D", label: "Dissatisfied", filterValue: "", rowKind: "value", isNet: false },
+    ]))));
+
     const result = await createAnalysisTableRollupProposal({
       ...baseParams(),
       candidates: [{
         tableId: "q1",
-        rollups: [{
-          label: "Duplicated Top Box",
-          components: [{ rowKey: "row_1" }, { rowKey: "row_1" }],
+        outputRows: [{
+          label: "Pfizer medications",
+          sourceRows: [{ rowKey: "row_1" }, { rowKey: "row_2" }],
         }],
       }],
     });
 
     expect(result.status).toBe("rejected_candidate");
     if (result.status === "rejected_candidate") {
-      expect(result.unsupportedCombinations.join(" ")).toContain("repeats the same source row");
+      expect(result.blockedMechanisms).toEqual([expect.objectContaining({
+        label: "Pfizer medications",
+        mechanism: "metric_row_aggregation",
+      })]);
     }
     expect(mocks.mutateInternal).not.toHaveBeenCalled();
   });
 
-  it("rejects existing grouped filter values before persistence", async () => {
-    mocks.downloadFile.mockResolvedValueOnce(Buffer.from(JSON.stringify({
-      tables: [{
+  it("rejects duplicate source rows within and across output rows before persistence", async () => {
+    const duplicateWithin = await createAnalysisTableRollupProposal({
+      ...baseParams(),
+      candidates: [{
         tableId: "q1",
-        rows: [
-          { variable: "Q1", label: "Somewhat satisfied", filterValue: "4,5", rowKind: "value", isNet: false },
-          { variable: "Q1", label: "Very satisfied", filterValue: "5", rowKind: "value", isNet: false },
+        outputRows: [{
+          label: "Duplicated Top Box",
+          sourceRows: [{ rowKey: "row_1" }, { rowKey: "row_1" }],
+        }],
+      }],
+    });
+    expect(duplicateWithin.status).toBe("rejected_candidate");
+    if (duplicateWithin.status === "rejected_candidate") {
+      expect(duplicateWithin.unsupportedCombinations.join(" ")).toContain("repeats the same source row");
+    }
+
+    const duplicateAcross = await createAnalysisTableRollupProposal({
+      ...baseParams(),
+      candidates: [{
+        tableId: "q1",
+        outputRows: [
+          { label: "Top 2 Box", sourceRows: [{ rowKey: "row_1" }, { rowKey: "row_2" }] },
+          { label: "Also top", sourceRows: [{ rowKey: "row_2" }, { rowKey: "row_3" }] },
         ],
       }],
-    })));
+    });
+    expect(duplicateAcross.status).toBe("rejected_candidate");
+    if (duplicateAcross.status === "rejected_candidate") {
+      expect(duplicateAcross.unsupportedCombinations.join(" ")).toContain("reuses source rows");
+    }
+    expect(mocks.mutateInternal).not.toHaveBeenCalled();
+  });
+
+  it("computes artifact-safe output rows from the resolved plan and keeps unmentioned source rows", async () => {
+    mocks.fetchTable.mockReturnValueOnce(sourceTable());
+
+    const artifact = await computeTableRollupArtifact({
+      groundingContext,
+      jobId: "job-1",
+      runResultValue: {},
+      spec: {
+        schemaVersion: 2,
+        derivationType: "row_rollup",
+        sourceTable: {
+          tableId: "q1",
+          title: "Q1 Satisfaction",
+          questionId: "Q1",
+          questionText: "How satisfied are you?",
+        },
+        outputRows: [{
+          label: "Top 2 Box",
+          mechanism: "artifact_exclusive_sum",
+          sourceRows: [
+            { rowKey: "row_1", label: "Somewhat satisfied" },
+            { rowKey: "row_2", label: "Very satisfied" },
+          ],
+        }],
+        resolvedComputePlan: {
+          outputRows: [{
+            label: "Top 2 Box",
+            mechanism: "artifact_exclusive_sum",
+            sourceRows: [
+              { rowKey: "row_1", label: "Somewhat satisfied", variable: "Q1", filterValue: "4" },
+              { rowKey: "row_2", label: "Very satisfied", variable: "Q1", filterValue: "5" },
+            ],
+          }],
+        },
+      },
+    });
+
+    expect(artifact.rows[0]).toMatchObject({
+      label: "Top 2 Box",
+      isNet: true,
+    });
+    expect(artifact.rows[0]?.values).toEqual(expect.arrayContaining([
+      expect.objectContaining({ count: 50, pct: 50 }),
+    ]));
+    expect(artifact.rows.map((row) => row.label)).toEqual([
+      "Top 2 Box",
+      "Neutral",
+      "Dissatisfied",
+    ]);
+    expect(artifact.focusedRowKeys).toEqual(["derived_rollup_1"]);
+    expect(artifact.userNote).toContain("Significance markers are not shown");
+    expect(artifact.rows[0]?.values.every((cell) => cell.sigHigherThan.length === 0 && cell.sigVsTotal === null)).toBe(true);
+  });
+
+  it("allows zero-base columns instead of rejecting an otherwise valid same-variable roll-up", async () => {
+    const zeroBaseColumn = { cutKey: "gender::other", cutName: "Gender: Other", groupName: "Gender", statLetter: "B", baseN: 0 };
+    const table = sourceTable({
+      columns: [
+        ...sourceTable().columns,
+        zeroBaseColumn,
+      ],
+      rows: sourceTable().rows.map((row) => {
+        const zeroBaseCell = {
+          cutKey: zeroBaseColumn.cutKey,
+          cutName: zeroBaseColumn.cutName,
+          rawValue: 0,
+          displayValue: "0%",
+          count: 0,
+          pct: 0,
+          n: 0,
+          mean: null,
+          sigHigherThan: [],
+          sigVsTotal: null,
+        };
+        const values = [...row.values, zeroBaseCell];
+        return {
+          ...row,
+          values,
+          cellsByCutKey: Object.fromEntries(values.map((value) => [value.cutKey, value])),
+        };
+      }),
+      totalColumns: sourceTable().columns.length + 1,
+    });
+    mocks.fetchTable.mockReturnValue(table);
 
     const result = await createAnalysisTableRollupProposal({
       ...baseParams(),
       candidates: [{
         tableId: "q1",
-        rollups: [{
+        outputRows: [{
           label: "Top 2 Box",
-          components: [{ rowKey: "row_1" }, { rowKey: "row_2" }],
+          sourceRows: [{ rowKey: "row_1" }, { rowKey: "row_2" }],
         }],
       }],
     });
 
-    expect(result.status).toBe("rejected_candidate");
-    if (result.status === "rejected_candidate") {
-      expect(result.ineligibleRows[0]?.reason).toContain("atomic answer-option values");
-    }
-    expect(mocks.mutateInternal).not.toHaveBeenCalled();
+    expect(result.status).toBe("validated_proposal");
+    expect(mocks.mutateInternal).toHaveBeenCalledTimes(1);
+
+    mocks.fetchTable.mockReturnValueOnce(table);
+    const artifact = await computeTableRollupArtifact({
+      groundingContext,
+      jobId: "job-1",
+      runResultValue: {},
+      spec: mocks.mutateInternal.mock.calls[0]?.[1].frozenTableRollupSpec,
+    });
+
+    expect(artifact.rows[0]?.cellsByCutKey?.["gender::other"]).toMatchObject({
+      count: 0,
+      pct: 0,
+      n: 0,
+      displayValue: "0%",
+    });
+  });
+
+  it("rejects frozen specs whose proposal rows do not match the resolved compute plan", async () => {
+    await expect(computeTableRollupArtifact({
+      groundingContext,
+      jobId: "job-1",
+      runResultValue: {},
+      spec: {
+        schemaVersion: 2,
+        derivationType: "row_rollup",
+        sourceTable: {
+          tableId: "q1",
+          title: "Q1 Satisfaction",
+          questionId: "Q1",
+          questionText: "How satisfied are you?",
+        },
+        outputRows: [{
+          label: "Top 2 Box",
+          mechanism: "artifact_exclusive_sum",
+          sourceRows: [
+            { rowKey: "row_3", label: "Neutral" },
+            { rowKey: "row_4", label: "Dissatisfied" },
+          ],
+        }],
+        resolvedComputePlan: {
+          outputRows: [{
+            label: "Top 2 Box",
+            mechanism: "artifact_exclusive_sum",
+            sourceRows: [
+              { rowKey: "row_1", label: "Somewhat satisfied", variable: "Q1", filterValue: "4" },
+              { rowKey: "row_2", label: "Very satisfied", variable: "Q1", filterValue: "5" },
+            ],
+          }],
+        },
+      },
+    })).rejects.toThrow("older roll-up contract");
+  });
+
+  it("rejects stale row labels and canonical semantics before computing", async () => {
+    mocks.fetchTable.mockReturnValueOnce(sourceTable({
+      rows: sourceTable().rows.map((row) => row.rowKey === "row_1" ? { ...row, label: "Changed label" } : row),
+    }));
+
+    const spec = {
+      schemaVersion: 2 as const,
+      derivationType: "row_rollup" as const,
+      sourceTable: {
+        tableId: "q1",
+        title: "Q1 Satisfaction",
+        questionId: "Q1",
+        questionText: "How satisfied are you?",
+      },
+      outputRows: [{
+        label: "Top 2 Box",
+        mechanism: "artifact_exclusive_sum" as const,
+        sourceRows: [
+          { rowKey: "row_1", label: "Somewhat satisfied" },
+          { rowKey: "row_2", label: "Very satisfied" },
+        ],
+      }],
+      resolvedComputePlan: {
+        outputRows: [{
+          label: "Top 2 Box",
+          mechanism: "artifact_exclusive_sum" as const,
+          sourceRows: [
+            { rowKey: "row_1", label: "Somewhat satisfied", variable: "Q1", filterValue: "4" },
+            { rowKey: "row_2", label: "Very satisfied", variable: "Q1", filterValue: "5" },
+          ],
+        }],
+      },
+    };
+
+    await expect(computeTableRollupArtifact({
+      groundingContext,
+      jobId: "job-1",
+      runResultValue: {},
+      spec,
+    })).rejects.toThrow("validated label");
+
+    mocks.fetchTable.mockReturnValueOnce(sourceTable());
+    mocks.downloadFile.mockResolvedValueOnce(Buffer.from(JSON.stringify(canonicalArtifact([
+      { variable: "Q1", label: "Somewhat satisfied", filterValue: "999", rowKind: "value", isNet: false },
+      { variable: "Q1", label: "Very satisfied", filterValue: "5", rowKind: "value", isNet: false },
+      { variable: "Q1", label: "Neutral", filterValue: "3", rowKind: "value", isNet: false },
+      { variable: "Q1", label: "Dissatisfied", filterValue: "2", rowKind: "value", isNet: false },
+    ]))));
+    await expect(computeTableRollupArtifact({
+      groundingContext,
+      jobId: "job-1",
+      runResultValue: {},
+      spec,
+    })).rejects.toThrow("validated row semantics");
   });
 });

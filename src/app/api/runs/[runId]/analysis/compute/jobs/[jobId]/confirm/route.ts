@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { loadAnalysisParentRunArtifacts } from "@/lib/analysis/computeLane/artifactLoader";
 import { buildAnalysisComputeFingerprint } from "@/lib/analysis/computeLane/fingerprint";
+import {
+  isAnalysisTableRollupSpecV2,
+  UNSUPPORTED_TABLE_ROLLUP_SPEC_MESSAGE,
+} from "@/lib/analysis/computeLane/types";
 import { buildWorkerExecutionPayload, buildWorkerPipelineContext, normalizeWizardWorkerInputRefs } from "@/lib/worker/buildExecutionPayload";
 import { getConvexClient, mutateInternal, queryInternal } from "@/lib/convex";
 import { requireConvexAuth, AuthenticationError } from "@/lib/requireConvexAuth";
@@ -104,6 +108,9 @@ export async function POST(
     if (job.jobType === "table_rollup_derivation") {
       if (!job.frozenTableRollupSpec) {
         return NextResponse.json({ error: "Analysis compute job is missing frozen roll-up spec" }, { status: 409 });
+      }
+      if (!isAnalysisTableRollupSpecV2(job.frozenTableRollupSpec)) {
+        return NextResponse.json({ error: UNSUPPORTED_TABLE_ROLLUP_SPEC_MESSAGE }, { status: 409 });
       }
       const enqueueResult = await mutateInternal(internal.analysisComputeJobs.confirmTableRollupJob, {
         orgId: auth.convexOrgId,

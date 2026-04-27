@@ -1,6 +1,6 @@
 # Phase 15 Sub-Plan — Analysis Compute Lane
 
-**Status:** Tier B one-group banner-extension recompute is implemented, including native agent initiation. Slice 3, Tier A table-scoped derivations, now has an initial roll-up skeleton, but the product model is not complete.
+**Status:** Tier B one-group banner-extension recompute is implemented, including native agent initiation. Slice 3, Tier A Bucket 1 row roll-ups are working end to end for artifact-safe same-variable exclusive sums. Selected-table cuts and non-roll-up derived tables remain next.
 
 **Purpose:** give TabulateAI's analysis workspace a safe way to create computed follow-up outputs from a completed run without mutating the original run or reinterpreting settled pipeline decisions.
 
@@ -10,7 +10,7 @@
 
 The base analysis surface remains artifact-grounded and read-only. It answers from verified pipeline artifacts such as `results/tables.json`, `enrichment/12-questionid-final.json`, `planning/20-banner-plan.json`, and `planning/21-crosstab-plan.json`.
 
-The compute lane is a separate path for analysis-triggered derived outputs. Today it supports one Tier B workflow:
+The compute lane is a separate path for analysis-triggered derived outputs. It currently supports one Tier B workflow and the first Tier A table-scoped workflow.
 
 - The user asks, or the analysis agent identifies, a clear request for a new banner group across the full tab set.
 - The analysis workspace runs preflight against the completed parent run.
@@ -19,7 +19,7 @@ The compute lane is a separate path for analysis-triggered derived outputs. Toda
 - Backend creates a child run through the worker queue.
 - The child run reuses the parent run's settled planning artifacts, appends the frozen group, recomputes outputs, and leaves the original tables in the parent run's table set unchanged.
 
-The important guarantee is unchanged: **what the user confirms in chat is what the child run consumes.**
+For Tier B derived runs, the important guarantee is unchanged: **what the user confirms in chat is what the child run consumes.** For Tier A derived artifacts, the equivalent guarantee is: **what the user confirms in chat is the frozen backend-resolved spec the worker consumes.**
 
 ---
 
@@ -112,23 +112,29 @@ Verification run for Slice 2:
 
 ### Slice 3 — Tier A Table-Scoped Derivations
 
-**Status:** in progress. Initial infrastructure exists for one selected table and validated answer-option roll-up proposals, but Slice 3 should not be called done until the roll-up product shape below is settled and implemented.
+**Status:** Bucket 1 implemented for artifact-safe same-variable exclusive sums. The path has been exercised end to end in the analysis workspace: proposal, button confirmation, worker-queued compute, `computed_derivation` artifact creation, and same-session interpretation. Slice 3 remains open for selected-table cuts and non-roll-up derived tables.
 
 Add compute-backed derivations for one table or a small related set of tables. This is the required next slice for requests where the user or agent is not asking for a whole derived run, but for a table-level computed follow-up.
 
-Implemented skeleton:
+Implemented Bucket 1 path:
 
 - `table_rollup_derivation` jobs share the `analysisComputeJobs` proposal/confirm/cancel lifecycle.
-- The analysis agent has a `proposeTableRollup` tool that can create a proposal only after backend validation.
+- The analysis agent has a `proposeRowRollup` tool that can create a proposal only after backend validation.
 - Valid proposals render as derived-table proposal cards and remain button-confirmed.
 - Confirmed jobs are worker-claimed, compute a `computed_derivation` analysis artifact, and do not create a child run or project default.
 - Completed derived artifacts are available to grounding tools, and TabulateAI can continue the analysis loop by fetching and interpreting the computed table in the same conversation.
 - Current scope is intentionally one selected source table.
+- Frozen row-roll-up specs use schema version 2 with `derivationType: "row_rollup"`, source table metadata, user-facing output rows, and a backend-resolved compute plan.
+- Workers reject legacy or malformed frozen specs before compute.
+- Compute consumes backend-resolved source-row semantics, revalidates current row labels and canonical variable/filter metadata, and never uses agent-authored formulas.
+- Unsupported but recognized shapes, including respondent-level any-of and metric row aggregation, return trace/tool feedback and do not create durable jobs.
+- Derived roll-up rows suppress significance markers until the compute lane can reproduce pipeline-equivalent significance for derived rows.
+- Zero-base displayed columns no longer block otherwise valid artifact-safe roll-ups.
 
 Product decisions for Slice 3:
 
 - Treat Tier A as three ordered product buckets:
-  1. **Table roll-ups.** Finish this first. A roll-up collapses selected existing rows into one new row while preserving the table's analytical meaning. This includes top/middle/bottom boxes, positive/neutral/negative groups, custom row groupings, multi-select "any of these rows" NETs, and allocation/treatment group roll-ups where the table remains an allocation/average table. The key boundary is not table value type; it is whether the derived row preserves the source table's intent.
+  1. **Table roll-ups.** Bucket 1 is complete for artifact-safe same-variable exclusive sums. A roll-up collapses selected existing rows into one row while preserving the table's analytical meaning. This includes top/middle/bottom boxes, positive/neutral/negative groups, and custom row groupings where rows are mutually exclusive and share a base. Multi-select "any of these rows" NETs and allocation/treatment group roll-ups are recognized but intentionally blocked until their safe compute mechanisms are implemented.
   2. **Selected-table cuts.** Do this second. A cut creates a new respondent group/column for one selected table or a small selected table set. Cut logic can be semantically complex, such as "aware of CSB and Chase and rated this scale 4 or 5," as long as backend validation can prove the variables, values, bases, and significance behavior are valid.
   3. **Non-roll-up derived tables.** Do this third, but keep it squarely in V1. These are valuable flexible table-building workflows where the output answers a meaningfully new table question or assembles a new view, such as KPI side-by-side tables, tables built from rows across multiple questions, composites, intersections, or table-type transformations. This bucket needs more product design because the agent may need to search for variables/questions and plan the table shape, not just collapse rows already visible in one source table.
 - For roll-ups, the agent should operate semantically: source table, selected source rows, desired label, and the user's intent. Backend validation decides the compute mechanism. For single-response rows this may be an artifact-safe mutually exclusive sum. For multi-select rows it may need respondent-level "selected any of these rows" logic. For allocation or other average-style tables, it may need a table-preserving aggregation rule. The user should not need to know which mechanism applies.
@@ -154,9 +160,10 @@ Expected flow:
 
 This post-compute continuation is part of the product contract, not a cosmetic convenience. A Tier A request should feel like "compute this table-level follow-up and tell me what it means," while still keeping the computation itself deterministic and grounded.
 
-Open product/implementation decisions before calling Slice 3 complete:
+Remaining product/implementation decisions before calling all of Slice 3 complete:
 
-- Define the allowed roll-up mechanisms for the first user-facing version. The core contract is "collapse selected rows into one row without changing the table's intent," with backend classification between artifact-safe same-variable sums, respondent-level any-of NETs for multi-select rows, and table-preserving aggregation for allocation/average-style rows.
+- Implement safe compute for respondent-level any-of NETs for multi-select rows if usage warrants it.
+- Decide whether metric row aggregation belongs in roll-ups or in the non-roll-up derived-table/benchmark bucket.
 - Decide what source respondent-level or metric-specific artifacts are required for multi-select and allocation-style row collapse. Do not fake this from displayed percentages when rows can overlap or when row values need table-specific aggregation.
 - Keep unsupported derivations explicit: AND logic, composites, intersections, and table-type transformations should be routed to the non-roll-up derived-table bucket unless they fit the agreed roll-up contract.
 - Design the non-roll-up derived-table workflow after roll-ups and selected-table cuts. This is V1 work, but it needs a separate planning layer because the agent may be building a new table shape rather than validating a straightforward row collapse.
@@ -164,9 +171,11 @@ Open product/implementation decisions before calling Slice 3 complete:
 
 ## V1 Polish — Compute Reuse And Smoothness
 
-This should come after the core Tier A product path is working, but it is still part of making the compute lane feel production-smooth.
+This should come after the core Tier A Bucket 1 product path is working, but it is still part of making the compute lane feel production-smooth.
 
 Today, derived-run recompute is intentionally conservative: it reuses parent artifacts where the Slice 2 lane already freezes them, but it still re-enters more of the pipeline than the ideal steady-state path. In particular, follow-up compute can end up re-sending settled artifacts through agents such as loop semantics and recomputing work that should be cacheable once the parent run is known-good.
+
+The first row-roll-up pass also exposed UX polish needs: while a table-level compute job is queued/running, the analysis workspace needs clearer progress feedback, and the automatic post-compute interpretation can feel delayed even when the worker eventually succeeds. Treat that as smoothness/reuse polish, not a blocker for the Bucket 1 compute contract.
 
 Optimization goals:
 
@@ -175,6 +184,8 @@ Optimization goals:
 - Cache or fingerprint reusable compute inputs so identical or near-identical follow-up requests do not repeat expensive preparation work.
 - Keep the same safety contract: frozen confirmed inputs, worker-queued execution, parent-run immutability, and deterministic backend-computed results.
 - Treat reuse as an execution optimization only. It must not weaken validation for newly requested cuts, roll-ups, or derived table definitions.
+- Improve queued/running derived-table UI states so users can see that table-level compute is still progressing.
+- Smooth the auto-continuation path after `computed_derivation` artifact creation so the rendered table and interpretation appear promptly and predictably.
 
 ## Deferred / Not Required for V1 Readiness
 
@@ -196,4 +207,4 @@ The compute lane now has a stable shape:
 - worker-backed compute produces final outputs
 - parent runs stay immutable
 
-The next real product work is not more Tier B plumbing. It is deciding and implementing the Tier A table-scoped derivation model for cases where the user wants a table-level computed follow-up rather than a whole derived run.
+The next real product work is selected-table cuts, followed by non-roll-up derived tables. Bucket 1 row roll-ups now provide the working table-scoped derivation foundation, with compute smoothness and reuse polish tracked separately.

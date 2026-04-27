@@ -177,18 +177,30 @@ function buildProposedGroup(job: RawAnalysisComputeJob): AnalysisComputeJobView[
 function buildProposedTableRollup(job: RawAnalysisComputeJob): AnalysisComputeJobView["proposedTableRollup"] | undefined {
   const spec = asRecord(job.frozenTableRollupSpec);
   if (!spec) return undefined;
-  const sourceTables = Array.isArray(spec.sourceTables) ? spec.sourceTables : [];
+  const sourceTables = asRecord(spec.sourceTable)
+    ? [spec.sourceTable]
+    : Array.isArray(spec.sourceTables)
+      ? spec.sourceTables
+      : [];
   const safeTables = sourceTables.flatMap((entry) => {
     const table = asRecord(entry);
     const tableId = optionalString(table?.tableId);
     const title = optionalString(table?.title);
     if (!tableId || !title) return [];
-    const rollups = Array.isArray(table?.rollups) ? table.rollups : [];
+    const rollups = Array.isArray(spec.outputRows)
+      ? spec.outputRows
+      : Array.isArray(table?.rollups)
+        ? table.rollups
+        : [];
     const safeRollups = rollups.flatMap((rollupEntry) => {
       const rollup = asRecord(rollupEntry);
       const label = optionalString(rollup?.label);
       if (!label) return [];
-      const components = Array.isArray(rollup?.components) ? rollup.components : [];
+      const components = Array.isArray(rollup?.sourceRows)
+        ? rollup.sourceRows
+        : Array.isArray(rollup?.components)
+          ? rollup.components
+          : [];
       const safeComponents = components.flatMap((componentEntry) => {
         const component = asRecord(componentEntry);
         const rowKey = optionalString(component?.rowKey);

@@ -139,21 +139,25 @@ describe("buildAnalysisComputeJobView", () => {
       requestText: "Create Top 2 Box",
       fingerprint: "rollup-token",
       frozenTableRollupSpec: {
-        schemaVersion: 1,
-        derivationType: "answer_option_rollup",
-        sourceTables: [{
+        schemaVersion: 2,
+        derivationType: "row_rollup",
+        sourceTable: {
           tableId: "q1",
           title: "Q1 Satisfaction",
           questionId: "Q1",
           questionText: "How satisfied are you?",
-          rollups: [{
-            label: "Top 2 Box",
-            components: [
-              { rowKey: "row_4", label: "Somewhat satisfied" },
-              { rowKey: "row_5", label: "Very satisfied" },
-            ],
-          }],
+        },
+        outputRows: [{
+          label: "Top 2 Box",
+          mechanism: "artifact_exclusive_sum",
+          sourceRows: [
+            { rowKey: "row_4", label: "Somewhat satisfied" },
+            { rowKey: "row_5", label: "Very satisfied" },
+          ],
         }],
+        resolvedComputePlan: {
+          outputRows: [],
+        },
       },
       r2Keys: { unsafe: "hidden" },
       promptSummary: "private reasoning",

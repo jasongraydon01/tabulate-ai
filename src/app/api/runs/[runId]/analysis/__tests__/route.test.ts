@@ -356,7 +356,7 @@ describe("analysis chat route", () => {
         responseMessage: {
           parts: [
             {
-              type: "tool-proposeTableRollup",
+              type: "tool-proposeRowRollup",
               toolCallId: "rollup-1",
               state: "output-available",
               input: { requestText: "Bad roll-up" },
@@ -396,7 +396,7 @@ describe("analysis chat route", () => {
         { type: "text", text: "I need the exact source rows before TabulateAI can prepare that roll-up." },
       ],
     });
-    expect(JSON.stringify(mocks.mutateInternal.mock.calls[1][1])).not.toContain("tool-proposeTableRollup");
+    expect(JSON.stringify(mocks.mutateInternal.mock.calls[1][1])).not.toContain("tool-proposeRowRollup");
     expect(JSON.stringify(mocks.mutateInternal.mock.calls[1][1])).not.toContain("rejected_candidate");
   });
 

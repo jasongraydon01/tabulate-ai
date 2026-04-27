@@ -233,7 +233,7 @@ describe("streamAnalysisResponse", () => {
         "listBannerCuts",
         "confirmCitation",
         "proposeDerivedRun",
-        "proposeTableRollup",
+        "proposeRowRollup",
         "submitAnswer",
       ]);
       expect(tools?.confirmCitation.providerOptions).toEqual({
@@ -290,53 +290,29 @@ describe("streamAnalysisResponse", () => {
         tableSpecificDerivationExcluded: true,
         rawExpression: "REGION == 1",
       }).success).toBe(false);
-      expect(tools?.proposeTableRollup.providerOptions).toBeUndefined();
-      expect(tools?.proposeTableRollup.inputSchema.safeParse({
+      expect(tools?.proposeRowRollup.providerOptions).toBeUndefined();
+      expect(tools?.proposeRowRollup.inputSchema.safeParse({
         requestText: "Roll up top two box on Q1",
-        targetScope: "selected_tables",
-        derivationType: "answer_option_rollup",
-        selectedTableSpecificCutExcluded: true,
-        sourceTables: [{
-          tableId: "q1",
-          rollups: [{
-            label: "Top 2 Box",
-            components: [{ rowKey: "row_4" }, { rowKey: "row_5" }],
-          }],
+        sourceTableId: "q1",
+        outputRows: [{
+          label: "Top 2 Box",
+          sourceRows: [{ rowKey: "row_4" }, { rowKey: "row_5" }],
         }],
       }).success).toBe(true);
-      expect(tools?.proposeTableRollup.inputSchema.safeParse({
+      expect(tools?.proposeRowRollup.inputSchema.safeParse({
         requestText: "Roll up top two box on Q1 and Q2",
-        targetScope: "selected_tables",
-        derivationType: "answer_option_rollup",
-        selectedTableSpecificCutExcluded: true,
-        sourceTables: [
-          {
-            tableId: "q1",
-            rollups: [{
-              label: "Top 2 Box",
-              components: [{ rowKey: "row_4" }, { rowKey: "row_5" }],
-            }],
-          },
-          {
-            tableId: "q2",
-            rollups: [{
-              label: "Top 2 Box",
-              components: [{ rowKey: "row_4" }, { rowKey: "row_5" }],
-            }],
-          },
-        ],
+        sourceTableId: "q1",
+        outputRows: [{
+          label: "Top 2 Box",
+          sourceRows: [{ rowKey: "row_4" }],
+        }],
       }).success).toBe(false);
-      expect(tools?.proposeTableRollup.inputSchema.safeParse({
+      expect(tools?.proposeRowRollup.inputSchema.safeParse({
         requestText: "Add region cuts to Q1",
-        targetScope: "selected_tables",
-        derivationType: "selected_table_cut",
-        selectedTableSpecificCutExcluded: false,
-        sourceTables: [{
-          tableId: "q1",
-          rollups: [{
-            label: "Region",
-            components: [{ rowKey: "row_1" }, { rowKey: "row_2" }],
-          }],
+        sourceTableId: "q1",
+        outputRows: [{
+          label: "Region",
+          sourceRows: [{ rowKey: "row_1", label: "Bad extra" }, { rowKey: "row_2" }],
         }],
       }).success).toBe(false);
       expect(tools?.fetchTable.inputSchema.safeParse({
@@ -664,33 +640,29 @@ describe("streamAnalysisResponse", () => {
       jobId: "job-rollup-1",
       jobType: "table_rollup_derivation",
       message: "I prepared a validated derived-table proposal.",
-      sourceTables: [{
+      sourceTable: {
         tableId: "q1",
         title: "Q1 Satisfaction",
         questionId: "Q1",
         questionText: "How satisfied are you?",
-        rollups: [{
-          label: "Top 2 Box",
-          components: [
-            { rowKey: "row_4", label: "Somewhat satisfied" },
-            { rowKey: "row_5", label: "Very satisfied" },
-          ],
-        }],
+      },
+      outputRows: [{
+        label: "Top 2 Box",
+        mechanism: "artifact_exclusive_sum",
+        sourceRows: [
+          { rowKey: "row_4", label: "Somewhat satisfied" },
+          { rowKey: "row_5", label: "Very satisfied" },
+        ],
       }],
     };
     mocks.createAnalysisTableRollupProposal.mockResolvedValueOnce(proposal);
     mocks.streamText.mockImplementationOnce(async ({ onFinish, tools }) => {
-      const output = await tools?.proposeTableRollup.execute?.({
+      const output = await tools?.proposeRowRollup.execute?.({
         requestText: "Create a Top 2 Box roll-up on Q1",
-        targetScope: "selected_tables",
-        derivationType: "answer_option_rollup",
-        selectedTableSpecificCutExcluded: true,
-        sourceTables: [{
-          tableId: "q1",
-          rollups: [{
-            label: "Top 2 Box",
-            components: [{ rowKey: "row_4" }, { rowKey: "row_5" }],
-          }],
+        sourceTableId: "q1",
+        outputRows: [{
+          label: "Top 2 Box",
+          sourceRows: [{ rowKey: "row_4" }, { rowKey: "row_5" }],
         }],
       }, { toolCallId: "rollup-1" });
       expect(output).toEqual(proposal);
@@ -783,9 +755,9 @@ describe("streamAnalysisResponse", () => {
       requestText: "Create a Top 2 Box roll-up on Q1",
       candidates: [{
         tableId: "q1",
-        rollups: [{
+        outputRows: [{
           label: "Top 2 Box",
-          components: [{ rowKey: "row_4" }, { rowKey: "row_5" }],
+          sourceRows: [{ rowKey: "row_4" }, { rowKey: "row_5" }],
         }],
       }],
     }));

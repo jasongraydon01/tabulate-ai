@@ -62,8 +62,8 @@ import { api, internal } from "../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
 
 const CONVEX_ID_RE = /^[a-zA-Z0-9_.-]+$/;
-const HIDDEN_PROPOSAL_TOOL_NAMES = new Set(["proposeDerivedRun", "proposeTableRollup"]);
-const HIDDEN_PROPOSAL_TOOL_TYPES = new Set(["tool-proposeDerivedRun", "tool-proposeTableRollup"]);
+const HIDDEN_PROPOSAL_TOOL_NAMES = new Set(["proposeDerivedRun", "proposeRowRollup"]);
+const HIDDEN_PROPOSAL_TOOL_TYPES = new Set(["tool-proposeDerivedRun", "tool-proposeRowRollup"]);
 
 function isAnalysisMessageCandidate(value: unknown): value is AnalysisUIMessage[] {
   return Array.isArray(value);

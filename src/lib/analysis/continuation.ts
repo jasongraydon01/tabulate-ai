@@ -40,7 +40,7 @@ import { writeAnalysisTurnTrace } from "@/lib/analysis/trace";
 import { getConvexClient, mutateInternal } from "@/lib/convex";
 import { sanitizeHintForPrompt } from "@/lib/promptSanitization";
 
-const HIDDEN_PROPOSAL_TOOL_TYPES = new Set(["tool-proposeDerivedRun", "tool-proposeTableRollup"]);
+const HIDDEN_PROPOSAL_TOOL_TYPES = new Set(["tool-proposeDerivedRun", "tool-proposeRowRollup"]);
 
 type PersistedPartForCreate = PersistedAnalysisPart & {
   artifactId?: Id<"analysisArtifacts">;

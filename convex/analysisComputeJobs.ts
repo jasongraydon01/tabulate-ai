@@ -1,6 +1,10 @@
 import { v } from "convex/values";
 import { query, internalMutation, internalQuery } from "./_generated/server";
 import { buildAnalysisComputeJobView } from "../src/lib/analysis/computeLane/jobView";
+import {
+  isAnalysisTableRollupSpecV2,
+  UNSUPPORTED_TABLE_ROLLUP_SPEC_MESSAGE,
+} from "../src/lib/analysis/computeLane/types";
 
 const jobStatusValidator = v.union(
   v.literal("drafting"),
@@ -29,23 +33,46 @@ const tableRollupComponentValidator = v.object({
   label: v.string(),
 });
 
-const tableRollupDefinitionValidator = v.object({
+const tableRollupMechanismValidator = v.union(
+  v.literal("artifact_exclusive_sum"),
+  v.literal("respondent_any_of"),
+  v.literal("metric_row_aggregation"),
+);
+
+const tableRollupOutputRowValidator = v.object({
   label: v.string(),
-  components: v.array(tableRollupComponentValidator),
+  sourceRows: v.array(tableRollupComponentValidator),
+  mechanism: tableRollupMechanismValidator,
 });
 
-const tableRollupTableSpecValidator = v.object({
+const tableRollupSourceTableSpecValidator = v.object({
   tableId: v.string(),
   title: v.string(),
   questionId: v.union(v.string(), v.null()),
   questionText: v.union(v.string(), v.null()),
-  rollups: v.array(tableRollupDefinitionValidator),
+});
+
+const tableRollupResolvedSourceRowValidator = v.object({
+  rowKey: v.string(),
+  label: v.string(),
+  variable: v.string(),
+  filterValue: v.string(),
+});
+
+const tableRollupResolvedOutputRowValidator = v.object({
+  label: v.string(),
+  mechanism: tableRollupMechanismValidator,
+  sourceRows: v.array(tableRollupResolvedSourceRowValidator),
 });
 
 const tableRollupSpecValidator = v.object({
-  schemaVersion: v.number(),
-  derivationType: v.literal("answer_option_rollup"),
-  sourceTables: v.array(tableRollupTableSpecValidator),
+  schemaVersion: v.literal(2),
+  derivationType: v.literal("row_rollup"),
+  sourceTable: tableRollupSourceTableSpecValidator,
+  outputRows: v.array(tableRollupOutputRowValidator),
+  resolvedComputePlan: v.object({
+    outputRows: v.array(tableRollupResolvedOutputRowValidator),
+  }),
 });
 
 export const getById = internalQuery({
@@ -241,6 +268,9 @@ export const confirmTableRollupJob = internalMutation({
     if (!job.frozenTableRollupSpec) {
       throw new Error("Analysis compute job is missing frozen roll-up spec");
     }
+    if (!isAnalysisTableRollupSpecV2(job.frozenTableRollupSpec)) {
+      throw new Error(UNSUPPORTED_TABLE_ROLLUP_SPEC_MESSAGE);
+    }
     if (job.status === "queued" || job.status === "running" || job.status === "success") {
       return { alreadyQueued: true, derivedArtifactId: job.derivedArtifactId };
     }
@@ -267,30 +297,45 @@ export const claimNextQueuedTableRollupJob = internalMutation({
       .query("analysisComputeJobs")
       .withIndex("by_status", (q) => q.eq("status", "queued"))
       .collect();
-    const job = jobs
-      .filter((entry) => entry.jobType === "table_rollup_derivation" && entry.frozenTableRollupSpec)
-      .sort((left, right) => left.updatedAt - right.updatedAt)[0];
-    if (!job) return null;
-
     const now = Date.now();
-    await ctx.db.patch(job._id, {
-      status: "running",
-      workerId: args.workerId,
-      claimedAt: now,
-      updatedAt: now,
-    });
+    const tableRollupJobs = jobs
+      .filter((entry) => entry.jobType === "table_rollup_derivation")
+      .sort((left, right) => left.updatedAt - right.updatedAt);
 
-    return {
-      jobId: job._id,
-      orgId: job.orgId,
-      projectId: job.projectId,
-      parentRunId: job.parentRunId,
-      sessionId: job.sessionId,
-      requestedBy: job.requestedBy,
-      requestText: job.requestText,
-      frozenTableRollupSpec: job.frozenTableRollupSpec,
-      fingerprint: job.fingerprint,
-    };
+    for (const job of tableRollupJobs) {
+      if (!isAnalysisTableRollupSpecV2(job.frozenTableRollupSpec)) {
+        await ctx.db.patch(job._id, {
+          status: "failed",
+          error: UNSUPPORTED_TABLE_ROLLUP_SPEC_MESSAGE,
+          updatedAt: now,
+          completedAt: now,
+          workerId: undefined,
+          claimedAt: undefined,
+        });
+        continue;
+      }
+
+      await ctx.db.patch(job._id, {
+        status: "running",
+        workerId: args.workerId,
+        claimedAt: now,
+        updatedAt: now,
+      });
+
+      return {
+        jobId: job._id,
+        orgId: job.orgId,
+        projectId: job.projectId,
+        parentRunId: job.parentRunId,
+        sessionId: job.sessionId,
+        requestedBy: job.requestedBy,
+        requestText: job.requestText,
+        frozenTableRollupSpec: job.frozenTableRollupSpec,
+        fingerprint: job.fingerprint,
+      };
+    }
+
+    return null;
   },
 });
 

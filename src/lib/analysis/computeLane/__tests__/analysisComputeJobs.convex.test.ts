@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   cancelJob,
+  claimNextQueuedTableRollupJob,
+  confirmTableRollupJob,
   getById,
   listForSession,
   requeueStaleTableRollupJobs,
@@ -30,6 +32,37 @@ function createDb(records: Record<string, TestRecord>, tableRows: Record<string,
           collect: async () => tableRows[tableName] ?? [],
         }),
       }),
+    },
+  };
+}
+
+function validRollupSpec() {
+  return {
+    schemaVersion: 2,
+    derivationType: "row_rollup",
+    sourceTable: {
+      tableId: "q1",
+      title: "Q1 Satisfaction",
+      questionId: "Q1",
+      questionText: "How satisfied are you?",
+    },
+    outputRows: [{
+      label: "Top 2 Box",
+      mechanism: "artifact_exclusive_sum",
+      sourceRows: [
+        { rowKey: "row_4", label: "Somewhat satisfied" },
+        { rowKey: "row_5", label: "Very satisfied" },
+      ],
+    }],
+    resolvedComputePlan: {
+      outputRows: [{
+        label: "Top 2 Box",
+        mechanism: "artifact_exclusive_sum",
+        sourceRows: [
+          { rowKey: "row_4", label: "Somewhat satisfied", variable: "Q1", filterValue: "4" },
+          { rowKey: "row_5", label: "Very satisfied", variable: "Q1", filterValue: "5" },
+        ],
+      }],
     },
   };
 }
@@ -208,6 +241,94 @@ describe("analysisComputeJobs Convex functions", () => {
 
     expect(views[0].effectiveStatus).toBe("expired");
     expect(views[0].confirmToken).toBeUndefined();
+  });
+
+  it("rejects legacy table roll-up frozen specs before queueing", async () => {
+    const { db } = createDb({
+      "job-legacy": {
+        _id: "job-legacy",
+        orgId: "org-1",
+        parentRunId: "run-1",
+        jobType: "table_rollup_derivation",
+        status: "proposed",
+        fingerprint: "token",
+        frozenTableRollupSpec: {
+          schemaVersion: 1,
+          derivationType: "answer_option_rollup",
+          sourceTables: [],
+        },
+      },
+    }, {});
+
+    await expect((confirmTableRollupJob as unknown as TestConvexFunction)._handler(
+      { db },
+      {
+        orgId: "org-1",
+        jobId: "job-legacy",
+        parentRunId: "run-1",
+        expectedFingerprint: "token",
+      },
+    )).rejects.toThrow("older roll-up contract");
+  });
+
+  it("marks queued legacy table roll-up specs failed and claims the next v2 job", async () => {
+    const { db, patches } = createDb({}, {
+      analysisComputeJobs: [
+        {
+          _id: "job-legacy",
+          orgId: "org-1",
+          projectId: "project-1",
+          parentRunId: "run-1",
+          sessionId: "session-1",
+          requestedBy: "user-1",
+          jobType: "table_rollup_derivation",
+          status: "queued",
+          requestText: "Old roll-up",
+          updatedAt: 100,
+          frozenTableRollupSpec: {
+            schemaVersion: 1,
+            derivationType: "answer_option_rollup",
+            sourceTables: [],
+          },
+        },
+        {
+          _id: "job-v2",
+          orgId: "org-1",
+          projectId: "project-1",
+          parentRunId: "run-1",
+          sessionId: "session-1",
+          requestedBy: "user-1",
+          jobType: "table_rollup_derivation",
+          status: "queued",
+          requestText: "Top 2 Box",
+          updatedAt: 200,
+          frozenTableRollupSpec: validRollupSpec(),
+          fingerprint: "token-v2",
+        },
+      ],
+    });
+
+    const claimed = await (claimNextQueuedTableRollupJob as unknown as TestConvexFunction<TestRecord | null>)._handler(
+      { db },
+      { workerId: "worker-1" },
+    );
+
+    expect(claimed).toMatchObject({ jobId: "job-v2", fingerprint: "token-v2" });
+    expect(patches).toHaveLength(2);
+    expect(patches[0]).toMatchObject({
+      id: "job-legacy",
+      patch: {
+        status: "failed",
+        error: expect.stringContaining("older roll-up contract"),
+      },
+    });
+    expect(patches[1]).toMatchObject({
+      id: "job-v2",
+      patch: {
+        status: "running",
+        workerId: "worker-1",
+      },
+    });
   });
 
   it("cancelJob does not overwrite a terminal child run when job state is stale", async () => {

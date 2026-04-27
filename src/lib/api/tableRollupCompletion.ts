@@ -3,7 +3,10 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import { getConvexClient, mutateInternal, queryInternal } from "@/lib/convex";
 import { loadAnalysisGroundingContext } from "@/lib/analysis/grounding";
 import { computeTableRollupArtifact } from "@/lib/analysis/computeLane/tableRollup";
-import type { AnalysisTableRollupSpec } from "@/lib/analysis/computeLane/types";
+import {
+  assertAnalysisTableRollupSpecV2,
+  type AnalysisTableRollupSpec,
+} from "@/lib/analysis/computeLane/types";
 import { runDerivedTableAnalysisContinuation } from "@/lib/analysis/continuation";
 import { FETCH_TABLE_TOOL_TYPE } from "@/lib/analysis/toolLabels";
 import { isAnalysisTableCard } from "@/lib/analysis/types";
@@ -57,6 +60,7 @@ async function postFallbackDerivedTableMessage(params: {
 export async function runClaimedTableRollupJob(job: ClaimedTableRollupJob): Promise<void> {
   const convex = getConvexClient();
   try {
+    assertAnalysisTableRollupSpecV2(job.frozenTableRollupSpec);
     const [run, project] = await Promise.all([
       convex.query(api.runs.get, {
         runId: job.parentRunId as Id<"runs">,
@@ -83,15 +87,17 @@ export async function runClaimedTableRollupJob(job: ClaimedTableRollupJob): Prom
       projectConfig: project.config,
       projectIntake: project.intake,
     });
-    const card = computeTableRollupArtifact({
+    const card = await computeTableRollupArtifact({
       groundingContext,
       spec: job.frozenTableRollupSpec,
       jobId: job.jobId,
+      runResultValue: run.result,
     });
-    const sourceTableIds = job.frozenTableRollupSpec.sourceTables.map((table) => table.tableId);
-    const sourceQuestionIds = job.frozenTableRollupSpec.sourceTables
-      .map((table) => table.questionId)
-      .filter((questionId): questionId is string => typeof questionId === "string" && questionId.length > 0);
+    const sourceTableIds = [job.frozenTableRollupSpec.sourceTable.tableId];
+    const sourceQuestionIds = typeof job.frozenTableRollupSpec.sourceTable.questionId === "string"
+      && job.frozenTableRollupSpec.sourceTable.questionId.length > 0
+      ? [job.frozenTableRollupSpec.sourceTable.questionId]
+      : [];
 
     const existingArtifact = await queryInternal(internal.analysisArtifacts.getByAnalysisComputeJob, {
       orgId: job.orgId as Id<"organizations">,
@@ -112,7 +118,7 @@ export async function runClaimedTableRollupJob(job: ClaimedTableRollupJob): Prom
         sourceRunId: job.parentRunId as Id<"runs">,
         sourceTableIds,
         analysisComputeJobId: job.jobId as Id<"analysisComputeJobs">,
-        derivationType: "answer_option_rollup",
+        derivationType: "row_rollup",
       },
       payload: card,
       createdBy: job.requestedBy as Id<"users">,
@@ -138,7 +144,7 @@ export async function runClaimedTableRollupJob(job: ClaimedTableRollupJob): Prom
         derivedArtifactId: artifactId,
         derivedTableId: messageCard.tableId,
         requestText: job.requestText,
-        sourceTableTitle: job.frozenTableRollupSpec.sourceTables[0]?.title ?? null,
+        sourceTableTitle: job.frozenTableRollupSpec.sourceTable.title,
       });
     } catch (continuationError) {
       console.warn("[TableRollupCompletion] Analysis continuation failed; posting fallback table card.", continuationError);

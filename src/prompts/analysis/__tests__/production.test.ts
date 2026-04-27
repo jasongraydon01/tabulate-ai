@@ -153,16 +153,19 @@ describe("analysis agent production prompt", () => {
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("original tables in this\nrun's table set will stay as they are");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("raw expressions, R2 keys, frozen artifacts, fingerprints");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).not.toContain("proposeTableRollup");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).not.toContain("proposeRowRollup");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).not.toContain("rejected_candidate");
   });
 
   it("documents native Tier A roll-up proposal boundaries in the alternative prompt", () => {
     const prompt = ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE;
     expect(prompt).toContain("proposeDerivedRun");
-    expect(prompt).toContain("proposeTableRollup");
+    expect(prompt).toContain("proposeRowRollup");
     expect(prompt).toContain("append one new banner cut or banner group across the\nfull crosstab");
-    expect(prompt).toContain("answer-option roll-up on one selected table");
-    expect(prompt).toContain("Table-\nspecific added cuts and multi-table roll-up jobs are not available yet");
+    expect(prompt).toContain("collapse existing rows on one selected table");
+    expect(prompt).toContain("The tool input is sparse: `requestText`, `sourceTableId`, and\n`outputRows`");
+    expect(prompt).toContain("Unmentioned rows stay as they are");
+    expect(prompt).toContain("Table-specific added cuts and non-roll-up derived tables are not available in this tool yet");
     expect(prompt).toContain("rejected_candidate");
     expect(prompt).toContain("button before any worker-queued compute starts");
     expect(prompt).toContain('targetScope: "full_crosstab_set"');

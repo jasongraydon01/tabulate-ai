@@ -230,4 +230,31 @@ describe('analysis compute confirm route', () => {
     });
     expect(mocks.mutateInternal).not.toHaveBeenCalled();
   });
+
+  it('rejects legacy table roll-up specs before queueing', async () => {
+    mocks.query.mockResolvedValueOnce({ _id: 'run-1', status: 'success', config: {}, result: {} });
+    mocks.queryInternal.mockResolvedValueOnce({
+      ...makeJob('token'),
+      jobType: 'table_rollup_derivation',
+      frozenTableRollupSpec: {
+        schemaVersion: 1,
+        derivationType: 'answer_option_rollup',
+        sourceTables: [],
+      },
+    });
+
+    const response = await POST(
+      new NextRequest('http://localhost/api/runs/run-1/analysis/compute/jobs/job-1/confirm', {
+        method: 'POST',
+        body: JSON.stringify({ fingerprint: 'token' }),
+      }),
+      { params: Promise.resolve({ runId: 'run-1', jobId: 'job-1' }) },
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: 'This derived-table proposal uses an older roll-up contract. Please revise the request and create a new proposal.',
+    });
+    expect(mocks.mutateInternal).not.toHaveBeenCalled();
+  });
 });

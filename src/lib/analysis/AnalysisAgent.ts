@@ -290,34 +290,26 @@ export async function streamAnalysisResponse({
               }
             },
           }),
-          proposeTableRollup: tool({
+          proposeRowRollup: tool({
             description: [
-              "Validate and create a persisted derived-table proposal for answer-option roll-ups on one selected table.",
-              "Use only for table-scoped roll-ups that combine existing answer-option rows, such as Top 2 Box, Bottom 2 Box, favorable/unfavorable, or a custom grouping of rows in a specific table.",
-              "Do not use for adding cuts to a table, adding a banner cut across the full crosstab set, raw data recoding, open-end coding, or multi-table redesigns.",
-              "The backend validates table ids, row refs, row eligibility, compatible roll-up math, and significance support before creating any proposal card.",
+              "Validate and create a persisted derived-table proposal that collapses existing rows on one selected table.",
+              "Use only for table-scoped row roll-ups where the source table keeps the same analytical meaning and selected source rows become one or more new output rows.",
+              "Do not use for adding cuts, adding a banner cut across the full crosstab set, removing unmentioned rows, raw data recoding, open-end coding, or non-roll-up derived tables.",
+              "The backend validates table ids, row refs, row eligibility, roll-up mechanism, compatible compute, and significance support before creating any proposal card.",
               "If the tool returns rejected_candidate because ids or row refs are wrong, repair using fetchTable/searchRunCatalog and retry only when the fix is clear. If intent is missing, ask a concise clarification via submitAnswer.",
               "The tool persists a proposal only when validation passes. Confirmation remains button-driven.",
             ].join("\n"),
             inputSchema: z.object({
               requestText: z.string().min(1).max(1000),
-              targetScope: z.literal("selected_tables"),
-              derivationType: z.literal("answer_option_rollup"),
-              selectedTableSpecificCutExcluded: z.literal(true),
-              sourceTables: z.array(z.object({
-                tableId: z.string().min(1).max(200),
-                rollups: z.array(z.object({
-                  label: z.string().min(1).max(200),
-                  components: z.array(z.object({
-                    rowKey: z.string().min(1).max(200).optional(),
-                    label: z.string().min(1).max(400).optional(),
-                  }).refine((value) => Boolean(value.rowKey || value.label), {
-                    message: "Each component needs a rowKey or label",
-                  })).min(2).max(12),
-                }).strict()).min(1).max(4),
-              }).strict()).min(1).max(1),
+              sourceTableId: z.string().min(1).max(200),
+              outputRows: z.array(z.object({
+                label: z.string().min(1).max(200),
+                sourceRows: z.array(z.object({
+                  rowKey: z.string().min(1).max(200),
+                }).strict()).min(2).max(12),
+              }).strict()).min(1).max(4),
             }).strict(),
-            execute: async ({ requestText, sourceTables }) => {
+            execute: async ({ requestText, sourceTableId, outputRows }) => {
               if (!computeProposalContext) {
                 return {
                   status: "rejected_candidate" as const,
@@ -328,13 +320,17 @@ export async function streamAnalysisResponse({
                   invalidRowRefs: [],
                   ineligibleRows: [],
                   unsupportedCombinations: [],
+                  blockedMechanisms: [],
                 };
               }
 
               return createAnalysisTableRollupProposal({
                 ...computeProposalContext,
                 requestText,
-                candidates: sourceTables,
+                candidates: [{
+                  tableId: sourceTableId,
+                  outputRows,
+                }],
                 groundingContext,
               });
             },
