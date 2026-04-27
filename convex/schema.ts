@@ -144,6 +144,7 @@ const analysisComputeJobStatusValidator = v.union(
 const analysisComputeJobTypeValidator = v.union(
   v.literal("banner_extension_recompute"),
   v.literal("table_rollup_derivation"),
+  v.literal("selected_table_cut_derivation"),
 );
 
 const analysisComputeReviewFlagsValidator = v.object({
@@ -506,6 +507,7 @@ export default defineSchema({
     frozenBannerGroup: v.optional(v.any()),
     frozenValidatedGroup: v.optional(v.any()),
     frozenTableRollupSpec: v.optional(v.any()),
+    frozenSelectedTableCutSpec: v.optional(v.any()),
     derivedArtifactId: v.optional(v.id("analysisArtifacts")),
     reviewFlags: v.optional(analysisComputeReviewFlagsValidator),
     fingerprint: v.optional(v.string()),

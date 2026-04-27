@@ -2,7 +2,9 @@ import { v } from "convex/values";
 import { query, internalMutation, internalQuery } from "./_generated/server";
 import { buildAnalysisComputeJobView } from "../src/lib/analysis/computeLane/jobView";
 import {
+  isAnalysisSelectedTableCutSpecV1,
   isAnalysisTableRollupSpecV2,
+  UNSUPPORTED_SELECTED_TABLE_CUT_SPEC_MESSAGE,
   UNSUPPORTED_TABLE_ROLLUP_SPEC_MESSAGE,
 } from "../src/lib/analysis/computeLane/types";
 
@@ -72,6 +74,50 @@ const tableRollupSpecValidator = v.object({
   outputRows: v.array(tableRollupOutputRowValidator),
   resolvedComputePlan: v.object({
     outputRows: v.array(tableRollupResolvedOutputRowValidator),
+  }),
+});
+
+const selectedTableCutValidator = v.object({
+  name: v.string(),
+  original: v.string(),
+});
+
+const selectedTableCutSourceTableSpecValidator = v.object({
+  tableId: v.string(),
+  title: v.string(),
+  questionId: v.union(v.string(), v.null()),
+  questionText: v.union(v.string(), v.null()),
+});
+
+const selectedTableCutValidatedColumnValidator = v.object({
+  name: v.string(),
+  adjusted: v.string(),
+  confidence: v.number(),
+  reasoning: v.string(),
+  userSummary: v.string(),
+  alternatives: v.array(v.object({
+    expression: v.string(),
+    rank: v.number(),
+    userSummary: v.string(),
+  })),
+  uncertainties: v.array(v.string()),
+  expressionType: v.string(),
+});
+
+const selectedTableCutValidatedGroupValidator = v.object({
+  groupName: v.string(),
+  columns: v.array(selectedTableCutValidatedColumnValidator),
+});
+
+const selectedTableCutSpecValidator = v.object({
+  schemaVersion: v.literal(1),
+  derivationType: v.literal("selected_table_cut"),
+  sourceTable: selectedTableCutSourceTableSpecValidator,
+  groupName: v.string(),
+  variable: v.string(),
+  cuts: v.array(selectedTableCutValidator),
+  resolvedComputePlan: v.object({
+    validatedGroup: selectedTableCutValidatedGroupValidator,
   }),
 });
 
@@ -244,6 +290,52 @@ export const createTableRollupProposal = internalMutation({
   },
 });
 
+export const createSelectedTableCutProposal = internalMutation({
+  args: {
+    orgId: v.id("organizations"),
+    projectId: v.id("projects"),
+    parentRunId: v.id("runs"),
+    sessionId: v.id("analysisSessions"),
+    requestedBy: v.id("users"),
+    requestText: v.string(),
+    frozenSelectedTableCutSpec: selectedTableCutSpecValidator,
+    reviewFlags: reviewFlagsValidator,
+    fingerprint: v.string(),
+    promptSummary: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const [project, run, session] = await Promise.all([
+      ctx.db.get(args.projectId),
+      ctx.db.get(args.parentRunId),
+      ctx.db.get(args.sessionId),
+    ]);
+
+    if (!project || project.orgId !== args.orgId) throw new Error("Project not found");
+    if (!run || run.orgId !== args.orgId || run.projectId !== args.projectId) throw new Error("Parent run not found");
+    if (!session || session.orgId !== args.orgId || session.runId !== args.parentRunId) {
+      throw new Error("Analysis session not found");
+    }
+
+    const now = Date.now();
+    return await ctx.db.insert("analysisComputeJobs", {
+      orgId: args.orgId,
+      projectId: args.projectId,
+      parentRunId: args.parentRunId,
+      sessionId: args.sessionId,
+      requestedBy: args.requestedBy,
+      jobType: "selected_table_cut_derivation",
+      status: "proposed",
+      requestText: args.requestText,
+      frozenSelectedTableCutSpec: args.frozenSelectedTableCutSpec,
+      reviewFlags: args.reviewFlags,
+      fingerprint: args.fingerprint,
+      promptSummary: args.promptSummary,
+      createdAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
 export const confirmTableRollupJob = internalMutation({
   args: {
     orgId: v.id("organizations"),
@@ -270,6 +362,50 @@ export const confirmTableRollupJob = internalMutation({
     }
     if (!isAnalysisTableRollupSpecV2(job.frozenTableRollupSpec)) {
       throw new Error(UNSUPPORTED_TABLE_ROLLUP_SPEC_MESSAGE);
+    }
+    if (job.status === "queued" || job.status === "running" || job.status === "success") {
+      return { alreadyQueued: true, derivedArtifactId: job.derivedArtifactId };
+    }
+    if (job.status !== "proposed" && job.status !== "confirmed") {
+      throw new Error(`Analysis compute job cannot be confirmed from status ${job.status}`);
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(args.jobId, {
+      status: "queued",
+      confirmedAt: job.confirmedAt ?? now,
+      updatedAt: now,
+    });
+    return { alreadyQueued: false, derivedArtifactId: job.derivedArtifactId };
+  },
+});
+
+export const confirmSelectedTableCutJob = internalMutation({
+  args: {
+    orgId: v.id("organizations"),
+    jobId: v.id("analysisComputeJobs"),
+    parentRunId: v.id("runs"),
+    expectedFingerprint: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (!job || job.orgId !== args.orgId || job.parentRunId !== args.parentRunId) {
+      throw new Error("Analysis compute job not found");
+    }
+    if (job.jobType !== "selected_table_cut_derivation") {
+      throw new Error("Analysis compute job is not a selected-table cut job");
+    }
+    if (job.fingerprint !== args.expectedFingerprint) {
+      throw new Error("Analysis compute job fingerprint mismatch");
+    }
+    if (job.reviewFlags?.requiresClarification || job.reviewFlags?.requiresReview) {
+      throw new Error("Analysis compute job requires clarification before compute");
+    }
+    if (!job.frozenSelectedTableCutSpec) {
+      throw new Error("Analysis compute job is missing frozen selected-table cut spec");
+    }
+    if (!isAnalysisSelectedTableCutSpecV1(job.frozenSelectedTableCutSpec)) {
+      throw new Error(UNSUPPORTED_SELECTED_TABLE_CUT_SPEC_MESSAGE);
     }
     if (job.status === "queued" || job.status === "running" || job.status === "success") {
       return { alreadyQueued: true, derivedArtifactId: job.derivedArtifactId };
@@ -339,6 +475,57 @@ export const claimNextQueuedTableRollupJob = internalMutation({
   },
 });
 
+export const claimNextQueuedSelectedTableCutJob = internalMutation({
+  args: {
+    workerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const jobs = await ctx.db
+      .query("analysisComputeJobs")
+      .withIndex("by_status", (q) => q.eq("status", "queued"))
+      .collect();
+    const now = Date.now();
+    const selectedTableCutJobs = jobs
+      .filter((entry) => entry.jobType === "selected_table_cut_derivation")
+      .sort((left, right) => left.updatedAt - right.updatedAt);
+
+    for (const job of selectedTableCutJobs) {
+      if (!isAnalysisSelectedTableCutSpecV1(job.frozenSelectedTableCutSpec)) {
+        await ctx.db.patch(job._id, {
+          status: "failed",
+          error: UNSUPPORTED_SELECTED_TABLE_CUT_SPEC_MESSAGE,
+          updatedAt: now,
+          completedAt: now,
+          workerId: undefined,
+          claimedAt: undefined,
+        });
+        continue;
+      }
+
+      await ctx.db.patch(job._id, {
+        status: "running",
+        workerId: args.workerId,
+        claimedAt: now,
+        updatedAt: now,
+      });
+
+      return {
+        jobId: job._id,
+        orgId: job.orgId,
+        projectId: job.projectId,
+        parentRunId: job.parentRunId,
+        sessionId: job.sessionId,
+        requestedBy: job.requestedBy,
+        requestText: job.requestText,
+        frozenSelectedTableCutSpec: job.frozenSelectedTableCutSpec,
+        fingerprint: job.fingerprint,
+      };
+    }
+
+    return null;
+  },
+});
+
 export const requeueStaleTableRollupJobs = internalMutation({
   args: {
     staleBeforeMs: v.number(),
@@ -352,6 +539,37 @@ export const requeueStaleTableRollupJobs = internalMutation({
 
     const staleJobs = jobs.filter((job) =>
       job.jobType === "table_rollup_derivation"
+      && typeof job.claimedAt === "number"
+      && job.claimedAt < cutoff
+    );
+
+    const now = Date.now();
+    for (const job of staleJobs) {
+      await ctx.db.patch(job._id, {
+        status: "queued",
+        workerId: undefined,
+        claimedAt: undefined,
+        updatedAt: now,
+      });
+    }
+
+    return { requeued: staleJobs.length };
+  },
+});
+
+export const requeueStaleSelectedTableCutJobs = internalMutation({
+  args: {
+    staleBeforeMs: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const cutoff = Date.now() - args.staleBeforeMs;
+    const jobs = await ctx.db
+      .query("analysisComputeJobs")
+      .withIndex("by_status", (q) => q.eq("status", "running"))
+      .collect();
+
+    const staleJobs = jobs.filter((job) =>
+      job.jobType === "selected_table_cut_derivation"
       && typeof job.claimedAt === "number"
       && job.claimedAt < cutoff
     );

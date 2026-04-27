@@ -154,6 +154,7 @@ describe("analysis agent production prompt", () => {
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("raw expressions, R2 keys, frozen artifacts, fingerprints");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).not.toContain("proposeTableRollup");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).not.toContain("proposeRowRollup");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).not.toContain("proposeSelectedTableCut");
     expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).not.toContain("rejected_candidate");
   });
 
@@ -161,11 +162,15 @@ describe("analysis agent production prompt", () => {
     const prompt = ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE;
     expect(prompt).toContain("proposeDerivedRun");
     expect(prompt).toContain("proposeRowRollup");
+    expect(prompt).toContain("proposeSelectedTableCut");
     expect(prompt).toContain("append one new banner cut or banner group across the\nfull crosstab");
     expect(prompt).toContain("collapse existing rows on one selected table");
     expect(prompt).toContain("The tool input is sparse: `requestText`, `sourceTableId`, and\n`outputRows`");
     expect(prompt).toContain("Unmentioned rows stay as they are");
-    expect(prompt).toContain("Table-specific added cuts and non-roll-up derived tables are not available in this tool yet");
+    expect(prompt).toContain("one new cut group to\none selected table");
+    expect(prompt).toContain("exact `variable`");
+    expect(prompt).toContain("If the requested cut already exists in the run");
+    expect(prompt).toContain("new table shape, composite, KPI side-by-side table");
     expect(prompt).toContain("rejected_candidate");
     expect(prompt).toContain("button before any worker-queued compute starts");
     expect(prompt).toContain('targetScope: "full_crosstab_set"');

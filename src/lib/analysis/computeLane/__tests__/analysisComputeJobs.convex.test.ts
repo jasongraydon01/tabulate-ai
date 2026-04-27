@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   cancelJob,
+  claimNextQueuedSelectedTableCutJob,
   claimNextQueuedTableRollupJob,
+  confirmSelectedTableCutJob,
   confirmTableRollupJob,
   getById,
   listForSession,
+  requeueStaleSelectedTableCutJobs,
   requeueStaleTableRollupJobs,
   updateStatus,
 } from "../../../../../convex/analysisComputeJobs";
@@ -63,6 +66,52 @@ function validRollupSpec() {
           { rowKey: "row_5", label: "Very satisfied", variable: "Q1", filterValue: "5" },
         ],
       }],
+    },
+  };
+}
+
+function validSelectedTableCutSpec() {
+  return {
+    schemaVersion: 1,
+    derivationType: "selected_table_cut",
+    sourceTable: {
+      tableId: "q1",
+      title: "Q1 Satisfaction",
+      questionId: "Q1",
+      questionText: "How satisfied are you?",
+    },
+    groupName: "Region",
+    variable: "REGION",
+    cuts: [
+      { name: "Northeast", original: "REGION = 1" },
+      { name: "South", original: "REGION = 2" },
+    ],
+    resolvedComputePlan: {
+      validatedGroup: {
+        groupName: "Region",
+        columns: [
+          {
+            name: "Northeast",
+            adjusted: "`REGION` == 1",
+            confidence: 1,
+            reasoning: "matched",
+            userSummary: "Respondents in the Northeast.",
+            alternatives: [],
+            uncertainties: [],
+            expressionType: "direct_variable",
+          },
+          {
+            name: "South",
+            adjusted: "`REGION` == 2",
+            confidence: 1,
+            reasoning: "matched",
+            userSummary: "Respondents in the South.",
+            alternatives: [],
+            uncertainties: [],
+            expressionType: "direct_variable",
+          },
+        ],
+      },
     },
   };
 }
@@ -331,6 +380,97 @@ describe("analysisComputeJobs Convex functions", () => {
     });
   });
 
+  it("confirms selected-table cut jobs by queueing them", async () => {
+    const { db, patches } = createDb({
+      "job-cut": {
+        _id: "job-cut",
+        orgId: "org-1",
+        parentRunId: "run-1",
+        jobType: "selected_table_cut_derivation",
+        status: "proposed",
+        fingerprint: "token",
+        frozenSelectedTableCutSpec: validSelectedTableCutSpec(),
+      },
+    }, {});
+
+    const result = await (confirmSelectedTableCutJob as unknown as TestConvexFunction<TestRecord>)._handler(
+      { db },
+      {
+        orgId: "org-1",
+        jobId: "job-cut",
+        parentRunId: "run-1",
+        expectedFingerprint: "token",
+      },
+    );
+
+    expect(result).toMatchObject({ alreadyQueued: false });
+    expect(patches[0]).toMatchObject({
+      id: "job-cut",
+      patch: {
+        status: "queued",
+      },
+    });
+  });
+
+  it("marks queued legacy selected-table cut specs failed and claims the next valid job", async () => {
+    const { db, patches } = createDb({}, {
+      analysisComputeJobs: [
+        {
+          _id: "job-legacy-cut",
+          orgId: "org-1",
+          projectId: "project-1",
+          parentRunId: "run-1",
+          sessionId: "session-1",
+          requestedBy: "user-1",
+          jobType: "selected_table_cut_derivation",
+          status: "queued",
+          requestText: "Old cut",
+          updatedAt: 100,
+          frozenSelectedTableCutSpec: {
+            schemaVersion: 0,
+            derivationType: "selected_table_cut",
+          },
+        },
+        {
+          _id: "job-cut-v1",
+          orgId: "org-1",
+          projectId: "project-1",
+          parentRunId: "run-1",
+          sessionId: "session-1",
+          requestedBy: "user-1",
+          jobType: "selected_table_cut_derivation",
+          status: "queued",
+          requestText: "Region cut",
+          updatedAt: 200,
+          frozenSelectedTableCutSpec: validSelectedTableCutSpec(),
+          fingerprint: "token-v1",
+        },
+      ],
+    });
+
+    const claimed = await (claimNextQueuedSelectedTableCutJob as unknown as TestConvexFunction<TestRecord | null>)._handler(
+      { db },
+      { workerId: "worker-1" },
+    );
+
+    expect(claimed).toMatchObject({ jobId: "job-cut-v1", fingerprint: "token-v1" });
+    expect(patches).toHaveLength(2);
+    expect(patches[0]).toMatchObject({
+      id: "job-legacy-cut",
+      patch: {
+        status: "failed",
+        error: expect.stringContaining("older selected-table cut contract"),
+      },
+    });
+    expect(patches[1]).toMatchObject({
+      id: "job-cut-v1",
+      patch: {
+        status: "running",
+        workerId: "worker-1",
+      },
+    });
+  });
+
   it("cancelJob does not overwrite a terminal child run when job state is stale", async () => {
     const { db, patches } = createDb({
       "job-1": {
@@ -408,6 +548,56 @@ describe("analysisComputeJobs Convex functions", () => {
     expect(patches).toHaveLength(1);
     expect(patches[0]).toMatchObject({
       id: "stale-rollup",
+      patch: {
+        status: "queued",
+        workerId: undefined,
+        claimedAt: undefined,
+      },
+    });
+  });
+
+  it("requeues stale running selected-table cut jobs and clears worker lease fields", async () => {
+    const { db, patches } = createDb({}, {
+      analysisComputeJobs: [
+        {
+          _id: "stale-cut",
+          orgId: "org-1",
+          jobType: "selected_table_cut_derivation",
+          status: "running",
+          workerId: "worker-old",
+          claimedAt: 100,
+          updatedAt: 100,
+        },
+        {
+          _id: "fresh-cut",
+          orgId: "org-1",
+          jobType: "selected_table_cut_derivation",
+          status: "running",
+          workerId: "worker-new",
+          claimedAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+        {
+          _id: "rollup-job",
+          orgId: "org-1",
+          jobType: "table_rollup_derivation",
+          status: "running",
+          workerId: "worker-old",
+          claimedAt: 100,
+          updatedAt: 100,
+        },
+      ],
+    });
+
+    const result = await (requeueStaleSelectedTableCutJobs as unknown as TestConvexFunction<TestRecord>)._handler(
+      { db },
+      { staleBeforeMs: 1_000 },
+    );
+
+    expect(result).toEqual({ requeued: 1 });
+    expect(patches).toHaveLength(1);
+    expect(patches[0]).toMatchObject({
+      id: "stale-cut",
       patch: {
         status: "queued",
         workerId: undefined,

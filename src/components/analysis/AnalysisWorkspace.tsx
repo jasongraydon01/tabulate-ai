@@ -28,6 +28,10 @@ interface AnalysisWorkspaceProps {
   runStatus: string;
 }
 
+function isDerivedTableJob(job: AnalysisComputeJobView): boolean {
+  return job.jobType === "table_rollup_derivation" || job.jobType === "selected_table_cut_derivation";
+}
+
 export function AnalysisWorkspace({
   projectId,
   projectName,
@@ -285,7 +289,7 @@ export function AnalysisWorkspace({
       throw new Error(payload.error ?? "Failed to queue derived run");
     }
 
-    toast.success(job.jobType === "table_rollup_derivation" ? "Derived table queued" : "Derived run queued");
+    toast.success(isDerivedTableJob(job) ? "Derived table queued" : "Derived run queued");
   }
 
   async function handleCancelComputeJob(job: AnalysisComputeJobView) {
@@ -298,7 +302,7 @@ export function AnalysisWorkspace({
       throw new Error(payload.error ?? "Failed to cancel derived run");
     }
 
-    toast.success(job.jobType === "table_rollup_derivation" ? "Derived table cancelled" : "Derived run cancelled");
+    toast.success(isDerivedTableJob(job) ? "Derived table cancelled" : "Derived run cancelled");
   }
 
   async function handleContinueInDerivedRun(job: AnalysisComputeJobView) {
@@ -412,7 +416,7 @@ export function AnalysisWorkspace({
           try {
             await handleConfirmComputeJob(job);
           } catch (error) {
-            toast.error(job.jobType === "table_rollup_derivation" ? "Failed to queue derived table" : "Failed to queue derived run", {
+            toast.error(isDerivedTableJob(job) ? "Failed to queue derived table" : "Failed to queue derived run", {
               description: error instanceof Error ? error.message : "Unknown error",
             });
             throw error;
@@ -422,7 +426,7 @@ export function AnalysisWorkspace({
           try {
             await handleCancelComputeJob(job);
           } catch (error) {
-            toast.error(job.jobType === "table_rollup_derivation" ? "Failed to cancel derived table" : "Failed to cancel derived run", {
+            toast.error(isDerivedTableJob(job) ? "Failed to cancel derived table" : "Failed to cancel derived run", {
               description: error instanceof Error ? error.message : "Unknown error",
             });
             throw error;

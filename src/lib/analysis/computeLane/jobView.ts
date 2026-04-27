@@ -22,7 +22,7 @@ export interface AnalysisComputeJobCutView {
 
 export interface AnalysisComputeJobView {
   id: string;
-  jobType: "banner_extension_recompute" | "table_rollup_derivation";
+  jobType: "banner_extension_recompute" | "table_rollup_derivation" | "selected_table_cut_derivation";
   status: AnalysisComputeJobClientStatus;
   effectiveStatus: AnalysisComputeJobClientStatus;
   requestText: string;
@@ -42,6 +42,19 @@ export interface AnalysisComputeJobView {
           label: string;
         }>;
       }>;
+    }>;
+  };
+  proposedSelectedTableCut?: {
+    sourceTable: {
+      tableId: string;
+      title: string;
+      questionText: string | null;
+    };
+    groupName: string;
+    cuts: Array<{
+      name: string;
+      original: string;
+      userSummary?: string;
     }>;
   };
   reviewFlags?: {
@@ -82,6 +95,7 @@ interface RawAnalysisComputeJob {
   frozenBannerGroup?: unknown;
   frozenValidatedGroup?: unknown;
   frozenTableRollupSpec?: unknown;
+  frozenSelectedTableCutSpec?: unknown;
   reviewFlags?: unknown;
   fingerprint?: string;
   error?: string;
@@ -222,6 +236,52 @@ function buildProposedTableRollup(job: RawAnalysisComputeJob): AnalysisComputeJo
   return safeTables.length > 0 ? { sourceTables: safeTables } : undefined;
 }
 
+function buildProposedSelectedTableCut(job: RawAnalysisComputeJob): AnalysisComputeJobView["proposedSelectedTableCut"] | undefined {
+  const spec = asRecord(job.frozenSelectedTableCutSpec);
+  if (!spec) return undefined;
+  const sourceTable = asRecord(spec.sourceTable);
+  const tableId = optionalString(sourceTable?.tableId);
+  const title = optionalString(sourceTable?.title);
+  const groupName = optionalString(spec.groupName);
+  if (!tableId || !title || !groupName) return undefined;
+
+  const validatedGroup = asRecord(asRecord(spec.resolvedComputePlan)?.validatedGroup);
+  const validatedColumns = Array.isArray(validatedGroup?.columns) ? validatedGroup.columns : [];
+  const validatedByName = new Map<string, Record<string, unknown>>();
+  for (const entry of validatedColumns) {
+    const record = asRecord(entry);
+    const name = optionalString(record?.name);
+    if (record && name) validatedByName.set(name, record);
+  }
+
+  const cuts = Array.isArray(spec.cuts)
+    ? spec.cuts.flatMap((entry) => {
+        const cut = asRecord(entry);
+        const name = optionalString(cut?.name);
+        const original = optionalString(cut?.original);
+        if (!name || !original) return [];
+        const validated = validatedByName.get(name);
+        return [{
+          name,
+          original,
+          ...(optionalString(validated?.userSummary) ? { userSummary: optionalString(validated?.userSummary) } : {}),
+        }];
+      })
+    : [];
+
+  return cuts.length > 0
+    ? {
+        sourceTable: {
+          tableId,
+          title,
+          questionText: optionalString(sourceTable?.questionText) ?? null,
+        },
+        groupName,
+        cuts,
+      }
+    : undefined;
+}
+
 function deriveEffectiveStatus(
   jobStatus: AnalysisComputeJobClientStatus,
   childRun?: RawChildRun | null,
@@ -262,12 +322,15 @@ export function buildAnalysisComputeJobView(params: {
     id: String(params.job._id),
     jobType: params.job.jobType === "table_rollup_derivation"
       ? "table_rollup_derivation"
-      : "banner_extension_recompute",
+      : params.job.jobType === "selected_table_cut_derivation"
+        ? "selected_table_cut_derivation"
+        : "banner_extension_recompute",
     status: params.job.status,
     effectiveStatus,
     requestText: params.job.requestText,
     ...(buildProposedGroup(params.job) ? { proposedGroup: buildProposedGroup(params.job) } : {}),
     ...(buildProposedTableRollup(params.job) ? { proposedTableRollup: buildProposedTableRollup(params.job) } : {}),
+    ...(buildProposedSelectedTableCut(params.job) ? { proposedSelectedTableCut: buildProposedSelectedTableCut(params.job) } : {}),
     ...(reviewFlags ? { reviewFlags } : {}),
     ...(canConfirm && params.job.fingerprint ? { confirmToken: params.job.fingerprint } : {}),
     ...(params.childRun

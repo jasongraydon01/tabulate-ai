@@ -14,6 +14,9 @@ import {
   createAnalysisTableRollupProposal,
 } from "@/lib/analysis/computeLane/tableRollup";
 import {
+  createAnalysisSelectedTableCutProposal,
+} from "@/lib/analysis/computeLane/selectedTableCut";
+import {
   getAnalysisModel,
   getAnalysisModelName,
   getAnalysisProviderOptions,
@@ -332,6 +335,51 @@ export async function streamAnalysisResponse({
                   outputRows,
                 }],
                 groundingContext,
+              });
+            },
+          }),
+          proposeSelectedTableCut: tool({
+            description: [
+              "Validate and create a persisted derived-table proposal that adds one new cut group to one selected table.",
+              "Use only when the user clearly wants a new cut for a single selected source table. Do not use for full-crosstab banner additions, row roll-ups, multiple tables, multiple groups, raw data recoding, open-end coding, composites, intersections, KPI tables, or new table shapes.",
+              "The model-facing input is sparse: requestText, sourceTableId, groupName, exact source variable, and cuts. Do not include table title, question id, question text, raw R, R2 keys, frozen specs, fingerprints, or internal expressions.",
+              "The variable must be an exact SPSS/source variable from run context. If scope, source table, variable, or cut values are unclear, ask a concise clarification via submitAnswer instead of calling this tool.",
+              "The backend validates the table, exact variable, cut resolvability, and compute support before creating any proposal card. Confirmation remains button-driven.",
+            ].join("\n"),
+            inputSchema: z.object({
+              requestText: z.string().min(1).max(1000),
+              sourceTableId: z.string().min(1).max(200),
+              groupName: z.string().min(1).max(200),
+              variable: z.string().min(1).max(200),
+              cuts: z.array(z.object({
+                name: z.string().min(1).max(200),
+                original: z.string().min(1).max(300),
+              }).strict()).min(1).max(20),
+            }).strict(),
+            execute: async ({ requestText, sourceTableId, groupName, variable, cuts }) => {
+              if (!computeProposalContext) {
+                return {
+                  status: "rejected_candidate" as const,
+                  message: "Selected-table cut proposals are not available in this chat context.",
+                  reasons: ["Selected-table cut proposals are not available in this chat context."],
+                  repairHints: ["Answer normally or ask the user to open a completed run's analysis workspace."],
+                  invalidTableIds: [],
+                  invalidVariables: [],
+                  invalidCuts: [],
+                };
+              }
+
+              return createAnalysisSelectedTableCutProposal({
+                ...computeProposalContext,
+                requestText,
+                candidate: {
+                  sourceTableId,
+                  groupName,
+                  variable,
+                  cuts,
+                },
+                groundingContext,
+                abortSignal,
               });
             },
           }),

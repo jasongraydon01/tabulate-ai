@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   buildAnalysisSystemMessage: vi.fn(() => ({ role: "system", content: "system prompt" })),
   createAnalysisBannerExtensionProposal: vi.fn(),
   createAnalysisTableRollupProposal: vi.fn(),
+  createAnalysisSelectedTableCutProposal: vi.fn(),
 }));
 
 vi.mock("ai", async (importOriginal) => {
@@ -49,6 +50,10 @@ vi.mock("@/lib/analysis/computeLane/proposalService", () => ({
 
 vi.mock("@/lib/analysis/computeLane/tableRollup", () => ({
   createAnalysisTableRollupProposal: mocks.createAnalysisTableRollupProposal,
+}));
+
+vi.mock("@/lib/analysis/computeLane/selectedTableCut", () => ({
+  createAnalysisSelectedTableCutProposal: mocks.createAnalysisSelectedTableCutProposal,
 }));
 
 vi.mock("@/lib/analysis/promptPrefix", () => ({
@@ -234,6 +239,7 @@ describe("streamAnalysisResponse", () => {
         "confirmCitation",
         "proposeDerivedRun",
         "proposeRowRollup",
+        "proposeSelectedTableCut",
         "submitAnswer",
       ]);
       expect(tools?.confirmCitation.providerOptions).toEqual({
@@ -314,6 +320,30 @@ describe("streamAnalysisResponse", () => {
           label: "Region",
           sourceRows: [{ rowKey: "row_1", label: "Bad extra" }, { rowKey: "row_2" }],
         }],
+      }).success).toBe(false);
+      expect(tools?.proposeSelectedTableCut.providerOptions).toBeUndefined();
+      expect(tools?.proposeSelectedTableCut.inputSchema.safeParse({
+        requestText: "Show Q1 by region",
+        sourceTableId: "q1",
+        groupName: "Region",
+        variable: "REGION",
+        cuts: [
+          { name: "Northeast", original: "REGION = 1" },
+          { name: "South", original: "REGION = 2" },
+        ],
+      }).success).toBe(true);
+      expect(tools?.proposeSelectedTableCut.inputSchema.safeParse({
+        requestText: "Show Q1 by region",
+        sourceTableId: "q1",
+        groupName: "Region",
+        cuts: [{ name: "Northeast", original: "REGION = 1" }],
+      }).success).toBe(false);
+      expect(tools?.proposeSelectedTableCut.inputSchema.safeParse({
+        requestText: "Show Q1 by region",
+        sourceTableId: "q1",
+        groupName: "Region",
+        variable: "REGION",
+        cuts: [{ name: "Northeast", original: "REGION = 1", adjusted: "`REGION` == 1" }],
       }).success).toBe(false);
       expect(tools?.fetchTable.inputSchema.safeParse({
         tableId: "q1",
@@ -760,6 +790,131 @@ describe("streamAnalysisResponse", () => {
           sourceRows: [{ rowKey: "row_4" }, { rowKey: "row_5" }],
         }],
       }],
+    }));
+  });
+
+  it("returns validated selected-table cut proposals through the native tool", async () => {
+    const proposal = {
+      status: "validated_proposal",
+      jobId: "job-cut-1",
+      jobType: "selected_table_cut_derivation",
+      message: "I prepared a validated selected-table cut proposal.",
+      sourceTable: {
+        tableId: "q1",
+        title: "Q1 Satisfaction",
+        questionId: "Q1",
+        questionText: "How satisfied are you?",
+      },
+      groupName: "Region",
+      variable: "REGION",
+      cuts: [
+        { name: "Northeast", original: "REGION = 1" },
+        { name: "South", original: "REGION = 2" },
+      ],
+    };
+    mocks.createAnalysisSelectedTableCutProposal.mockResolvedValueOnce(proposal);
+    mocks.streamText.mockImplementationOnce(async ({ onFinish, tools }) => {
+      const output = await tools?.proposeSelectedTableCut.execute?.({
+        requestText: "Show Q1 by region",
+        sourceTableId: "q1",
+        groupName: "Region",
+        variable: "REGION",
+        cuts: proposal.cuts,
+      }, { toolCallId: "cut-1" });
+      expect(output).toEqual(proposal);
+      expect(JSON.stringify(output)).not.toContain("r2://");
+      expect(JSON.stringify(output)).not.toContain("fingerprint");
+      expect(JSON.stringify(output)).not.toContain("confirmToken");
+
+      onFinish?.({
+        totalUsage: {
+          inputTokens: 12,
+          outputTokens: 4,
+        },
+      });
+      return {
+        toUIMessageStreamResponse: vi.fn(() => new Response("ok")),
+      };
+    });
+    mocks.retryWithPolicyHandling.mockImplementationOnce(async (fn: () => Promise<unknown>) => ({
+      success: true,
+      result: await fn(),
+      attempts: 1,
+      wasPolicyError: false,
+      finalClassification: null,
+    }));
+
+    await streamAnalysisResponse({
+      messages: [{ id: "u1", role: "user", parts: [{ type: "text", text: "Show Q1 by region" }] }],
+      groundingContext: {
+        availability: "available",
+        missingArtifacts: [],
+        tables: {},
+        questions: [],
+        bannerGroups: [],
+        bannerRouteMetadata: null,
+        surveyMarkdown: null,
+        surveyQuestions: [],
+        bannerPlanGroups: [],
+        projectContext: {
+          projectName: "TabulateAI Study",
+          runStatus: "success",
+          studyMethodology: null,
+          analysisMethod: null,
+          bannerSource: null,
+          bannerMode: null,
+          tableCount: null,
+          bannerGroupCount: null,
+          totalCuts: null,
+          bannerGroupNames: [],
+          researchObjectives: null,
+          bannerHints: null,
+          intakeFiles: {
+            dataFile: null,
+            survey: null,
+            bannerPlan: null,
+            messageList: null,
+          },
+        },
+        tablesMetadata: {
+          significanceTest: null,
+          significanceLevel: null,
+          comparisonGroups: [],
+        },
+      },
+      computeProposalContext: {
+        orgId: "org-1" as never,
+        projectId: "project-1" as never,
+        parentRunId: "run-1" as never,
+        sessionId: "session-1" as never,
+        requestedBy: "user-1" as never,
+        parentRun: {
+          _id: "run-1" as never,
+          status: "success",
+          result: {},
+        },
+        project: {
+          _id: "project-1" as never,
+          name: "TabulateAI Study",
+          config: {},
+          intake: {},
+        },
+        session: {
+          _id: "session-1" as never,
+          runId: "run-1" as never,
+          projectId: "project-1" as never,
+        },
+      },
+    });
+
+    expect(mocks.createAnalysisSelectedTableCutProposal).toHaveBeenCalledWith(expect.objectContaining({
+      requestText: "Show Q1 by region",
+      candidate: {
+        sourceTableId: "q1",
+        groupName: "Region",
+        variable: "REGION",
+        cuts: proposal.cuts,
+      },
     }));
   });
 });

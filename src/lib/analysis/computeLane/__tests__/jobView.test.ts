@@ -191,4 +191,88 @@ describe("buildAnalysisComputeJobView", () => {
     expect(view).not.toHaveProperty("r2Keys");
     expect(view).not.toHaveProperty("promptSummary");
   });
+
+  it("projects selected-table cut jobs into sanitized proposal views", () => {
+    const selectedCutJob = {
+      _id: "job-cut-1",
+      projectId: "project-1",
+      jobType: "selected_table_cut_derivation" as const,
+      status: "proposed" as const,
+      requestText: "Show Q1 by region",
+      fingerprint: "cut-token",
+      frozenSelectedTableCutSpec: {
+        schemaVersion: 1,
+        derivationType: "selected_table_cut",
+        sourceTable: {
+          tableId: "q1",
+          title: "Q1 Satisfaction",
+          questionId: "Q1",
+          questionText: "How satisfied are you?",
+        },
+        groupName: "Region",
+        variable: "REGION",
+        cuts: [
+          { name: "Northeast", original: "REGION = 1" },
+          { name: "South", original: "REGION = 2" },
+        ],
+        resolvedComputePlan: {
+          validatedGroup: {
+            groupName: "Region",
+            columns: [
+              {
+                name: "Northeast",
+                adjusted: "`REGION` == 1",
+                confidence: 1,
+                reasoning: "matched",
+                userSummary: "Respondents in the Northeast.",
+                alternatives: [],
+                uncertainties: [],
+                expressionType: "direct_variable",
+              },
+              {
+                name: "South",
+                adjusted: "`REGION` == 2",
+                confidence: 1,
+                reasoning: "matched",
+                userSummary: "Respondents in the South.",
+                alternatives: [],
+                uncertainties: [],
+                expressionType: "direct_variable",
+              },
+            ],
+          },
+        },
+      },
+      r2Keys: { unsafe: "hidden" },
+      promptSummary: "private reasoning",
+      createdAt: 100,
+      updatedAt: 120,
+    };
+
+    const view = buildAnalysisComputeJobView({
+      job: selectedCutJob,
+    });
+
+    expect(view).toMatchObject({
+      id: "job-cut-1",
+      jobType: "selected_table_cut_derivation",
+      confirmToken: "cut-token",
+      proposedSelectedTableCut: {
+        sourceTable: {
+          tableId: "q1",
+          title: "Q1 Satisfaction",
+          questionText: "How satisfied are you?",
+        },
+        groupName: "Region",
+        cuts: [
+          { name: "Northeast", original: "REGION = 1", userSummary: "Respondents in the Northeast." },
+          { name: "South", original: "REGION = 2", userSummary: "Respondents in the South." },
+        ],
+      },
+    });
+    expect(view).not.toHaveProperty("frozenSelectedTableCutSpec");
+    expect(JSON.stringify(view)).not.toContain("`REGION`");
+    expect(view).not.toHaveProperty("r2Keys");
+    expect(view).not.toHaveProperty("promptSummary");
+  });
 });

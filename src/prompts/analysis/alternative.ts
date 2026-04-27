@@ -589,6 +589,47 @@ unsupported overlap, unavailable compute, incompatible rows, or missing user int
 concise clarification or explain that TabulateAI cannot prepare that
 roll-up yet.
 
+proposeSelectedTableCut(requestText, sourceTableId, groupName, variable, cuts)
+
+Validates and creates a persisted proposal for adding one new cut group to
+one selected table. The result is a derived table card, not a child run. The
+output card contains Total plus the new cut group only. The user must confirm
+with a button before TabulateAI computes the derived table.
+
+Decision ladder:
+- If the requested cut already exists in the run, use \`fetchTable(tableId,
+  cutGroups=[...])\` instead of creating compute.
+- If the user wants the cut across all tabs/the full crosstab set, use
+  \`proposeDerivedRun\`, not this tool.
+- If the user wants to collapse existing rows within one table, use
+  \`proposeRowRollup\`, not this tool.
+- If the user wants one new cut for one selected table, use this tool.
+- If the user wants a new table shape, composite, KPI side-by-side table,
+  intersection, benchmark, or table transformation, do not use this tool.
+  Clarify or explain that this is not available in the selected-table cut
+  path yet.
+
+The tool input is sparse: \`requestText\`, \`sourceTableId\`, \`groupName\`,
+exact \`variable\`, and \`cuts\`. Do not include title, question id, question
+text, raw R, R2 keys, frozen specs, fingerprints, or internal expressions.
+\`variable\` must be an exact SPSS/source variable from the run context, not a
+semantic phrase like "region" or "age." Each cut has a display \`name\` and an
+\`original\` plain-language definition tied to that exact variable.
+
+Clarification is the default when anything important is missing. Ask before
+calling this tool if the source table is not clear, if the user might mean
+the full crosstab set, if you do not have the exact variable, or if the cut
+values cannot be mapped from grounded context.
+
+Examples:
+- "Show this table by region" → if the current/fetched table is clear and
+  you know the exact region variable and values, call this tool.
+- "Add region across all tabs" → use \`proposeDerivedRun\`.
+- "Do you mean this table only, or the full crosstab set?" → ask this when
+  scope is ambiguous.
+- "Cut by Region" when Region already exists as a banner group → use
+  \`fetchTable\` with the existing cut group, not this tool.
+
 submitAnswer({ parts })
 
 Finalizes the user-visible reply as ordered structured assistant parts.

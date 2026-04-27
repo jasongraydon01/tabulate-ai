@@ -5,6 +5,7 @@ import { isTransientConvexError } from '@/lib/convex';
 import { internal } from '../convex/_generated/api';
 import { runClaimedWorkerRun } from '@/lib/worker/runClaimedRun';
 import { runClaimedTableRollupJob, type ClaimedTableRollupJob } from '@/lib/api/tableRollupCompletion';
+import { runClaimedSelectedTableCutJob, type ClaimedSelectedTableCutJob } from '@/lib/api/selectedTableCutCompletion';
 import { cleanupPendingArtifactRuns } from '@/lib/worker/artifactCleanup';
 import { formatWorkerQueueSnapshotLog } from '@/lib/worker/logging';
 import type { ClaimedWorkerRun } from '@/lib/worker/types';
@@ -67,6 +68,25 @@ async function claimNextTableRollupJob(): Promise<ClaimedTableRollupJob | null> 
   };
 }
 
+async function claimNextSelectedTableCutJob(): Promise<ClaimedSelectedTableCutJob | null> {
+  const claimed = await mutateInternal(internal.analysisComputeJobs.claimNextQueuedSelectedTableCutJob, {
+    workerId,
+  });
+  if (!claimed) return null;
+
+  return {
+    jobId: String(claimed.jobId),
+    orgId: String(claimed.orgId),
+    projectId: String(claimed.projectId),
+    parentRunId: String(claimed.parentRunId),
+    sessionId: String(claimed.sessionId),
+    requestedBy: String(claimed.requestedBy),
+    requestText: claimed.requestText,
+    frozenSelectedTableCutSpec: claimed.frozenSelectedTableCutSpec,
+    fingerprint: claimed.fingerprint,
+  };
+}
+
 async function logIdleQueueSnapshot(): Promise<void> {
   const now = Date.now();
   let snapshot;
@@ -124,6 +144,9 @@ async function main(): Promise<void> {
       await mutateInternal(internal.analysisComputeJobs.requeueStaleTableRollupJobs, {
         staleBeforeMs: STALE_LEASE_MS,
       });
+      await mutateInternal(internal.analysisComputeJobs.requeueStaleSelectedTableCutJobs, {
+        staleBeforeMs: STALE_LEASE_MS,
+      });
 
       const claimedRun = await claimNextRun();
       if (claimedRun) {
@@ -138,6 +161,14 @@ async function main(): Promise<void> {
         lastIdleSnapshotKey = '';
         console.log(`[Worker] Claimed table roll-up job ${claimedRollupJob.jobId}`);
         await runClaimedTableRollupJob(claimedRollupJob);
+        continue;
+      }
+
+      const claimedSelectedTableCutJob = await claimNextSelectedTableCutJob();
+      if (claimedSelectedTableCutJob) {
+        lastIdleSnapshotKey = '';
+        console.log(`[Worker] Claimed selected-table cut job ${claimedSelectedTableCutJob.jobId}`);
+        await runClaimedSelectedTableCutJob(claimedSelectedTableCutJob);
         continue;
       }
 

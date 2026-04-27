@@ -3,7 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { loadAnalysisParentRunArtifacts } from "@/lib/analysis/computeLane/artifactLoader";
 import { buildAnalysisComputeFingerprint } from "@/lib/analysis/computeLane/fingerprint";
 import {
+  isAnalysisSelectedTableCutSpecV1,
   isAnalysisTableRollupSpecV2,
+  UNSUPPORTED_SELECTED_TABLE_CUT_SPEC_MESSAGE,
   UNSUPPORTED_TABLE_ROLLUP_SPEC_MESSAGE,
 } from "@/lib/analysis/computeLane/types";
 import { buildWorkerExecutionPayload, buildWorkerPipelineContext, normalizeWizardWorkerInputRefs } from "@/lib/worker/buildExecutionPayload";
@@ -121,6 +123,37 @@ export async function POST(
 
       if (!enqueueResult.alreadyQueued) {
         const message = "Confirmed. TabulateAI queued the derived table. I will add it here when it finishes.";
+        await mutateInternal(internal.analysisMessages.create, {
+          sessionId: job.sessionId,
+          orgId: auth.convexOrgId,
+          role: "assistant",
+          content: message,
+          parts: [{ type: "text", text: message }],
+        });
+      }
+
+      return NextResponse.json({
+        accepted: true,
+        alreadyQueued: enqueueResult.alreadyQueued,
+        derivedArtifactId: enqueueResult.derivedArtifactId ? String(enqueueResult.derivedArtifactId) : null,
+      });
+    }
+    if (job.jobType === "selected_table_cut_derivation") {
+      if (!job.frozenSelectedTableCutSpec) {
+        return NextResponse.json({ error: "Analysis compute job is missing frozen selected-table cut spec" }, { status: 409 });
+      }
+      if (!isAnalysisSelectedTableCutSpecV1(job.frozenSelectedTableCutSpec)) {
+        return NextResponse.json({ error: UNSUPPORTED_SELECTED_TABLE_CUT_SPEC_MESSAGE }, { status: 409 });
+      }
+      const enqueueResult = await mutateInternal(internal.analysisComputeJobs.confirmSelectedTableCutJob, {
+        orgId: auth.convexOrgId,
+        jobId: job._id,
+        parentRunId: run._id,
+        expectedFingerprint: fingerprint,
+      });
+
+      if (!enqueueResult.alreadyQueued) {
+        const message = "Confirmed. TabulateAI queued the selected-table cut. I will add the derived table here when it finishes.";
         await mutateInternal(internal.analysisMessages.create, {
           sessionId: job.sessionId,
           orgId: auth.convexOrgId,
