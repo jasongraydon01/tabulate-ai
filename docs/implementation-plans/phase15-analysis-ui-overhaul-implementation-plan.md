@@ -122,7 +122,7 @@ Exit criteria met: live and refreshed sessions render the same assistant answer 
 Remaining after Slice 1:
 
 - The conversation shell and scroll behavior are still custom and move to Slice 2.
-- AI Elements response/loading primitives wait for Slice 3.
+- Answer readability and calm pre-activity loading wait for Slice 3.
 - Thinking/tool display polish remains Slice 4.
 - Fine-grained answer choreography, citation hover polish, sources, suggestions, and actions primitives remain Slice 5.
 - Compute-lane confirmation/progress polish remains Slice 6.
@@ -160,14 +160,19 @@ Remaining after Slice 2:
 - Composer autofocus remains intentionally undecided.
 - Compute card content/progress polish remains Slice 6.
 
-### Slice 3 - Response Markdown And Loading Primitives
+### Slice 3 - Answer Readability And Loading Calm
 
-Adopt AI Elements response/loading primitives where they are a direct fit, without disturbing citations or table rendering prematurely.
+Make the validated answer easier to read and make the pre-activity wait feel intentional. This slice is broader than a component swap, but still narrow in product scope: improve normal assistant prose rendering and the placeholder shown before visible assistant activity exists.
+
+The practical reason for this ordering is that TabulateAI intentionally withholds answer prose until validation. If the wait looks generic and the final prose reads like raw streaming markdown, the trust model can feel slow rather than deliberate. This slice should make the validated-answer flow feel calm without reopening the structural contracts landed in Slices 1 and 2.
 
 - Assume the Slice 2 Conversation shell is the viewport owner. Do not reintroduce message-level scroll effects while replacing markdown/loading primitives.
-- Replace pure text markdown rendering with AI Elements **Response** / **MessageResponse**.
-- Do not initially replace mixed text-plus-citation blocks. Those should remain custom until citation choreography is addressed in Slice 5.
-- Replace the generic "TabulateAI is analyzing..." pending state with AI Elements **Loader** / **Shimmer** patterns themed to TabulateAI.
+- Improve citation-free assistant prose rendering with AI Elements **Response** / **MessageResponse** where the primitive is a direct fit.
+- Keep the rendering compact and analysis-appropriate: chat-scale headings, controlled paragraph spacing, readable lists, clear inline emphasis, and code/data formatting that respects TabulateAI's typography.
+- Do not initially replace mixed text-plus-citation blocks. Those remain custom until citation choreography is addressed in Slice 5.
+- Do not allow generic markdown tables to become a substitute for grounded evidence. Tabular evidence should continue to use `GroundedTableCard` unless a later product decision explicitly changes that.
+- Replace the generic "TabulateAI is analyzing..." pending state with a calm assistant-side loading primitive shown only before reasoning, tool activity, or answer content is visible.
+- Keep pre-activity loading copy honest. It can say TabulateAI is reading or checking run artifacts, but it should not imply a specific internal step has happened before the stream provides that signal.
 - Verify shadcn-style component copies inherit:
   - Instrument Serif for display surfaces
   - Outfit for UI/body text
@@ -176,7 +181,16 @@ Adopt AI Elements response/loading primitives where they are a direct fit, witho
   - dark-mode primary presentation
 - Keep copy calm and product-specific. Use "TabulateAI" in user-facing text.
 
-Exit criteria: pure markdown rendering is simpler and stable, loading states feel consistent with the design system, and citation/table rendering is untouched.
+Deferred explicitly from Slice 3:
+
+- Reasoning and tool display remain Slice 4. This slice may hand off cleanly to the existing thinking trace, but it should not redesign it.
+- Answer reveal timing, footer readiness, and coordinated answer choreography remain Slice 5.
+- Citations, sources, follow-ups, copy/action layout, feedback controls, and citation hover/click polish remain Slice 5.
+- Compute proposal cards, confirmation, progress honesty, and continuation remain Slice 6.
+- Table-card redesign ideas, including details-as-toggle and multi-table carousel behavior, remain outside this slice.
+- Removing old reveal-controller machinery, `hasEverStreamed`, `unstableTail`, and large `AnalysisMessage` ownership cleanup remains Slice 7.
+
+Exit criteria: citation-free assistant markdown is polished and stable in live and refreshed sessions; the pending state before visible assistant activity feels calm and product-specific; citation/table rendering remains untouched; turn-scoped ordering remains unchanged; and no new message-level scroll ownership is introduced.
 
 ### Slice 4 - Thinking Phase
 
