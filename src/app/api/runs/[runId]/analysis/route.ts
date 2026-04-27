@@ -46,6 +46,11 @@ import {
 } from "@/lib/analysis/title";
 import {
   FETCH_TABLE_TOOL_TYPE,
+  HIDDEN_ANALYSIS_PROPOSAL_TOOL_TYPES,
+  isAllowedAnalysisToolName,
+  isAllowedAnalysisToolType,
+  isHiddenAnalysisToolName,
+  isHiddenAnalysisToolType,
   SUBMIT_ANSWER_TOOL_NAME,
   SUBMIT_ANSWER_TOOL_TYPE,
 } from "@/lib/analysis/toolLabels";
@@ -62,10 +67,9 @@ import { api, internal } from "../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
 
 const CONVEX_ID_RE = /^[a-zA-Z0-9_.-]+$/;
-const HIDDEN_PROPOSAL_TOOL_NAMES = new Set(["proposeDerivedRun", "proposeRowRollup", "proposeSelectedTableCut"]);
-const HIDDEN_PROPOSAL_TOOL_TYPES = new Set(["tool-proposeDerivedRun", "tool-proposeRowRollup", "tool-proposeSelectedTableCut"]);
 const ANALYSIS_PERSISTENCE_RETRY_ATTEMPTS = 2;
 const UNSAVED_ANALYSIS_WARNING = "This answer was generated, but TabulateAI could not save it. It may disappear after refresh.";
+const ANALYSIS_VALIDATING_ANSWER_LABEL = "TabulateAI is checking the answer against the run artifacts...";
 
 function isAnalysisMessageCandidate(value: unknown): value is AnalysisUIMessage[] {
   return Array.isArray(value);
@@ -122,6 +126,7 @@ function filterUIStreamForTrustLayer(
   stream: ReadableStream<InferUIMessageChunk<AnalysisUIMessage>>,
 ): ReadableStream<InferUIMessageChunk<AnalysisUIMessage>> {
   const suppressedToolCallIds = new Set<string>();
+  const allowedToolCallIds = new Set<string>();
 
   return stream.pipeThrough(new TransformStream<
   InferUIMessageChunk<AnalysisUIMessage>,
@@ -138,6 +143,10 @@ function filterUIStreamForTrustLayer(
         return;
       }
 
+      if (typeof chunk.type === "string" && chunk.type.startsWith("data-")) {
+        return;
+      }
+
       if ("toolName" in chunk && chunk.toolName === SUBMIT_ANSWER_TOOL_NAME) {
         if ("toolCallId" in chunk && typeof chunk.toolCallId === "string") {
           suppressedToolCallIds.add(chunk.toolCallId);
@@ -148,7 +157,7 @@ function filterUIStreamForTrustLayer(
       if (
         "toolName" in chunk
         && typeof chunk.toolName === "string"
-        && HIDDEN_PROPOSAL_TOOL_NAMES.has(chunk.toolName)
+        && (isHiddenAnalysisToolName(chunk.toolName) || !isAllowedAnalysisToolName(chunk.toolName))
       ) {
         if ("toolCallId" in chunk && typeof chunk.toolCallId === "string") {
           suppressedToolCallIds.add(chunk.toolCallId);
@@ -157,9 +166,29 @@ function filterUIStreamForTrustLayer(
       }
 
       if (
+        "toolName" in chunk
+        && typeof chunk.toolName === "string"
+        && "toolCallId" in chunk
+        && typeof chunk.toolCallId === "string"
+        && isAllowedAnalysisToolName(chunk.toolName)
+      ) {
+        allowedToolCallIds.add(chunk.toolCallId);
+      }
+
+      if (
         "toolCallId" in chunk
         && typeof chunk.toolCallId === "string"
         && suppressedToolCallIds.has(chunk.toolCallId)
+      ) {
+        return;
+      }
+
+      if (
+        typeof chunk.type === "string"
+        && chunk.type.startsWith("tool-")
+        && "toolCallId" in chunk
+        && typeof chunk.toolCallId === "string"
+        && !allowedToolCallIds.has(chunk.toolCallId)
       ) {
         return;
       }
@@ -245,6 +274,19 @@ function emitStructuredAssistantParts(
         cellIds: [...part.cellIds],
       },
     });
+  });
+}
+
+function emitAnalysisStatus(
+  writer: UIMessageStreamWriter<AnalysisUIMessage>,
+) {
+  writer.write({
+    type: "data-analysis-status",
+    id: "analysis-status-validating-answer",
+    data: {
+      phase: "validating_answer",
+      label: ANALYSIS_VALIDATING_ANSWER_LABEL,
+    },
   });
 }
 
@@ -400,11 +442,14 @@ function buildFinalAssistantParts(params: {
   structuredAssistantParts: AnalysisStructuredAssistantPart[];
   injectedTableCards: InjectedAnalysisTableCard[];
 }): AnalysisUIMessage["parts"] {
-  const nonTextParts = params.originalParts.filter((part) => (
-    part.type !== "text"
-    && part.type !== SUBMIT_ANSWER_TOOL_TYPE
-    && !HIDDEN_PROPOSAL_TOOL_TYPES.has(part.type)
-  ));
+  const nonTextParts = params.originalParts.filter((part) => {
+    if (part.type === "text" || part.type.startsWith("data-")) return false;
+    if (part.type === "reasoning") return true;
+    if (!part.type.startsWith("tool-")) return false;
+    return isAllowedAnalysisToolType(part.type)
+      && !isHiddenAnalysisToolType(part.type)
+      && part.type !== SUBMIT_ANSWER_TOOL_TYPE;
+  });
   const injectedParts = params.injectedTableCards.map<AnalysisUIMessage["parts"][number]>((entry) => ({
     type: FETCH_TABLE_TOOL_TYPE,
     toolCallId: entry.toolCallId,
@@ -448,7 +493,7 @@ function buildFinalAssistantParts(params: {
 }
 
 function hasHiddenProposalToolPart(parts: AnalysisUIMessage["parts"]): boolean {
-  return parts.some((part) => HIDDEN_PROPOSAL_TOOL_TYPES.has(part.type));
+  return parts.some((part) => HIDDEN_ANALYSIS_PROPOSAL_TOOL_TYPES.has(part.type));
 }
 
 async function persistAssistantMessageParts(params: {
@@ -766,6 +811,7 @@ export async function POST(
             }
 
             const structuredAssistantParts = extractedAssistantParts.parts;
+            emitAnalysisStatus(writer);
             const effectiveAssistantText = getAnalysisTextFromStructuredAssistantParts(
               structuredAssistantParts,
             );

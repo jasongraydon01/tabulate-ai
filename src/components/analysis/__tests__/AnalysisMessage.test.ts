@@ -8,14 +8,18 @@ import {
   buildAnalysisRevealEntries,
   getAnalysisAnswerRevealPhase,
   getNextAnalysisRevealDelayMs,
+  getAnalysisValidationStatusLabel,
   getAnalysisMessageEvidenceItems,
   getAnalysisMessageFollowUpItems,
   getAnalysisTraceEntries,
   getAnalysisTraceHeaderLabel,
+  getAnalysisWorkStatusLabel,
+  sanitizeAnalysisReasoningSummaryForUI,
   splitAnalysisStableTextWindow,
   splitAnalysisTextForReveal,
   getVisibleEvidenceItems,
 } from "@/components/analysis/AnalysisMessage";
+import { AnalysisWorkDisclosure } from "@/components/analysis/AnalysisWorkDisclosure";
 import { buildAnalysisRenderableBlocks } from "@/lib/analysis/renderAnchors";
 import type { AnalysisTableCard } from "@/lib/analysis/types";
 import type { AnalysisUIMessage as UIMessage } from "@/lib/analysis/ui";
@@ -130,6 +134,60 @@ describe("AnalysisMessage trace presentation", () => {
     expect(getAnalysisTraceHeaderLabel(traceEntries, "Fetching table", true)).toBe("Analysis steps");
   });
 
+  it("hides submitAnswer, hidden proposal tools, unknown tool names, and raw payloads from work activity", () => {
+    const message: UIMessage = {
+      id: "assistant-hidden-tools",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-submitAnswer",
+          toolCallId: "submit-1",
+          state: "output-available",
+          input: { parts: [{ type: "text", text: "Hidden" }] },
+          output: { parts: [{ type: "text", text: "Hidden" }] },
+        } as UIMessage["parts"][number],
+        {
+          type: "tool-proposeRowRollup",
+          toolCallId: "proposal-1",
+          state: "output-available",
+          input: { rawExpression: "private_expression" },
+          output: { status: "created" },
+        } as UIMessage["parts"][number],
+        {
+          type: "tool-privateDebug",
+          toolCallId: "debug-1",
+          state: "input-available",
+          input: { secret: "raw json should not render" },
+        } as UIMessage["parts"][number],
+        {
+          type: "tool-fetchTable",
+          toolCallId: "fetch-1",
+          state: "input-available",
+          input: { tableId: "q1" },
+        } as UIMessage["parts"][number],
+      ],
+    };
+
+    const entries = getAnalysisTraceEntries(message);
+    expect(entries).toEqual([{
+      kind: "tool",
+      id: "fetch-1",
+      label: "Fetching table",
+      state: "input-available",
+    }]);
+
+    const markup = renderToStaticMarkup(
+      React.createElement(AnalysisMessage, { message, isStreaming: true }),
+    );
+
+    expect(markup).toContain("Fetching table...");
+    expect(markup).not.toContain("submitAnswer");
+    expect(markup).not.toContain("proposeRowRollup");
+    expect(markup).not.toContain("privateDebug");
+    expect(markup).not.toContain("private_expression");
+    expect(markup).not.toContain("raw json should not render");
+  });
+
   it("strips markdown markers from reasoning summaries so they render cleanly as plain text", () => {
     const message: UIMessage = {
       id: "assistant-md",
@@ -148,6 +206,20 @@ describe("AnalysisMessage trace presentation", () => {
       kind: "reasoning",
       text: "Filtering bank data\n\nI need to check aided awareness for CSB and others.\n\nstep one\nstep two",
     });
+  });
+
+  it("redacts internal tool names and JSON-shaped payloads from reasoning summaries", () => {
+    const summary = sanitizeAnalysisReasoningSummaryForUI(
+      "Calling tool-submitAnswer with {\"parts\":[{\"type\":\"text\",\"text\":\"Hidden\"}]} before fetchTable.",
+    );
+
+    expect(summary).toContain("analysis step");
+    expect(summary).toContain("[details hidden]");
+    expect(summary).not.toContain("tool-submitAnswer");
+    expect(summary).not.toContain("submitAnswer");
+    expect(summary).not.toContain("fetchTable");
+    expect(summary).not.toContain("\"parts\"");
+    expect(summary).not.toContain("Hidden");
   });
 
   it("shows reasoning when the model emits real reasoning summary text", () => {
@@ -174,6 +246,47 @@ describe("AnalysisMessage trace presentation", () => {
     expect(getAnalysisTraceHeaderLabel(traceEntries, "The age gradient is strongest among 25-34s.", true)).toBe(
       "Reasoning",
     );
+  });
+
+  it("keeps active reasoning/tool details collapsed by default", () => {
+    const message: UIMessage = {
+      id: "assistant-collapsed-work",
+      role: "assistant",
+      parts: [
+        { type: "reasoning", text: "Detailed reasoning should stay behind the disclosure." },
+        {
+          type: "tool-searchRunCatalog",
+          toolCallId: "search-1",
+          state: "input-available",
+          input: { query: "awareness" },
+        } as UIMessage["parts"][number],
+      ],
+    };
+
+    const markup = renderToStaticMarkup(
+      React.createElement(AnalysisMessage, { message, isStreaming: true }),
+    );
+
+    expect(markup).toContain("Searching run catalog...");
+    expect(markup).not.toContain("Detailed reasoning should stay behind the disclosure.");
+  });
+
+  it("renders expanded work details with tool steps before reasoning summaries", () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(AnalysisWorkDisclosure, {
+        entries: [
+          { kind: "reasoning", id: "reason-1", text: "Reasoning summary." },
+          { kind: "tool", id: "tool-1", label: "Fetching table", state: "output-available" },
+        ],
+        statusLabel: "Analysis steps",
+        isOpen: true,
+        onOpenChange: () => {},
+      }),
+    );
+
+    expect(markup.indexOf("Fetching table")).toBeGreaterThan(-1);
+    expect(markup.indexOf("Reasoning summary.")).toBeGreaterThan(-1);
+    expect(markup.indexOf("Fetching table")).toBeLessThan(markup.indexOf("Reasoning summary."));
   });
 
   it("drops empty reasoning events so they do not masquerade as summaries", () => {
@@ -450,6 +563,67 @@ describe("AnalysisMessage trace presentation", () => {
     );
 
     expect(markup).toContain("aria-label=\"Loading\"");
+  });
+
+  it("uses validation status as the active work label before answer content starts", () => {
+    const message: UIMessage = {
+      id: "assistant-validating",
+      role: "assistant",
+      parts: [
+        {
+          type: "data-analysis-status",
+          id: "status-1",
+          data: {
+            phase: "validating_answer",
+            label: "TabulateAI is checking the answer against the run artifacts...",
+          },
+        },
+        { type: "reasoning", text: "Checking support." },
+      ],
+    };
+    const traceEntries = getAnalysisTraceEntries(message);
+
+    expect(getAnalysisValidationStatusLabel(message)).toBe(
+      "TabulateAI is checking the answer against the run artifacts...",
+    );
+    expect(getAnalysisWorkStatusLabel({
+      traceEntries,
+      validationStatusLabel: getAnalysisValidationStatusLabel(message),
+      answerRevealBegins: false,
+      isStreaming: true,
+    })).toBe("TabulateAI is checking the answer against the run artifacts...");
+
+    const markup = renderToStaticMarkup(
+      React.createElement(AnalysisMessage, { message, isStreaming: true }),
+    );
+
+    expect(markup).toContain("TabulateAI is checking the answer against the run artifacts...");
+  });
+
+  it("uses the settled analysis steps label after answer content starts", () => {
+    const message: UIMessage = {
+      id: "assistant-answer-started",
+      role: "assistant",
+      parts: [
+        {
+          type: "data-analysis-status",
+          id: "status-1",
+          data: {
+            phase: "validating_answer",
+            label: "TabulateAI is checking the answer against the run artifacts...",
+          },
+        },
+        { type: "reasoning", text: "Checking support." },
+        { type: "text", text: "Here is the answer." },
+      ],
+    };
+
+    const markup = renderToStaticMarkup(
+      React.createElement(AnalysisMessage, { message, isStreaming: false }),
+    );
+
+    expect(markup).toContain("Analysis steps");
+    expect(markup).not.toContain("TabulateAI is checking the answer against the run artifacts...");
   });
 
   it("removes the animated loader from the reasoning header once answer content is present", () => {

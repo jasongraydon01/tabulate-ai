@@ -29,7 +29,12 @@ import {
   extractStrictAnalysisStructuredAssistantPartsFromSubmitAnswer,
   getAnalysisTextFromStructuredAssistantParts,
 } from "@/lib/analysis/structuredParts";
-import { FETCH_TABLE_TOOL_TYPE, SUBMIT_ANSWER_TOOL_TYPE } from "@/lib/analysis/toolLabels";
+import {
+  FETCH_TABLE_TOOL_TYPE,
+  isAllowedAnalysisToolType,
+  isHiddenAnalysisToolType,
+  SUBMIT_ANSWER_TOOL_TYPE,
+} from "@/lib/analysis/toolLabels";
 import {
   type AnalysisGroundingRef,
   type AnalysisStructuredAssistantPart,
@@ -39,8 +44,6 @@ import type { AnalysisUIMessage } from "@/lib/analysis/ui";
 import { writeAnalysisTurnTrace } from "@/lib/analysis/trace";
 import { getConvexClient, mutateInternal } from "@/lib/convex";
 import { sanitizeHintForPrompt } from "@/lib/promptSanitization";
-
-const HIDDEN_PROPOSAL_TOOL_TYPES = new Set(["tool-proposeDerivedRun", "tool-proposeRowRollup", "tool-proposeSelectedTableCut"]);
 
 type PersistedPartForCreate = PersistedAnalysisPart & {
   artifactId?: Id<"analysisArtifacts">;
@@ -81,11 +84,14 @@ function buildFinalAssistantParts(params: {
   structuredAssistantParts: AnalysisStructuredAssistantPart[];
   injectedTableCards: InjectedAnalysisTableCard[];
 }): AnalysisUIMessage["parts"] {
-  const nonTextParts = params.originalParts.filter((part) => (
-    part.type !== "text"
-    && part.type !== SUBMIT_ANSWER_TOOL_TYPE
-    && !HIDDEN_PROPOSAL_TOOL_TYPES.has(part.type)
-  ));
+  const nonTextParts = params.originalParts.filter((part) => {
+    if (part.type === "text" || part.type.startsWith("data-")) return false;
+    if (part.type === "reasoning") return true;
+    if (!part.type.startsWith("tool-")) return false;
+    return isAllowedAnalysisToolType(part.type)
+      && !isHiddenAnalysisToolType(part.type)
+      && part.type !== SUBMIT_ANSWER_TOOL_TYPE;
+  });
   const structuredParts = params.structuredAssistantParts.flatMap<AnalysisUIMessage["parts"][number]>((part) => {
     if (part.type === "text") {
       return [{ type: "text", text: part.text }];

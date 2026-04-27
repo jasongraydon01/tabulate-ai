@@ -419,7 +419,7 @@ describe("streamAnalysisResponse", () => {
     expect(mocks.buildAnalysisSystemMessage).toHaveBeenCalledTimes(1);
   });
 
-  it("passes prior tool history through to model conversion", async () => {
+  it("passes allowlisted prior tool history through to model conversion", async () => {
     mocks.streamText.mockImplementationOnce(({ onFinish }) => {
       onFinish?.({
         totalUsage: {
@@ -506,12 +506,6 @@ describe("streamAnalysisResponse", () => {
         role: "assistant",
         parts: [
           { type: "text", text: "Prior answer." },
-          {
-            type: "tool-someNewThing",
-            toolCallId: "tool-1",
-            state: "input-available",
-            input: { topic: "brands" },
-          },
           {
             type: "tool-fetchTable",
             toolCallId: "tool-2",

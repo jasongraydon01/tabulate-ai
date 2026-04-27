@@ -11,7 +11,10 @@ import { Check, ChevronDown, Copy, Link2, Pencil, ThumbsDown, ThumbsUp } from "l
 
 import { GroundedTableCard } from "@/components/analysis/GroundedTableCard";
 import { AnalysisResponseMarkdown } from "@/components/analysis/AnalysisResponseMarkdown";
-import { GridLoader } from "@/components/ui/grid-loader";
+import {
+  AnalysisWorkDisclosure,
+  type AnalysisWorkActivityEntry,
+} from "@/components/analysis/AnalysisWorkDisclosure";
 import {
   Collapsible,
   CollapsibleContent,
@@ -36,7 +39,10 @@ import {
   getSettledAnalysisVisibleEvidenceItems,
 } from "@/lib/analysis/settledAnswer";
 import { getAnalysisToolActivityLabel } from "@/lib/analysis/toolLabels";
-import { type AnalysisUIMessage } from "@/lib/analysis/ui";
+import {
+  isAnalysisStatusDataUIPart,
+  type AnalysisUIMessage,
+} from "@/lib/analysis/ui";
 import {
   isAnalysisCellSummary,
   isAnalysisTableCard,
@@ -547,6 +553,28 @@ type TraceEntry =
   | { kind: "reasoning"; id: string; text: string }
   | { kind: "tool"; id: string; label: string; state: string };
 
+const MAX_ANALYSIS_REASONING_SUMMARY_UI_CHARS = 600;
+const INTERNAL_ANALYSIS_TOOL_NAME_RE = /\b(?:tool-[A-Za-z0-9_-]+|submitAnswer|searchRunCatalog|fetchTable|getQuestionContext|listBannerCuts|confirmCitation|proposeDerivedRun|proposeRowRollup|proposeSelectedTableCut)\b/g;
+const JSON_OBJECTISH_LINE_RE = /(?:\{[^\n]*(?:"|:)[^\n]*\}|\[[^\n]*(?:"|:)[^\n]*\])/g;
+
+export function sanitizeAnalysisReasoningSummaryForUI(text: string): string {
+  const sanitized = stripReasoningMarkdown(text)
+    .replace(INTERNAL_ANALYSIS_TOOL_NAME_RE, "analysis step")
+    .replace(JSON_OBJECTISH_LINE_RE, " [details hidden] ")
+    .replace(/[<>]/g, "")
+    .split("\n")
+    .map((line) => line.replace(/\s{2,}/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (sanitized.length <= MAX_ANALYSIS_REASONING_SUMMARY_UI_CHARS) {
+    return sanitized;
+  }
+
+  return `${sanitized.slice(0, MAX_ANALYSIS_REASONING_SUMMARY_UI_CHARS).trim()}...`;
+}
+
 export function getAnalysisTraceEntries(message: AnalysisUIMessage): TraceEntry[] {
   if (message.role === "user") {
     return [];
@@ -554,7 +582,7 @@ export function getAnalysisTraceEntries(message: AnalysisUIMessage): TraceEntry[
 
   return message.parts.flatMap((part, index): TraceEntry[] => {
     if (isReasoningUIPart(part)) {
-      const text = stripReasoningMarkdown(part.text).trim();
+      const text = sanitizeAnalysisReasoningSummaryForUI(part.text);
       if (!text) return [];
 
       return [{
@@ -581,6 +609,18 @@ export function getAnalysisTraceEntries(message: AnalysisUIMessage): TraceEntry[
   });
 }
 
+export function getAnalysisValidationStatusLabel(message: AnalysisUIMessage): string | null {
+  for (let index = message.parts.length - 1; index >= 0; index -= 1) {
+    const part = message.parts[index];
+    if (!part || !isAnalysisStatusDataUIPart(part)) continue;
+    if (part.data.phase !== "validating_answer") continue;
+    const label = part.data.label.trim();
+    if (label.length > 0) return label;
+  }
+
+  return null;
+}
+
 export function getAnalysisTraceHeaderLabel(
   traceEntries: TraceEntry[],
   collapsedSummary: string | null,
@@ -592,6 +632,38 @@ export function getAnalysisTraceHeaderLabel(
   }
 
   return isExpanded ? "Analysis steps" : (collapsedSummary ?? "Analysis steps");
+}
+
+export function getAnalysisWorkStatusLabel(params: {
+  traceEntries: TraceEntry[];
+  validationStatusLabel: string | null;
+  answerRevealBegins: boolean;
+  isStreaming: boolean;
+}): string | null {
+  if (params.answerRevealBegins) {
+    return params.traceEntries.length > 0 ? "Analysis steps" : null;
+  }
+
+  if (params.validationStatusLabel) {
+    return params.validationStatusLabel;
+  }
+
+  for (let index = params.traceEntries.length - 1; index >= 0; index -= 1) {
+    const entry = params.traceEntries[index];
+    if (entry.kind === "tool") {
+      const inProgress = params.isStreaming && entry.state !== "output-available";
+      return `${entry.label}${inProgress ? "..." : ""}`;
+    }
+  }
+
+  for (let index = params.traceEntries.length - 1; index >= 0; index -= 1) {
+    const entry = params.traceEntries[index];
+    if (entry.kind === "reasoning" && entry.text.trim().length > 0) {
+      return truncateReasoning(entry.text);
+    }
+  }
+
+  return params.traceEntries.length > 0 ? "Analysis steps" : null;
 }
 
 export function getAnalysisMessageEvidenceItems(message: AnalysisUIMessage): AnalysisEvidenceItem[] {
@@ -725,7 +797,7 @@ export function AnalysisMessage({
   const effectiveFeedback = optimisticFeedback ?? feedback ?? null;
   const isDownvoteOpen = effectiveFeedback?.vote === "down";
   const citeLookup = buildCitationChipLookup(message);
-  const hasTrace = traceEntries.length > 0;
+  const validationStatusLabel = isUser ? null : getAnalysisValidationStatusLabel(message);
   const rawAssistantText = isUser ? "" : getAnalysisUIMessageText(message);
 
   if (isStreaming) {
@@ -794,7 +866,14 @@ export function AnalysisMessage({
     });
   const answerRevealBegins = displayBlocks.length > 0;
   const isFooterReady = revealPhase === "settled";
-  const showThinkingLoader = !answerRevealBegins;
+  const showWorkLoader = isStreaming && !answerRevealBegins;
+  const workStatusLabel = getAnalysisWorkStatusLabel({
+    traceEntries,
+    validationStatusLabel,
+    answerRevealBegins,
+    isStreaming,
+  });
+  const shouldShowWorkDisclosure = !isUser && Boolean(workStatusLabel);
 
   useEffect(() => {
     if (!shouldUseRevealController) return;
@@ -819,17 +898,7 @@ export function AnalysisMessage({
   }, [feedback]);
 
   useEffect(() => {
-    if (!hasTrace || !shouldUseRevealController || hasTouchedThinkingRef.current) {
-      return;
-    }
-
-    if (revealPhase === "thinking") {
-      setIsThinkingExpanded(true);
-    }
-  }, [hasTrace, revealPhase, shouldUseRevealController]);
-
-  useEffect(() => {
-    if (!hasTrace || hasTouchedThinkingRef.current || hasAutoCollapsedThinkingRef.current) {
+    if (!shouldShowWorkDisclosure || hasTouchedThinkingRef.current || hasAutoCollapsedThinkingRef.current) {
       return;
     }
 
@@ -837,7 +906,7 @@ export function AnalysisMessage({
       hasAutoCollapsedThinkingRef.current = true;
       setIsThinkingExpanded(false);
     }
-  }, [answerRevealBegins, hasTrace]);
+  }, [answerRevealBegins, shouldShowWorkDisclosure]);
 
   function openEditor() {
     if (!onEditUserMessage) return;
@@ -870,24 +939,6 @@ export function AnalysisMessage({
       setIsSavingEdit(false);
     }
   }
-
-  const collapsedSummary = (() => {
-    if (!hasTrace) return null;
-    for (let index = traceEntries.length - 1; index >= 0; index -= 1) {
-      const entry = traceEntries[index];
-      if (entry.kind === "reasoning" && entry.text.trim().length > 0) {
-        return truncateReasoning(entry.text);
-      }
-    }
-    for (let index = traceEntries.length - 1; index >= 0; index -= 1) {
-      const entry = traceEntries[index];
-      if (entry.kind === "tool") {
-        const inProgress = isStreaming && entry.state !== "output-available";
-        return `${entry.label}${inProgress ? "..." : ""}`;
-      }
-    }
-    return null;
-  })();
 
   async function submitFeedback(vote: AnalysisMessageFeedbackVote, correctionText?: string | null) {
     if (!onSubmitFeedback || isSubmittingFeedback) return;
@@ -992,61 +1043,17 @@ export function AnalysisMessage({
           )
         ) : (
           <div className="min-w-0 space-y-3">
-            {hasTrace ? (
-              <div className="space-y-0.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    hasTouchedThinkingRef.current = true;
-                    setIsThinkingExpanded((open) => !open);
-                  }}
-                  className="inline-flex max-w-full items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground/70"
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    {showThinkingLoader ? <GridLoader size="sm" /> : null}
-                    <span className="min-w-0 truncate italic">
-                      {getAnalysisTraceHeaderLabel(traceEntries, collapsedSummary, isThinkingExpanded)}
-                    </span>
-                  </span>
-                  <ChevronDown
-                    className={cn(
-                      "mt-px h-3 w-3 shrink-0 transition-transform",
-                      !isThinkingExpanded && "-rotate-90",
-                    )}
-                  />
-                </button>
-
-                {isThinkingExpanded ? (
-                  <div className="ml-3.5 space-y-1 border-l border-border/40 pl-2.5 text-[11px] leading-5 text-muted-foreground">
-                    {traceEntries.map((entry) => {
-                      if (entry.kind === "reasoning") {
-                        return (
-                          <div
-                            key={entry.id}
-                            className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
-                          >
-                            {entry.text}
-                          </div>
-                        );
-                      }
-
-                      const inProgress = isStreaming && entry.state !== "output-available";
-                      return (
-                        <div
-                          key={entry.id}
-                          className="flex items-center gap-1.5"
-                        >
-                          <span className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
-                          <span>
-                            {entry.label}
-                            {inProgress ? "..." : ""}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : null}
-              </div>
+            {shouldShowWorkDisclosure && workStatusLabel ? (
+              <AnalysisWorkDisclosure
+                entries={traceEntries as AnalysisWorkActivityEntry[]}
+                statusLabel={workStatusLabel}
+                isOpen={isThinkingExpanded}
+                onOpenChange={(open) => {
+                  hasTouchedThinkingRef.current = true;
+                  setIsThinkingExpanded(open);
+                }}
+                showLoader={showWorkLoader}
+              />
             ) : null}
 
             {displayBlocks.map((block) => {

@@ -41,7 +41,7 @@ The backend contract is not the main problem. The primary work is to normalize t
 
 The analysis surface should move from **streaming-first answer rendering** to **settled-answer orchestration**.
 
-- During the agent loop, the UI shows a **work phase**: curated activity from reasoning summaries and tool calls streams live as a compact assistant-side panel.
+- During the agent loop, the UI shows a **work phase**: curated activity from reasoning summaries and tool calls streams live as a compact assistant-side reasoning/work disclosure.
 - After the model submits its structured final answer, the UI enters a quiet **finalization / validation handoff**: answer prose remains hidden while the backend checks the `submitAnswer` contract, confirmed cite parts, and render directives.
 - After validation passes, the UI enters the **answer phase**: text, tables, citations, sources, follow-ups, and actions reveal from one complete, normalized answer model.
 - Persisted reload uses the same answer-phase renderer as a live turn. Reload can skip the thinking phase, but it should not use a different DOM structure.
@@ -49,7 +49,7 @@ The analysis surface should move from **streaming-first answer rendering** to **
 
 This is not a move away from streaming altogether. Streaming remains valuable for reasoning and tool activity. What changes is that untrusted answer prose no longer trickles into the UI before its grounding has been validated.
 
-The product should not make validation feel like a compliance workflow. Users should experience a stable work panel, then a clean answer. Expanded reasoning/tool detail is available for transparency, but it is not the primary surface.
+The product should not make validation feel like a compliance workflow. Users should experience a stable reasoning/work disclosure, then a clean answer. Expanded reasoning/tool detail is available for transparency, but it is not the primary surface.
 
 ---
 
@@ -197,26 +197,22 @@ Exit criteria: citation-free assistant markdown is polished and stable in live a
 
 ### Slice 4 - Work Phase And Validation Handoff
 
-Make the waiting period useful and transparent, since answer prose is intentionally withheld until validation. This slice is not "make the reasoning transcript prettier." It should create one stable assistant-side work panel that covers the private work phase, the quiet finalization/validation handoff, and the transition into the validated answer.
+Make the waiting period useful and transparent, since answer prose is intentionally withheld until validation. This slice is not "make the reasoning transcript prettier." It creates one stable assistant-side reasoning/work disclosure that covers the private work phase, the quiet finalization/validation handoff, and the transition into the validated answer.
 
 Target turn model:
 
 1. **Work phase:** TabulateAI is inspecting the run: searching artifacts, fetching tables, checking question context, confirming cells, or preparing a compute proposal. Reasoning summaries and tool activity may stream, but the default surface is a curated status line rather than an open transcript.
 2. **Finalization / validation handoff:** the model has submitted `submitAnswer({ parts })`; TabulateAI is checking that the structured answer contract holds. Keep answer prose hidden. A quiet status such as "Checking the answer against the run artifacts..." is acceptable.
-3. **Answer phase:** once validation passes, collapse the work panel if the user has not manually opened it and reveal the settled answer below it.
+3. **Answer phase:** once validation passes, collapse the disclosure if the user has not manually opened it and reveal the settled answer below it.
 
-Implementation direction:
+Implemented shape:
 
-- Integrate the work panel into the Slice 2 shell behavior. Expanded details should respect the Conversation stick-to-bottom model and should not add new bespoke viewport code.
-- Adopt AI Elements **Reasoning** as the collapsible disclosure primitive for work-phase detail, wrapped by TabulateAI-owned phase policy and copy.
-- Adopt AI Elements **Tool** for individual activity rows where it fits, but feed it a TabulateAI activity model rather than raw `UIMessage.parts`.
-- Keep TabulateAI wrappers/adapters thin but explicit: AI Elements own disclosure mechanics, accessibility, and primitive structure; TabulateAI owns phase detection, labels, hidden-tool policy, and trust semantics.
-- Keep internal tool names, raw JSON, `submitAnswer`, unknown tools, and hidden proposal tools out of the default UI.
-- Use one assistant-side container treatment from pre-activity loading through active work and finalization. Avoid the current bubble-to-unframed-trace handoff.
-- Default collapsed while active. Show a live, curated status line with a loader. Preserve expand-on-demand for users who want transparency.
-- Auto-collapse when the settled answer begins to reveal, unless the user manually opened the panel.
-- After refresh, render available work-phase detail collapsed by default.
-- Tighten language so activity reads like meaningful analysis work, not a developer trace.
+- Added local AI Elements **Reasoning** and **Tool** primitives, used through the TabulateAI-owned `AnalysisWorkDisclosure` adapter rather than directly against raw `UIMessage.parts`.
+- `AnalysisWorkDisclosure` now owns the shared unframed assistant-side treatment for pre-activity loading, active reasoning/tool activity, validation handoff, and refreshed analysis steps.
+- Added transient stream status `data-analysis-status` with `phase: "validating_answer"` and label `TabulateAI is checking the answer against the run artifacts...`. This status is live-stream-only; it is not persisted to Convex and does not enter final answer text/rendering.
+- The default disclosure state is collapsed, including while active. The compact line shows a loader plus a curated status without a separate answer-like container; expanded detail shows curated tool rows before sanitized reasoning summaries.
+- Internal tool names, raw JSON, `submitAnswer`, unknown tools, and hidden proposal tools are excluded from default activity rendering.
+- The disclosure auto-collapses when settled answer content starts unless the user manually opened it. Refreshed sessions show available trace detail collapsed by default as `Analysis steps`.
 
 Deferred explicitly from Slice 4:
 
@@ -226,7 +222,7 @@ Deferred explicitly from Slice 4:
 - Compute proposal/result card lifecycle, lineage, and traceability remain Slice 6 unless a Slice 4 container change directly affects the thinking/tool handoff.
 - Large `AnalysisMessage` ownership cleanup remains Slice 7.
 
-Exit criteria: the wait between prompt and answer feels substantive but calm. Users see TabulateAI working against verified run artifacts, can expand for transparency, then the work panel gets out of the way when the validated answer is ready.
+Exit criteria: the wait between prompt and answer feels substantive but calm. Users see TabulateAI working against verified run artifacts, can expand for transparency, then the reasoning/work disclosure gets out of the way when the validated answer is ready.
 
 ### Slice 5 - Answer Phase Choreography
 

@@ -10,6 +10,7 @@ import { buildFetchTableModelMarkdown } from "@/lib/analysis/grounding";
 import {
   CONFIRM_CITATION_TOOL_TYPE,
   FETCH_TABLE_TOOL_TYPE,
+  isAllowedAnalysisToolType,
 } from "@/lib/analysis/toolLabels";
 import {
   type AnalysisUIMessage,
@@ -570,7 +571,7 @@ export function persistedAnalysisMessagesToUIMessages(
           continue;
         }
 
-        if (part.type.startsWith("tool-") && part.toolCallId) {
+        if (part.type.startsWith("tool-") && part.toolCallId && isAllowedAnalysisToolType(part.type)) {
           const cellSummary = part.type === CONFIRM_CITATION_TOOL_TYPE
             ? extractCellSummary(part.output)
               ?? (isAnalysisCellSummary(part.cellSummary)
@@ -656,6 +657,10 @@ export function getSanitizedConversationMessagesForModel(
       }
 
       if (isToolUIPart(part)) {
+        if (!isAllowedAnalysisToolType(part.type)) {
+          return acc;
+        }
+
         if (
           part.type === FETCH_TABLE_TOOL_TYPE
           && part.state === "output-available"

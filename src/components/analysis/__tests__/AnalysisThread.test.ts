@@ -104,6 +104,49 @@ describe("AnalysisThread pending state", () => {
     expect(hasVisibleAnalysisMessageParts(message)).toBe(true);
   });
 
+  it("treats validation status data parts as visible assistant activity", () => {
+    const message: UIMessage = {
+      id: "assistant-validating",
+      role: "assistant",
+      parts: [
+        {
+          type: "data-analysis-status",
+          id: "status-1",
+          data: {
+            phase: "validating_answer",
+            label: "TabulateAI is checking the answer against the run artifacts...",
+          },
+        },
+      ],
+    };
+
+    expect(hasVisibleAnalysisMessageParts(message)).toBe(true);
+    expect(shouldShowAnalysisPendingState([message], "streaming")).toBe(false);
+  });
+
+  it("does not treat unknown tool or data parts as visible assistant activity", () => {
+    const message: UIMessage = {
+      id: "assistant-private",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-privateDebug",
+          toolCallId: "debug-1",
+          state: "input-available",
+          input: { secret: "raw json should not render" },
+        } as UIMessage["parts"][number],
+        {
+          type: "data-private-debug",
+          id: "debug-data-1",
+          data: { secret: "raw json should not render" },
+        } as UIMessage["parts"][number],
+      ],
+    };
+
+    expect(hasVisibleAnalysisMessageParts(message)).toBe(false);
+    expect(shouldShowAnalysisPendingState([message], "streaming")).toBe(true);
+  });
+
   it("treats whitespace-only text and reasoning parts as not yet visible", () => {
     const message: UIMessage = {
       id: "assistant-empty",
@@ -124,6 +167,7 @@ describe("AnalysisThread pending state", () => {
     );
 
     expect(markup).toContain("TabulateAI is reading the run artifacts...");
+    expect(markup).toContain("role=\"status\"");
     expect(markup).not.toContain("TabulateAI is analyzing the artifacts...");
     expect(markup).not.toContain("Checking the run artifacts");
     expect(markup).not.toContain("Grounding the answer");

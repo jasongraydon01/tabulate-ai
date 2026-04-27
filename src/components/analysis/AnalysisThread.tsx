@@ -11,11 +11,17 @@ import {
   getNextAnalysisConversationScrollRequestKey,
 } from "@/components/analysis/AnalysisConversationShell";
 import { AnalysisMessage } from "@/components/analysis/AnalysisMessage";
+import { AnalysisWorkDisclosure } from "@/components/analysis/AnalysisWorkDisclosure";
 import { PromptComposer } from "@/components/analysis/PromptComposer";
-import { GridLoader } from "@/components/ui/grid-loader";
 import type { AnalysisComputeJobView } from "@/lib/analysis/computeLane/jobView";
 import { getAnalysisMessageMetadata } from "@/lib/analysis/messages";
-import type { AnalysisUIMessage } from "@/lib/analysis/ui";
+import {
+  isAnalysisCiteDataUIPart,
+  isAnalysisRenderDataUIPart,
+  isAnalysisStatusDataUIPart,
+  type AnalysisUIMessage,
+} from "@/lib/analysis/ui";
+import { getAnalysisToolActivityLabel } from "@/lib/analysis/toolLabels";
 import type { AnalysisMessageFeedbackRecord, AnalysisMessageFeedbackVote } from "@/lib/analysis/types";
 
 interface AnalysisThreadProps {
@@ -219,10 +225,12 @@ export function hasVisibleAnalysisMessageParts(message: AnalysisUIMessage): bool
     }
 
     if (isDataUIPart(part)) {
-      return true;
+      return isAnalysisStatusDataUIPart(part)
+        || isAnalysisRenderDataUIPart(part)
+        || isAnalysisCiteDataUIPart(part);
     }
 
-    return part.type.startsWith("tool-");
+    return Boolean(getAnalysisToolActivityLabel(part.type));
   });
 }
 
@@ -251,16 +259,13 @@ export function PendingAnalysisMessage() {
 
   return (
     <div className="flex w-full justify-start">
-      <div
-        className="min-w-0 max-w-[88%] rounded-xl border border-border/50 bg-background/70 px-3 py-2 shadow-sm"
-        role="status"
-        aria-live="polite"
-      >
-        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-          <GridLoader size="sm" />
-          <span className="min-w-0 truncate italic">{summaryLabel}</span>
-        </div>
-      </div>
+      <AnalysisWorkDisclosure
+        entries={[]}
+        statusLabel={summaryLabel}
+        isOpen={false}
+        onOpenChange={() => {}}
+        showLoader
+      />
     </div>
   );
 }

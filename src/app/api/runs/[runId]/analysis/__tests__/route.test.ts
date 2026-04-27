@@ -192,6 +192,28 @@ function makeStreamResult(options: {
             });
           }
 
+          if (
+            typeof part.type === "string"
+            && part.type.startsWith("tool-")
+            && part.type !== "tool-fetchTable"
+            && part.type !== "tool-submitAnswer"
+            && !part.type.startsWith("tool-propose")
+          ) {
+            writer.write({
+              type: "tool-input-available",
+              toolCallId: String(part.toolCallId ?? "tool-unknown-1"),
+              toolName: part.type.replace(/^tool-/, ""),
+              input: part.input ?? {},
+            });
+            if ("output" in part) {
+              writer.write({
+                type: "tool-output-available",
+                toolCallId: String(part.toolCallId ?? "tool-unknown-1"),
+                output: part.output,
+              });
+            }
+          }
+
           if (part.type === "tool-submitAnswer") {
             writer.write({
               type: "tool-input-available",
@@ -204,6 +226,10 @@ function makeStreamResult(options: {
               toolCallId: String(part.toolCallId ?? "submit-1"),
               output: part.output,
             });
+          }
+
+          if (typeof part.type === "string" && part.type.startsWith("data-")) {
+            writer.write(part as never);
           }
         }
 
@@ -588,6 +614,70 @@ describe("analysis chat route", () => {
     expect(JSON.stringify(mocks.mutateInternal.mock.calls[1][1])).not.toContain("rejected_candidate");
   });
 
+  it("filters unknown tool and data parts out of streaming and persistence", async () => {
+    mocks.query
+      .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
+      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1", title: "Audit Session", titleSource: "manual" })
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ _id: "project-1", name: "TabulateAI Study", config: {}, intake: {} });
+    mocks.mutateInternal
+      .mockResolvedValueOnce("user-msg-1")
+      .mockResolvedValueOnce("assistant-msg-1");
+    mocks.streamAnalysisResponse.mockResolvedValueOnce({
+      streamResult: makeStreamResult({
+        responseMessage: {
+          parts: [
+            {
+              type: "tool-privateDebug",
+              toolCallId: "debug-1",
+              state: "output-available",
+              input: { secret: "private_input" },
+              output: { secret: "private_output" },
+            },
+            {
+              type: "data-private-debug",
+              id: "debug-data-1",
+              data: { secret: "private_data" },
+            },
+            makeSubmitAnswerPart([
+              { type: "text", text: "This answer is safe to show." },
+            ]),
+          ],
+        },
+      }),
+      getTraceCapture: () => makeTraceCapture(),
+      getGroundingCapture: () => [],
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/runs/run-1/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          messages: [{ id: "user-1", role: "user", parts: [{ type: "text", text: "Answer this" }] }],
+        }),
+      }),
+      { params: Promise.resolve({ runId: "run-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("This answer is safe to show.");
+    expect(body).not.toContain("tool-privateDebug");
+    expect(body).not.toContain("data-private-debug");
+    expect(body).not.toContain("private_input");
+    expect(body).not.toContain("private_output");
+    expect(body).not.toContain("private_data");
+    expect(mocks.mutateInternal.mock.calls[1][1]).toMatchObject({
+      parts: [
+        { type: "text", text: "This answer is safe to show." },
+      ],
+    });
+    expect(JSON.stringify(mocks.mutateInternal.mock.calls[1][1])).not.toContain("private");
+  });
+
   it("fails the turn when submitAnswer is missing and does not persist an assistant message", async () => {
     mocks.query
       .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1", result: {} })
@@ -619,7 +709,9 @@ describe("analysis chat route", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain("Analysis response failed. Please try again.");
+    const body = await response.text();
+    expect(body).toContain("Analysis response failed. Please try again.");
+    expect(body).not.toContain("data-analysis-status");
     expect(mocks.mutateInternal).toHaveBeenCalledTimes(1);
     expect(mocks.writeAnalysisTurnErrorTrace).toHaveBeenCalledWith(expect.objectContaining({
       errorMessage: "Analysis turn failed: assistant did not finalize with submitAnswer({ parts }).",
@@ -663,7 +755,9 @@ describe("analysis chat route", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain("Analysis response failed. Please try again.");
+    const body = await response.text();
+    expect(body).toContain("Analysis response failed. Please try again.");
+    expect(body).not.toContain("data-analysis-status");
     expect(mocks.mutateInternal).toHaveBeenCalledTimes(1);
     expect(mocks.writeAnalysisTurnErrorTrace).toHaveBeenCalledWith(expect.objectContaining({
       errorMessage: "Analysis turn failed: submitAnswer payload did not match the structured answer schema.",
@@ -782,12 +876,6 @@ describe("analysis chat route", () => {
                 tableId: "q1",
                 title: "Q1 overall",
               }),
-            },
-            {
-              type: "tool-someNewThing",
-              toolCallId: "tool-generic-1",
-              state: "input-available",
-              input: { topic: "brands" },
             },
             {
               type: "text",
@@ -1087,7 +1175,10 @@ describe("analysis chat route", () => {
       ]),
     }));
     expect(body).toContain("data-analysis-cite");
+    expect(body).toContain("data-analysis-status");
+    expect(body.indexOf("data-analysis-status")).toBeLessThan(body.indexOf("data-analysis-cite"));
     expect(body).not.toContain("tool-submitAnswer");
+    expect(JSON.stringify(mocks.mutateInternal.mock.calls[2][1].parts)).not.toContain("data-analysis-status");
   });
 
   it("persists no grounding refs when the assistant quotes a number without a cite part", async () => {
@@ -1559,7 +1650,9 @@ describe("analysis chat route", () => {
     await response.text();
     expect(mocks.mutateInternal.mock.calls[1][1]).toEqual(expect.objectContaining({
       content: "Final answer.",
-      parts: [{ type: "text", text: "Final answer." }],
+      parts: [
+        { type: "text", text: "Final answer." },
+      ],
     }));
   });
 
@@ -1610,7 +1703,16 @@ describe("analysis chat route", () => {
     await response.text();
     expect(mocks.mutateInternal.mock.calls[1][1]).toEqual(expect.objectContaining({
       content: "Final answer.",
-      parts: [{ type: "text", text: "Final answer." }],
+      parts: [
+        {
+          type: "tool-searchRunCatalog",
+          toolCallId: "search-2",
+          state: "output-available",
+          input: { query: "brands" },
+          output: { matches: ["Q1"] },
+        },
+        { type: "text", text: "Final answer." },
+      ],
     }));
   });
 

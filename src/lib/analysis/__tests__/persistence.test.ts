@@ -127,7 +127,7 @@ describe("buildPersistedAnalysisParts", () => {
     ]);
   });
 
-  it("persists arbitrary tool parts when they carry a toolCallId", () => {
+  it("drops arbitrary tool parts even when they carry a toolCallId", () => {
     const parts: UIMessage["parts"] = [
       {
         type: "tool-someNewThing",
@@ -137,17 +137,7 @@ describe("buildPersistedAnalysisParts", () => {
       } as UIMessage["parts"][number],
     ];
 
-    expect(buildPersistedAnalysisParts(parts)).toEqual([
-      {
-        kind: "ready",
-        part: {
-          type: "tool-someNewThing",
-          state: "input-available",
-          toolCallId: "call-x",
-          input: { questionId: "Q1" },
-        },
-      },
-    ]);
+    expect(buildPersistedAnalysisParts(parts)).toEqual([]);
   });
 
   it("persists structured assistant parts explicitly when provided", () => {

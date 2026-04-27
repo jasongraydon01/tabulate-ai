@@ -6,6 +6,7 @@ import type { AnalysisStructuredAssistantPart } from "@/lib/analysis/types";
 import {
   CONFIRM_CITATION_TOOL_TYPE,
   FETCH_TABLE_TOOL_TYPE,
+  isAllowedAnalysisToolType,
 } from "@/lib/analysis/toolLabels";
 import {
   isAnalysisStructuredCitePart,
@@ -62,9 +63,9 @@ export type PendingAnalysisPart =
  *
  * Transport policy: text and reasoning parts persist after sanitization /
  * whitespace-only filtering. Tool parts persist in their standard AI SDK
- * shape so prior tool-use / tool-result history can survive reloads. Successful
- * `tool-fetchTable` outputs still flow through `analysisArtifacts` to avoid
- * duplicating large table payloads inline.
+ * shape so prior allowlisted tool-use / tool-result history can survive
+ * reloads. Successful `tool-fetchTable` outputs still flow through
+ * `analysisArtifacts` to avoid duplicating large table payloads inline.
  */
 export function buildPersistedAnalysisParts(parts: UIMessage["parts"]): PendingAnalysisPart[] {
   return buildPersistedAnalysisPartsWithStructuredAssistantParts(parts);
@@ -203,6 +204,10 @@ export function buildPersistedAnalysisPartsWithStructuredAssistantParts(
               : {}),
         },
       });
+      continue;
+    }
+
+    if (!isAllowedAnalysisToolType(part.type)) {
       continue;
     }
 
