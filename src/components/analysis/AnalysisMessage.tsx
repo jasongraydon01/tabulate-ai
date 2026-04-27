@@ -94,7 +94,6 @@ function StreamingMarkdown({ text, isStreaming }: { text: string; isStreaming: b
 }
 
 export type AnalysisAnswerRevealPhase = "thinking" | "handoff" | "composing" | "settled";
-export type AnalysisRevealProgressEvent = "answer-start" | "text-step" | "table-shell" | "table-ready";
 
 interface AnalysisStableTextWindow {
   stableText: string;
@@ -734,7 +733,6 @@ export function AnalysisMessage({
   onSelectFollowUpSuggestion,
   feedback = null,
   onSubmitFeedback,
-  onRevealProgress,
   onEditUserMessage,
 }: {
   message: AnalysisUIMessage;
@@ -748,7 +746,6 @@ export function AnalysisMessage({
     vote: AnalysisMessageFeedbackVote;
     correctionText?: string | null;
   }) => Promise<void>;
-  onRevealProgress?: (event: AnalysisRevealProgressEvent) => void;
   // Passed on persisted user messages when editing is available. Called with
   // the new text — the thread owns the stop / truncate / resend choreography
   // so this can be invoked at any time, including during streaming.
@@ -769,9 +766,6 @@ export function AnalysisMessage({
   const hasEverStreamedRef = useRef(isStreaming);
   const hasTouchedThinkingRef = useRef(false);
   const hasAutoCollapsedThinkingRef = useRef(false);
-  const previousReleasedEntryCountRef = useRef(0);
-  const previousShellVisibleRef = useRef(false);
-  const previousAnswerRevealBeginsRef = useRef(false);
 
   const traceEntries = getAnalysisTraceEntries(message);
   const effectiveFeedback = optimisticFeedback ?? feedback ?? null;
@@ -890,55 +884,6 @@ export function AnalysisMessage({
       setIsThinkingExpanded(false);
     }
   }, [answerRevealBegins, hasTrace]);
-
-  useEffect(() => {
-    const shellVisible = displayBlocks.some(
-      (block) => block.kind === "table" && block.displayState === "shell",
-    );
-
-    if (!shouldUseRevealController || !onRevealProgress) {
-      previousReleasedEntryCountRef.current = releasedEntryCount;
-      previousShellVisibleRef.current = shellVisible;
-      previousAnswerRevealBeginsRef.current = answerRevealBegins;
-      return;
-    }
-
-    const previousReleasedEntryCount = previousReleasedEntryCountRef.current;
-    const previousShellVisible = previousShellVisibleRef.current;
-    const previousAnswerRevealBegins = previousAnswerRevealBeginsRef.current;
-
-    const didStartAnswer = answerRevealBegins && !previousAnswerRevealBegins;
-
-    if (didStartAnswer) {
-      onRevealProgress("answer-start");
-    }
-
-    if (shellVisible && !previousShellVisible && !didStartAnswer) {
-      onRevealProgress("table-shell");
-    }
-
-    if (releasedEntryCount > previousReleasedEntryCount) {
-      for (let index = previousReleasedEntryCount; index < releasedEntryCount; index += 1) {
-        const entry = revealEntries[index];
-        if (!entry) continue;
-        if (didStartAnswer && index === previousReleasedEntryCount && entry.kind === "text") {
-          continue;
-        }
-        onRevealProgress(entry.kind === "table" ? "table-ready" : "text-step");
-      }
-    }
-
-    previousReleasedEntryCountRef.current = releasedEntryCount;
-    previousShellVisibleRef.current = shellVisible;
-    previousAnswerRevealBeginsRef.current = answerRevealBegins;
-  }, [
-    answerRevealBegins,
-    displayBlocks,
-    onRevealProgress,
-    releasedEntryCount,
-    revealEntries,
-    shouldUseRevealController,
-  ]);
 
   function openEditor() {
     if (!onEditUserMessage) return;

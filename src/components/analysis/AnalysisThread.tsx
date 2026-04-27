@@ -1,21 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DefaultChatTransport, isDataUIPart } from "ai";
 import { useChat } from "@ai-sdk/react";
 import { AlertCircle } from "lucide-react";
 
 import { AnalysisComputeJobCard } from "@/components/analysis/AnalysisComputeJobCard";
-import { AnalysisMessage } from "@/components/analysis/AnalysisMessage";
 import {
-  isAnalysisThreadNearBottom,
-  scrollAnalysisThreadForRevealEvent,
-  scrollAnalysisThreadToBottom,
-  scrollAnalysisThreadToMessageStart,
-} from "@/components/analysis/analysisThreadScroll";
+  AnalysisConversationShell,
+  getNextAnalysisConversationScrollRequestKey,
+} from "@/components/analysis/AnalysisConversationShell";
+import { AnalysisMessage } from "@/components/analysis/AnalysisMessage";
 import { PromptComposer } from "@/components/analysis/PromptComposer";
 import { GridLoader } from "@/components/ui/grid-loader";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import type { AnalysisComputeJobView } from "@/lib/analysis/computeLane/jobView";
 import { getAnalysisMessageMetadata } from "@/lib/analysis/messages";
 import type { AnalysisUIMessage } from "@/lib/analysis/ui";
@@ -285,10 +282,7 @@ export function AnalysisThread({
 }: AnalysisThreadProps) {
   const [input, setInput] = useState("");
   const [isComputePreflightPending, setIsComputePreflightPending] = useState(false);
-  const lastMessageRef = useRef<HTMLDivElement | null>(null);
-  const viewportRef = useRef<HTMLDivElement | null>(null);
-  const prevMessageCountRef = useRef(initialMessages.length);
-  const shouldStickToBottomRef = useRef(true);
+  const [scrollRequestKey, setScrollRequestKey] = useState(0);
   const persistedAssistantMessageIdSet = useMemo(
     () => new Set(persistedAssistantMessageIds),
     [persistedAssistantMessageIds],
@@ -349,48 +343,16 @@ export function AnalysisThread({
     });
   }, [persistedMessageIdsInOrder, persistedMessages, setMessages, status]);
 
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-
-    const syncStickiness = () => {
-      shouldStickToBottomRef.current = isAnalysisThreadNearBottom(viewport);
-    };
-
-    syncStickiness();
-    viewport.addEventListener("scroll", syncStickiness, { passive: true });
-    return () => viewport.removeEventListener("scroll", syncStickiness);
-  }, []);
-
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-
-    const frame = window.requestAnimationFrame(() => {
-      const shouldAutoScroll = shouldStickToBottomRef.current;
-
-      if (timelineEntries.length > prevMessageCountRef.current && lastMessageRef.current) {
-        prevMessageCountRef.current = timelineEntries.length;
-        if (shouldAutoScroll) {
-          scrollAnalysisThreadToMessageStart(viewport, lastMessageRef.current);
-        }
-        return;
-      }
-
-      if (status === "streaming" && shouldStickToBottomRef.current && shouldShowPendingState) {
-        scrollAnalysisThreadToBottom(viewport, "auto");
-      }
-    });
-
-    return () => window.cancelAnimationFrame(frame);
-  }, [shouldShowPendingState, status, timelineEntries.length]);
+  function requestScrollToLatest() {
+    setScrollRequestKey((current) => getNextAnalysisConversationScrollRequestKey(current));
+  }
 
   async function handleSubmit() {
     const nextInput = input.trim();
     if (!nextInput || isBusy || isComputePreflightPending) return;
     const clientTurnId = createClientTurnId();
     setInput("");
-    shouldStickToBottomRef.current = true;
+    requestScrollToLatest();
     await sendMessage(
       {
         text: nextInput,
@@ -407,7 +369,7 @@ export function AnalysisThread({
     if (!nextInput || isBusy || isComputePreflightPending) return;
 
     setIsComputePreflightPending(true);
-    shouldStickToBottomRef.current = true;
+    requestScrollToLatest();
     const clientTurnId = createClientTurnId();
     try {
       await onStartComputePreflight(nextInput, clientTurnId);
@@ -422,7 +384,7 @@ export function AnalysisThread({
     if (!nextSuggestion || isBusy) return;
 
     const clientTurnId = createClientTurnId();
-    shouldStickToBottomRef.current = true;
+    requestScrollToLatest();
     await sendMessage(
       {
         text: nextSuggestion,
@@ -454,7 +416,7 @@ export function AnalysisThread({
     // doesn't see stale context.
     await onTruncateFromMessage(input.messageId);
 
-    shouldStickToBottomRef.current = true;
+    requestScrollToLatest();
     const clientTurnId = createClientTurnId();
     await sendMessage(
       {
@@ -481,18 +443,6 @@ export function AnalysisThread({
     return null;
   }
 
-  function handleAssistantRevealProgress(event: "answer-start" | "text-step" | "table-shell" | "table-ready") {
-    const viewport = viewportRef.current;
-    const lastMessage = lastMessageRef.current;
-    if (!viewport || !lastMessage || !shouldStickToBottomRef.current) {
-      return;
-    }
-
-    window.requestAnimationFrame(() => {
-      scrollAnalysisThreadForRevealEvent(viewport, lastMessage, event);
-    });
-  }
-
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div className="border-b border-border/60 px-5 py-3">
@@ -500,12 +450,20 @@ export function AnalysisThread({
           {sessionTitle}
         </h2>
       </div>
-      <ScrollArea
-        className="min-h-0 min-w-0 flex-1"
-        viewportRef={viewportRef}
-        viewportClassName="[&>div]:!block [&>div]:!w-full"
+      <AnalysisConversationShell
+        scrollRequestKey={scrollRequestKey}
+        composer={(
+          <PromptComposer
+            value={input}
+            onChange={setInput}
+            onSubmit={handleSubmit}
+            onComputeSubmit={handleComputeSubmit}
+            onStop={stop}
+            isBusy={isBusy}
+            isComputeBusy={isComputePreflightPending}
+          />
+        )}
       >
-        <div className="min-w-0 space-y-4 px-5 py-3 pb-24">
           {timelineEntries.length === 0 ? (
             <div className="flex min-h-[calc(100vh-18rem)] items-center justify-center px-6 py-10">
               <div className="mx-auto flex max-w-xl flex-col items-center gap-3 text-center">
@@ -518,11 +476,10 @@ export function AnalysisThread({
               </div>
             </div>
           ) : (
-            timelineEntries.map((entry, timelineIndex) => {
-              const isLastEntry = timelineIndex === timelineEntries.length - 1;
+            timelineEntries.map((entry) => {
               if (entry.kind === "compute-job") {
                 return (
-                  <div key={entry.key} ref={isLastEntry ? lastMessageRef : undefined}>
+                  <div key={entry.key}>
                     <AnalysisComputeJobCard
                       job={entry.job}
                       onConfirm={onConfirmComputeJob}
@@ -550,13 +507,10 @@ export function AnalysisThread({
               const isPersistedAssistantMessage = message.role === "assistant" && Boolean(persistedMessageId);
               const isPersistedUserMessage = message.role === "user" && Boolean(persistedMessageId);
               return (
-                <div key={entry.key} ref={isLastEntry ? lastMessageRef : undefined}>
+                <div key={entry.key}>
                   <AnalysisMessage
                     message={message}
                     isStreaming={isLastMessage && isBusy}
-                    onRevealProgress={isLastMessage && message.role === "assistant"
-                      ? handleAssistantRevealProgress
-                      : undefined}
                     onSelectFollowUpSuggestion={showFollowUps ? handleFollowUpSuggestion : undefined}
                     feedback={shouldShowMessageActions && isPersistedAssistantMessage && persistedMessageId
                       ? (messageFeedbackById[persistedMessageId] ?? null)
@@ -588,23 +542,7 @@ export function AnalysisThread({
               </div>
             </div>
           )}
-        </div>
-      </ScrollArea>
-
-      <div className="relative z-10 -mt-10 shrink-0 px-5 pb-4 pt-8">
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 top-0 bg-gradient-to-t from-white via-white/88 to-transparent dark:from-card dark:via-card/84" />
-        <div className="relative">
-          <PromptComposer
-            value={input}
-            onChange={setInput}
-            onSubmit={handleSubmit}
-            onComputeSubmit={handleComputeSubmit}
-            onStop={stop}
-            isBusy={isBusy}
-            isComputeBusy={isComputePreflightPending}
-          />
-        </div>
-      </div>
+      </AnalysisConversationShell>
     </div>
   );
 }

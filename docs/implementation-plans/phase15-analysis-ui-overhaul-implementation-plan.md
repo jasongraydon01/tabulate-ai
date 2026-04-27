@@ -1,6 +1,6 @@
 # Phase 15 Sub-Plan - Analysis UI Overhaul
 
-**Status:** active. Slice 0 and Slice 1 are complete; Slices 2-7 remain. This is a product-shape plan, not a per-ticket implementation spec. Each implementation slice should get its own focused plan before code work begins.
+**Status:** active. Slices 0-2 are complete; Slices 3-7 remain. This is a product-shape plan, not a per-ticket implementation spec. Each implementation slice should get its own focused plan before code work begins.
 
 **Purpose:** clean up the Phase 15 analysis chat foundation before Tier A Bucket 3 work. The goal is a calmer, more predictable, more premium chat experience: grounded answers reveal smoothly after validation, thinking/tool activity carries the wait honestly, and live turns render the same way as reloaded sessions.
 
@@ -13,12 +13,23 @@ Compute-lane sibling: [phase15-analysis-compute-lane-implementation-plan.md](/Us
 
 The analysis chat surface is functionally correct enough to support real users. The structured-parts contract (`text` / `render` / `cite` / `submitAnswer`) is in place, claim-checking is enforced server-side, and the UI can render grounded table cards, citations, sources, follow-ups, feedback, edits, and compute-job proposals.
 
-The roughness is in the consumption layer:
+Slice 1 closed the most important consumption-layer correctness issues:
 
-- **Live and persisted turns behave differently.** Live turns use a streaming/reveal controller, while persisted reload renders complete messages immediately. The same assistant turn can produce subtly different DOM order and timing in the live path versus after refresh.
-- **Timeline ordering is fragile.** Messages and compute-job cards are interleaved by timestamps. Client-generated live messages, Convex-persisted messages, and compute-job records do not always share a single reliable chronology, which is why proposal cards can appear in a different place live than they do after reload.
-- **Answer reveal is coupled to stream mechanics.** The backend already suppresses untrusted answer text until `submitAnswer` and trust resolution complete, but the frontend still treats the final answer as a streaming object. That creates choppy handoffs, table-card shell transitions, and footer pop-in.
-- **Auto-scroll is over-owned by custom code.** Stick-to-bottom state, reveal-aware scroll events, and message-start scrolling are all handcrafted. This is a solved primitive and should not remain one of the riskiest parts of the chat surface.
+- **Live and persisted answers now share a settled answer model.** The answer renderer consumes normalized assistant parts plus message metadata rather than branching on whether the turn streamed or replayed from Convex.
+- **Timeline ordering is now turn-scoped.** Messages and compute jobs are grouped by `clientTurnId` / origin message IDs. Explicitly turn-scoped jobs wait for their originating turn to be visible; legacy timestamp-only jobs still have a fallback.
+- **Validated answer reveal is separated from persistence.** The UI can reveal validated streamed final parts, but feedback/edit/persistence-dependent actions wait for a persisted assistant message. If persistence fails after retry, the user sees an unsaved warning instead of a silently unsafe action surface.
+
+Slice 2 moved the conversation shell onto a narrower primitive-backed foundation:
+
+- **The analysis viewport now uses an AI Elements Conversation primitive.** A TabulateAI-owned `AnalysisConversationShell` wraps the primitive so the analysis thread keeps owning chat state, timeline assembly, action gating, and product semantics.
+- **Stick-to-bottom behavior is no longer handcrafted in `AnalysisThread`.** Sending, editing, and follow-up requests issue a narrow scroll request to the shell; normal streaming/resizing behavior is handled by `use-stick-to-bottom`.
+- **Reveal-event scrolling is no longer wired through `AnalysisMessage`.** Answer choreography still lives in `AnalysisMessage`, but it no longer drives bespoke thread scroll callbacks.
+- **The product sidebar temporarily collapses on the analysis route.** The app header trigger remains available so users can reopen the global navigation when needed, and the previous sidebar state is restored after leaving analysis.
+
+The remaining roughness is now primarily in the presentation and ownership layers:
+
+- **Answer reveal still uses custom streaming-era choreography.** Slice 1 normalized the answer input, but `AnalysisMessage` still owns reveal timing and footer readiness. That cleanup waits for Slice 5 and Slice 7.
+- **Viewport behavior is improved but still needs visual QA in real sessions.** The shell now owns stick-to-bottom behavior, but mobile, long-table, and active-streaming states should continue to be verified as future primitives land.
 - **AnalysisMessage is doing too much.** It owns markdown rendering, reveal timing, table rendering, citations, sources, reasoning, tool activity, copy actions, feedback, edit/resend behavior, and several derived lookups.
 - **Compute progress is partly real and partly fallback.** Child run progress is used when present, but queued/running states still fall back to hardcoded values when the worker has not emitted meaningful progress. The UX reads as less trustworthy than the rest of the analysis surface.
 
@@ -62,9 +73,9 @@ This is not a move away from streaming altogether. Streaming remains valuable fo
 
 ## Slices
 
-### Slice 0 - UX Baseline And Golden States - Complete
+### Slice 0 - UX Baseline And Current States - Complete
 
-Create a lightweight visual and behavioral baseline before replacing primitives. This gives each later slice a target and prevents subjective "it feels smoother" debates.
+Create a lightweight visual and behavioral baseline before replacing primitives. These captures are current-state references with known issues, not an endorsement that the interactions are final or "golden."
 
 Completed baseline package: [slice-0/baseline.md](/Users/jasongraydon01/tabulate-ai/docs/implementation-plans/slice-0/baseline.md)
 
@@ -88,7 +99,7 @@ Completed baseline package: [slice-0/baseline.md](/Users/jasongraydon01/tabulate
 - Document the known current bugs this overhaul is meant to remove, especially live/reload ordering divergence.
 - Identify the smallest deterministic tests needed to protect timeline order and settled-answer rendering.
 
-Exit criteria: the overhaul has a concrete baseline, a list of representative states, and a QA checklist each later slice can run against.
+Exit criteria: the overhaul has concrete current-state captures, a list of representative states, known issues, and a QA checklist each later slice can run against.
 
 ### Slice 1 - Settled Answer Model And Timeline Ordering - Complete
 
@@ -117,22 +128,43 @@ Remaining after Slice 1:
 - Compute-lane confirmation/progress polish remains Slice 6.
 - Old reveal/scroll machinery cleanup and component ownership splits remain Slice 7.
 
-### Slice 2 - Conversation Shell And Auto-Scroll
+### Slice 2 - Conversation Shell And Auto-Scroll - Complete
 
-Adopt the lowest-risk AI Elements primitive first: the conversation viewport and stick-to-bottom behavior.
+Adopted the lowest-risk AI Elements primitive first: the conversation viewport and stick-to-bottom behavior.
 
-- Replace the custom analysis thread scroll/stickiness machinery with AI Elements **Conversation** and its `use-stick-to-bottom` behavior.
-- Preserve the existing layout constraints: session title header, full-height thread, sticky composer, dark-mode primary presentation, and long-table handling.
-- Verify that user scrolling is respected during active thinking/tool streaming.
-- Verify that a new settled answer reveal scrolls only when the user is already at or near the bottom.
-- Remove custom scroll utilities only after equivalent behavior is covered by tests or visual QA.
+Starting point after Slice 1:
 
-Exit criteria: auto-scroll feels predictable, user scroll is not fought, and the thread no longer needs bespoke reveal-event scrolling for normal answer rendering.
+- Treat `buildAnalysisTimelineEntries` and the settled answer model as the ordering/rendering contract. Slice 2 should not reintroduce timestamp interleaving or a separate live-message renderer.
+- Preserve the current turn-scoped compute-card placement exactly while swapping the viewport/scroll primitive.
+- Keep persistence-aware action gating unchanged. Slice 2 is a shell and scroll slice, not another backend finalization pass.
+- Use the Slice 0 baseline and the Slice 1 ordering tests as regression guards before and after the shell change.
+
+Implemented shape:
+
+- Added the AI Elements **Conversation** primitive locally and wrapped it in `AnalysisConversationShell`, keeping TabulateAI-specific rendering and action logic outside the primitive.
+- Replaced `AnalysisThread`'s live `ScrollArea` viewport, manual near-bottom refs, message-start snapping, and pending-state scroll effect with the shell's `use-stick-to-bottom` behavior.
+- Kept `buildAnalysisTimelineEntries` unchanged as the ordering contract. Compute cards still attach to their originating turn.
+- Removed `AnalysisMessage`'s reveal-progress scroll callback path. The answer reveal controller still exists, but it no longer drives thread scrolling directly.
+- Added a subtle scroll-to-latest affordance from the Conversation primitive when the user is away from the bottom.
+- Temporarily collapsed the global product sidebar on the analysis route through the existing sidebar context while preserving the header trigger and restoring the previous sidebar state on route exit.
+- Added a narrow shell contract test and kept the Slice 1 ordering/action tests passing.
+- Left the legacy `analysisThreadScroll` helper file in place as deprecated dead code rather than deleting it immediately. It is no longer in the live analysis thread render path.
+
+Exit criteria met: the normal thread no longer needs bespoke reveal-event scrolling, user-initiated sends request the latest turn through the shell, persisted sessions initialize at the latest turn, and Slice 1 ordering/action contracts remain intact.
+
+Remaining after Slice 2:
+
+- Browser visual QA should continue to exercise active streaming, long tables, and narrow/mobile layouts as Slices 3-7 land.
+- The old reveal controller and `hasEverStreamed` path still live in `AnalysisMessage`; Slice 5 should replace the choreography, and Slice 7 should remove obsolete machinery once it is truly dead.
+- The deprecated `analysisThreadScroll` helpers can be deleted in Slice 7 after any remaining references and tests are removed.
+- Composer autofocus remains intentionally undecided.
+- Compute card content/progress polish remains Slice 6.
 
 ### Slice 3 - Response Markdown And Loading Primitives
 
 Adopt AI Elements response/loading primitives where they are a direct fit, without disturbing citations or table rendering prematurely.
 
+- Assume the Slice 2 Conversation shell is the viewport owner. Do not reintroduce message-level scroll effects while replacing markdown/loading primitives.
 - Replace pure text markdown rendering with AI Elements **Response** / **MessageResponse**.
 - Do not initially replace mixed text-plus-citation blocks. Those should remain custom until citation choreography is addressed in Slice 5.
 - Replace the generic "TabulateAI is analyzing..." pending state with AI Elements **Loader** / **Shimmer** patterns themed to TabulateAI.
@@ -150,6 +182,7 @@ Exit criteria: pure markdown rendering is simpler and stable, loading states fee
 
 Make the waiting period useful and transparent, since answer prose is intentionally withheld until validation.
 
+- Integrate thinking/tool polish into the Slice 2 shell behavior. Expanded thinking should respect the Conversation stick-to-bottom model and should not add new bespoke viewport code.
 - Adopt AI Elements **Reasoning** for reasoning summaries.
 - Adopt AI Elements **Tool** for tool activity, but continue feeding it curated labels from TabulateAI's existing tool-label policy.
 - Keep internal tool names, raw JSON, and hidden proposal tools out of the default UI.
@@ -164,6 +197,7 @@ Exit criteria: the wait between prompt and answer feels substantive. Reasoning/t
 
 Polish the coordinated reveal of the settled answer: text, tables, citations, sources, suggestions, and actions.
 
+- Own answer motion and layout stability here, but do not re-solve viewport stickiness. The Conversation shell decides whether the viewport follows the bottom.
 - Drive reveal motion from the settled answer model, not from raw streaming deltas.
 - Use calm easing and small staggered groups rather than timer-heavy sentence-by-sentence trickle.
 - Reserve enough layout space that table cards, sources, chips, and actions do not cause visible layout jump.
@@ -181,6 +215,7 @@ Exit criteria: the end-of-turn answer reveal is smooth, anchored, and reload-sta
 
 Bring compute proposals and job progress into the same chat experience without hiding their special semantics.
 
+- Own compute-card design, confirmation, progress honesty, and continuation polish. Do not reopen Slice 1 turn attachment or Slice 2 viewport ownership unless a clear product bug appears.
 - Frame confirm/cancel/revise proposal interactions with AI Elements **Confirmation** where it improves clarity.
 - Evaluate **Task**, **Plan**, **Queue**, and **Checkpoint** primitives for queued/running/success/failure display, but do not force-fit them if TabulateAI's compute state needs a more direct custom presentation.
 - Keep cut definitions, validation messages, confidence/review flags, lineage, and derived-table details as custom slots.
@@ -194,9 +229,10 @@ Exit criteria: compute cards feel like first-class chat artifacts. Progress is e
 
 Remove obsolete machinery as each replacement lands. This slice should finish the simplification rather than defer all deletion to the end.
 
+- Clean up only machinery proven obsolete by the landed slices. Do not delete code just because an earlier plan expected it to become dead.
 - Delete the streaming-first reveal controller once settled-answer choreography owns reveal behavior.
 - Remove `hasEverStreamed`, `unstableTail`, and related memo invalidation paths when they are no longer needed.
-- Remove custom auto-scroll utilities after Conversation fully owns viewport behavior.
+- Remove the deprecated custom auto-scroll utilities and their tests after confirming no live code depends on them.
 - Split `AnalysisMessage` into smaller ownership units:
   - user message
   - assistant thinking
@@ -225,7 +261,7 @@ Each slice should add or update targeted tests where behavior changes. Minimum e
 - compute-job status/progress display states
 - mobile and desktop visual QA for composer, scroll, long labels, citations, and table cards
 
-For frontend implementation slices, run the relevant component tests plus browser/screenshot checks for the golden states from Slice 0.
+For frontend implementation slices, run the relevant component tests plus browser/screenshot checks against the Slice 0 current-state baseline and known-issue notes.
 
 ---
 
@@ -245,10 +281,11 @@ The current chat surface is correct but not calm. The next step is not to chase 
 
 The plan is:
 
-1. Baseline the states we care about.
+1. Baseline the current states and known issues.
 2. Normalize live and persisted assistant answers into one settled answer model.
-3. Adopt AI Elements primitives in the safest order.
-4. Keep TabulateAI's crosstab, citation, and compute semantics bespoke.
-5. Delete the old dual-path machinery as the new path proves itself.
+3. Move the conversation shell onto a primitive-backed viewport.
+4. Adopt the remaining AI Elements primitives in the safest order.
+5. Keep TabulateAI's crosstab, citation, and compute semantics bespoke.
+6. Delete old machinery only as each landed slice proves it obsolete.
 
 Done well, this gives TabulateAI a cleaner analysis workspace before the next analytical capability lands, and it makes future chat artifacts easier to add without multiplying UI edge cases.

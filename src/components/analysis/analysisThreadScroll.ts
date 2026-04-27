@@ -1,3 +1,9 @@
+/**
+ * @deprecated Slice 2 moved live analysis thread stickiness to
+ * `AnalysisConversationShell` and AI Elements Conversation. These helpers are
+ * no longer in the live render path and should be removed with the remaining
+ * legacy reveal machinery cleanup.
+ */
 export interface AnalysisThreadScrollViewport {
   clientHeight: number;
   scrollHeight: number;

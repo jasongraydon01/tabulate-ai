@@ -10,6 +10,7 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { AppBreadcrumbs } from "@/components/app-breadcrumbs";
 import { AnalysisEmptyState } from "@/components/analysis/AnalysisEmptyState";
+import { AnalysisRouteSidebarCollapse } from "@/components/analysis/AnalysisRouteSidebarCollapse";
 import { AnalysisSessionList } from "@/components/analysis/AnalysisSessionList";
 import { AnalysisThread } from "@/components/analysis/AnalysisThread";
 import {
@@ -450,6 +451,8 @@ export function AnalysisWorkspace({
 
   return (
     <div className="space-y-2 py-2">
+      <AnalysisRouteSidebarCollapse />
+
       <AppBreadcrumbs
         segments={[
           { label: "Projects", href: "/dashboard" },
