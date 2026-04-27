@@ -141,7 +141,7 @@ Product decisions for Slice 3:
 - Do not fake roll-ups from displayed percentages when selected rows can overlap or when the table metric requires a respondent-level or table-specific aggregation rule.
 - Before a proposal card exists, backend validation must classify the roll-up mechanism and prove it can compute values and significance correctly. If the mechanism is unsupported, the tool returns repair/clarification feedback and creates no job.
 - Keep **selected-table cuts** in scope for Tier A after roll-ups. Example: add region or company-size cuts to one table or a few selected tables, not the full crosstab set.
-- The current implementation supports one source table. A future expansion may allow a very small set of related source tables, but broad “all tabs” requests remain Tier B derived-run proposals.
+- The current implementation supports one source table. Multi-table row roll-ups are a desired follow-on workflow, but should wait until the one-table path has its compute-reuse, queued-state UI, and auto-continuation polish. When added, keep it constrained to a small set of related source tables with compatible row semantics; broad “all tabs” requests remain Tier B derived-run proposals.
 - If scope is ambiguous, the agent asks whether the user wants a full-set derived run or a table-specific derivation.
 - Tier A should not create a new project default run by default. It should persist a separate derived analysis artifact with lineage to source run, source table(s), derivation type, requested-by user, and frozen inputs.
 - The parent run's canonical artifacts remain unchanged.
@@ -186,6 +186,7 @@ Optimization goals:
 - Treat reuse as an execution optimization only. It must not weaken validation for newly requested cuts, roll-ups, or derived table definitions.
 - Improve queued/running derived-table UI states so users can see that table-level compute is still progressing.
 - Smooth the auto-continuation path after `computed_derivation` artifact creation so the rendered table and interpretation appear promptly and predictably.
+- After the one-table path feels smooth, design multi-table row roll-ups for small related table sets without weakening the current one-table validation contract.
 
 ## Deferred / Not Required for V1 Readiness
 
