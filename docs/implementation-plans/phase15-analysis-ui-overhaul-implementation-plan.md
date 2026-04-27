@@ -231,17 +231,23 @@ Polish the coordinated reveal of the settled answer: text, tables, citations, so
 - Own answer motion and layout stability here, but do not re-solve viewport stickiness. The Conversation shell decides whether the viewport follows the bottom.
 - Drive reveal motion from the settled answer model, not from raw streaming deltas.
 - Use calm easing and small staggered groups rather than timer-heavy sentence-by-sentence trickle.
-- Reserve enough layout space that table cards, sources, chips, and actions do not cause visible layout jump.
+- Treat copy, sources, feedback, and follow-up prompts as one answer-attached footer phase, not as independent UI pieces that pop in below the answer.
+- Reserve a predictable footer footprint so sources, feedback, and suggestions do not cause a second visible layout jump after the answer has settled.
+- Coordinate auto-scroll with that predicted footprint. Slice 5 may tune when the viewport follows the answer/footer reveal, but it should not replace the Conversation shell's overall bottom-follow ownership.
+- Tighten footer spacing: reduce the gap between follow-up suggestions and the composer, remove excess padding around copy/sources, and avoid large vertical breaks between answer body, actions, and suggestions.
+- Place feedback closer to core message actions where possible. A likely direction is copy + feedback in the same compact action row, with sources nearby and follow-up prompts as the row below.
+- Hide follow-up suggestions as soon as the user starts typing in the composer so stale prompts do not compete with the user's next question.
 - Render `GroundedTableCard` once in its ready state where possible. Avoid shell-to-ready table jank during answer reveal.
 - Adopt AI Elements **Inline Citation** only as a primitive shell. Keep TabulateAI's `tableId x rowKey x cutKey` anchor identity and scroll/highlight behavior.
 - Add citation hover affordances where useful, but verify click behavior works both live and after refresh.
 - Adopt AI Elements **Sources** for evidence/context disclosure, while preserving the distinction between rendered table evidence and additional context evidence.
-- Adopt AI Elements **Suggestion** for follow-up chips.
+- Adopt AI Elements **Suggestion** for follow-up chips, but constrain the product pattern to three stable-width, pro-style prompts that read like a strong analyst might naturally ask next.
 - Adopt AI Elements **Actions** for copy, edit, regenerate/resend-style message actions where the existing behavior maps cleanly.
 - Keep feedback affordances product-specific unless AI Elements provides a clean, accessible primitive that does not dilute the current workflow.
+- Future AI-generated follow-ups should hydrate progressively inside the same reserved suggestion slot rather than gating the whole footer. Deterministic suggestions can remain an immediate fallback; a faster model such as Gemini Flash can replace or refine them when available. The footer height should stay stable whether suggestions are deterministic, AI-generated, loading, or absent.
 - Observed follow-up from Slice 3 QA: on proposal/derived-table turns, copy/feedback/follow-up controls can float between the assistant text and the proposal/result card. Answer-phase choreography should treat those controls as the footer for the whole turn, not just the prose block, or intentionally suppress/defer them for compute proposal turns.
 
-Exit criteria: the end-of-turn answer reveal is smooth, anchored, and reload-stable. Citations work after refresh. Sources and follow-ups feel native instead of bolted on.
+Exit criteria: the end-of-turn answer reveal is smooth, anchored, and reload-stable. Citations work after refresh. Sources, feedback, copy, and follow-ups feel like one native footer phase instead of bolted-on controls.
 
 ### Slice 6 - Compute Lane UI
 
