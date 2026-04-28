@@ -251,6 +251,8 @@ Exit criteria: the end-of-turn answer reveal is smooth, anchored, and reload-sta
 
 ### Slice 6 - Compute Lane UI
 
+**Status:** implemented.
+
 Bring compute proposals and job progress into the same chat experience without hiding their special semantics.
 
 - Own compute-card design, confirmation, progress honesty, and continuation polish. Do not reopen Slice 1 turn attachment or Slice 2 viewport ownership unless a clear product bug appears.
@@ -264,6 +266,16 @@ Bring compute proposals and job progress into the same chat experience without h
 - Observed follow-up from live QA: once a proposal is confirmed, the UI needs clearer traceability from proposal -> queued compute -> persisted `computed_derivation` artifact -> rendered table. A completed card should identify the persisted artifact/table it produced and make it obvious whether the user is looking at the result, waiting on compute, or still only looking at the original proposal. The card should answer "what state is this in?" without requiring the user to ask the agent again.
 
 Exit criteria: compute cards feel like first-class chat artifacts. Progress is either real or honestly indeterminate. Confirmation and continuation are clear.
+
+Shipped behavior:
+
+- Compute cards now carry a compact lifecycle row from proposal through confirmation, queued/computing, and ready/terminal states.
+- Proposed jobs use a clearer `Confirm compute` action while keeping cancel/revise/continue behavior scoped to the appropriate states.
+- Successful derived runs identify the child run as ready and keep the existing `Continue in derived run` handoff.
+- Successful table-scoped jobs identify that the derived table was added to the current analysis session and show an `Artifact saved` indicator when a persisted `computed_derivation` artifact is attached.
+- Table-scoped running jobs use an indeterminate activity state instead of fake numeric progress; derived runs still use real child-run progress when available.
+- Banner definitions, row roll-ups, selected-table cut definitions, validation details, confidence/review flags, and lineage semantics remain TabulateAI-specific custom slots.
+- Backend compute reuse, Bucket 3 table derivations, and broad AnalysisMessage ownership cleanup remain deferred.
 
 ### Slice 7 - Cleanup, Performance, And Ownership Boundaries
 

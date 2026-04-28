@@ -63,6 +63,71 @@ function statusLabel(job: AnalysisComputeJobView): string {
   }
 }
 
+function computeJobTypeLabel(job: AnalysisComputeJobView): string {
+  if (job.jobType === "table_rollup_derivation" || job.jobType === "selected_table_cut_derivation") {
+    return "Session-only derived table";
+  }
+  return "Derived run";
+}
+
+function computeJobTitle(job: AnalysisComputeJobView): string {
+  return job.proposedGroup?.groupName
+    ?? job.proposedTableRollup?.sourceTables.map((table) => table.title).join(", ")
+    ?? job.proposedSelectedTableCut?.sourceTable.title
+    ?? "Derived table";
+}
+
+function isTerminalStatus(status: AnalysisComputeJobView["effectiveStatus"]): boolean {
+  return status === "failed" || status === "cancelled" || status === "expired";
+}
+
+function terminalStatusLabel(status: AnalysisComputeJobView["effectiveStatus"]): string {
+  if (status === "failed") return "Failed";
+  if (status === "cancelled") return "Cancelled";
+  if (status === "expired") return "Expired";
+  return "Stopped";
+}
+
+function lifecycleStepState(params: {
+  stepIndex: number;
+  activeIndex: number;
+  completedThroughIndex: number;
+}): "complete" | "active" | "pending" {
+  if (params.stepIndex <= params.completedThroughIndex) return "complete";
+  if (params.stepIndex === params.activeIndex) return "active";
+  return "pending";
+}
+
+function buildLifecycleSteps(job: AnalysisComputeJobView): Array<{
+  key: string;
+  label: string;
+  state: "complete" | "active" | "pending";
+  terminal?: boolean;
+}> {
+  const status = job.effectiveStatus;
+  const terminal = isTerminalStatus(status);
+  const reachedCompute = Boolean(job.confirmedAt || job.childRun);
+  const activeIndex = (() => {
+    if (status === "proposed" || status === "needs_clarification") return 0;
+    if (status === "confirmed") return 1;
+    if (status === "queued" || status === "running") return 2;
+    return 3;
+  })();
+  const completedThroughIndex = terminal
+    ? (reachedCompute ? 2 : 0)
+    : activeIndex - 1;
+  const computeLabel = status === "running" ? "Computing" : "Queued";
+  const readyLabel = terminal ? terminalStatusLabel(status) : "Ready";
+  const labels = ["Proposed", "Confirmed", computeLabel, readyLabel];
+
+  return labels.map((label, index) => ({
+    key: `${index}-${label}`,
+    label,
+    state: lifecycleStepState({ stepIndex: index, activeIndex, completedThroughIndex }),
+    ...(terminal && index === activeIndex ? { terminal: true } : {}),
+  }));
+}
+
 function StatusIcon({ status }: { status: AnalysisComputeJobView["effectiveStatus"] }) {
   if (status === "success") return <CheckCircle2 className="h-4 w-4 text-ct-emerald" />;
   if (status === "failed" || status === "expired") return <XCircle className="h-4 w-4 text-ct-red" />;
@@ -92,6 +157,10 @@ export function AnalysisComputeJobCard({
   const progress = typeof childRunProgress === "number"
     ? Math.max(0, Math.min(100, childRunProgress))
     : null;
+  const lifecycleSteps = buildLifecycleSteps(job);
+  const title = computeJobTitle(job);
+  const typeLabel = computeJobTypeLabel(job);
+  const showArtifactSaved = isDerivedTable && job.effectiveStatus === "success" && Boolean(job.derivedArtifactId);
 
   async function runAction(action: "confirm" | "cancel" | "continue", fn: () => Promise<void>) {
     if (pendingAction) return;
@@ -113,15 +182,29 @@ export function AnalysisComputeJobCard({
               <span>{statusLabel(job)}</span>
             </div>
             <h3 className="text-sm font-medium text-foreground">
-              {job.proposedGroup?.groupName
-                ?? job.proposedTableRollup?.sourceTables.map((table) => table.title).join(", ")
-                ?? job.proposedSelectedTableCut?.sourceTable.title
-                ?? "Derived table"}
+              {title}
             </h3>
           </div>
           <div className="shrink-0 rounded-full border border-border/70 px-2 py-1 text-[11px] text-muted-foreground">
-            {isDerivedTable ? "Session-only derived table" : "Derived run"}
+            {typeLabel}
           </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-4 gap-1.5 text-[11px]">
+          {lifecycleSteps.map((step) => (
+            <div
+              key={step.key}
+              className={cn(
+                "min-w-0 rounded-md border px-2 py-1.5 text-center font-medium",
+                step.state === "complete" && "border-ct-emerald/25 bg-ct-emerald-dim text-ct-emerald",
+                step.state === "active" && !step.terminal && "border-ct-blue/30 bg-ct-blue-dim text-ct-blue",
+                step.state === "active" && step.terminal && "border-ct-red/30 bg-ct-red-dim text-ct-red",
+                step.state === "pending" && "border-border/60 bg-muted/15 text-muted-foreground",
+              )}
+            >
+              <span className="block truncate">{step.label}</span>
+            </div>
+          ))}
         </div>
 
         <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-foreground/85 [overflow-wrap:anywhere]">
@@ -258,6 +341,11 @@ export function AnalysisComputeJobCard({
         {showProgress ? (
           <div className="mt-3 space-y-2">
             {progress !== null ? <Progress value={progress} className="h-1.5" /> : null}
+            {progress === null && job.effectiveStatus === "running" ? (
+              <div className="h-1.5 overflow-hidden rounded-full bg-primary/15">
+                <div className="h-full w-1/3 animate-pulse rounded-full bg-ct-blue/70" />
+              </div>
+            ) : null}
             <p className="text-xs leading-5 text-muted-foreground">
               {job.childRun?.message ?? (job.effectiveStatus === "queued"
                 ? "Queued for worker pickup."
@@ -265,6 +353,23 @@ export function AnalysisComputeJobCard({
                   ? "Computing the derived table."
                   : "Running compute for the derived run.")}
             </p>
+          </div>
+        ) : null}
+
+        {job.effectiveStatus === "success" ? (
+          <div className="mt-3 rounded-lg border border-ct-emerald/25 bg-ct-emerald-dim px-3 py-2 text-xs leading-5 text-foreground/85">
+            <div className="flex flex-wrap items-center gap-2">
+              <span>
+                {isDerivedTable
+                  ? "Derived table added to this analysis session."
+                  : "Child run ready for analysis."}
+              </span>
+              {showArtifactSaved ? (
+                <span className="rounded-full border border-ct-emerald/30 px-2 py-0.5 text-[11px] font-medium text-ct-emerald">
+                  Artifact saved
+                </span>
+              ) : null}
+            </div>
           </div>
         ) : null}
 
@@ -283,7 +388,7 @@ export function AnalysisComputeJobCard({
               disabled={isPending}
             >
               {pendingAction === "confirm" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
-              Confirm
+              Confirm compute
             </Button>
           ) : null}
 
