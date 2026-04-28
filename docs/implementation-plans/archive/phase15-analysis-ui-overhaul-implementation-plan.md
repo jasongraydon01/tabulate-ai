@@ -5,7 +5,7 @@
 **Purpose:** clean up the Phase 15 analysis chat foundation before Tier A Bucket 3 work. The goal is a calmer, more predictable, more premium chat experience: grounded answers reveal smoothly after validation, thinking/tool activity carries the wait honestly, and live turns render the same way as reloaded sessions.
 
 Parent plan: [phase15-chat-with-your-data-v1-implementation-plan.md](/Users/jasongraydon01/tabulate-ai/docs/implementation-plans/phase15-chat-with-your-data-v1-implementation-plan.md)
-Compute-lane sibling: [phase15-analysis-compute-lane-implementation-plan.md](/Users/jasongraydon01/tabulate-ai/docs/implementation-plans/phase15-analysis-compute-lane-implementation-plan.md)
+Compute-lane sibling: [phase15-analysis-compute-lane-implementation-plan.md](/Users/jasongraydon01/tabulate-ai/docs/implementation-plans/archive/phase15-analysis-compute-lane-implementation-plan.md)
 
 ---
 

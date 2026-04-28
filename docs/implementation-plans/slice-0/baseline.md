@@ -4,7 +4,7 @@
 
 **Purpose:** turn the Slice 0 screenshots and notes into a practical baseline for the analysis UI overhaul. This is not an implementation spec; it is the reference point future slice plans should use when defining acceptance criteria.
 
-Parent plan: [phase15-analysis-ui-overhaul-implementation-plan.md](/Users/jasongraydon01/tabulate-ai/docs/implementation-plans/phase15-analysis-ui-overhaul-implementation-plan.md)
+Parent plan: [phase15-analysis-ui-overhaul-implementation-plan.md](/Users/jasongraydon01/tabulate-ai/docs/implementation-plans/archive/phase15-analysis-ui-overhaul-implementation-plan.md)
 
 ---
 
