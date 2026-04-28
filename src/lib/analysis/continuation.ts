@@ -240,21 +240,28 @@ function buildDerivedTableContinuationPrompt(params: {
   requestText: string;
   derivedTableId: string;
   sourceTableTitle: string | null;
+  derivationType: "row_rollup" | "selected_table_cut";
 }): string {
   const requestText = sanitizeHintForPrompt(params.requestText, 1000);
   const sourceTableTitle = params.sourceTableTitle
     ? sanitizeHintForPrompt(params.sourceTableTitle, 300)
     : null;
+  const derivationDescription = params.derivationType === "selected_table_cut"
+    ? "selected-table cut request"
+    : "row roll-up request";
+  const explanationInstruction = params.derivationType === "selected_table_cut"
+    ? "explain what the added cut shows in plain research language"
+    : "explain what the roll-up shows in plain research language";
 
   return [
-    "TabulateAI has just computed a confirmed derived table for the user's roll-up request.",
+    `TabulateAI has just computed a confirmed derived table for the user's ${derivationDescription}.`,
     "<original-request>",
     requestText,
     "</original-request>",
     `Computed table id: ${params.derivedTableId}`,
     sourceTableTitle ? `Source table: ${sourceTableTitle}` : "",
     "",
-    "Use the computed table as grounded evidence. Fetch the computed table, render it in your answer, confirm any cells for numbers you quote, and explain what the roll-up shows in plain research language. Do not mention this automation note.",
+    `Use the computed table as grounded evidence. Fetch the computed table, render it in your answer, confirm any cells for numbers you quote, and ${explanationInstruction}. Do not mention this automation note.`,
   ].filter(Boolean).join("\n");
 }
 
@@ -266,6 +273,7 @@ export async function runDerivedTableAnalysisContinuation(params: {
   requestedBy: Id<"users">;
   derivedArtifactId: Id<"analysisArtifacts">;
   derivedTableId: string;
+  derivationType: "row_rollup" | "selected_table_cut";
   requestText: string;
   sourceTableTitle?: string | null;
   abortSignal?: AbortSignal;
@@ -306,6 +314,7 @@ export async function runDerivedTableAnalysisContinuation(params: {
     requestText: params.requestText,
     derivedTableId: params.derivedTableId,
     sourceTableTitle: params.sourceTableTitle ?? null,
+    derivationType: params.derivationType,
   });
   const continuationMessages: AnalysisUIMessage[] = [
     ...conversationMessages,

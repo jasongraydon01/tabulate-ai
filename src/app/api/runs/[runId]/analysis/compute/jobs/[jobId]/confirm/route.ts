@@ -121,17 +121,6 @@ export async function POST(
         expectedFingerprint: fingerprint,
       });
 
-      if (!enqueueResult.alreadyQueued) {
-        const message = "Confirmed. TabulateAI queued the derived table. I will add it here when it finishes.";
-        await mutateInternal(internal.analysisMessages.create, {
-          sessionId: job.sessionId,
-          orgId: auth.convexOrgId,
-          role: "assistant",
-          content: message,
-          parts: [{ type: "text", text: message }],
-        });
-      }
-
       return NextResponse.json({
         accepted: true,
         alreadyQueued: enqueueResult.alreadyQueued,
@@ -151,17 +140,6 @@ export async function POST(
         parentRunId: run._id,
         expectedFingerprint: fingerprint,
       });
-
-      if (!enqueueResult.alreadyQueued) {
-        const message = "Confirmed. TabulateAI queued the selected-table cut. I will add the derived table here when it finishes.";
-        await mutateInternal(internal.analysisMessages.create, {
-          sessionId: job.sessionId,
-          orgId: auth.convexOrgId,
-          role: "assistant",
-          content: message,
-          parts: [{ type: "text", text: message }],
-        });
-      }
 
       return NextResponse.json({
         accepted: true,
@@ -255,17 +233,6 @@ export async function POST(
       executionPayload,
     });
     const childRunId = enqueueResult.childRunId;
-
-    if (!enqueueResult.alreadyQueued) {
-      const message = "Confirmed. TabulateAI queued a derived run for the new banner group. I will post back here when it finishes.";
-      await mutateInternal(internal.analysisMessages.create, {
-        sessionId: job.sessionId,
-        orgId: auth.convexOrgId,
-        role: "assistant",
-        content: message,
-        parts: [{ type: "text", text: message }],
-      });
-    }
 
     return NextResponse.json({
       accepted: true,

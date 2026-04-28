@@ -176,8 +176,7 @@ describe('analysis compute confirm route', () => {
     mocks.queryInternal.mockResolvedValueOnce(makeJob(fingerprint));
     mocks.loadAnalysisParentRunArtifacts.mockResolvedValueOnce(makeParentArtifacts());
     mocks.mutateInternal
-      .mockResolvedValueOnce({ childRunId: 'child-run-1', alreadyQueued: false })
-      .mockResolvedValueOnce('message-1');
+      .mockResolvedValueOnce({ childRunId: 'child-run-1', alreadyQueued: false });
 
     const response = await POST(
       new NextRequest('http://localhost/api/runs/run-1/analysis/compute/jobs/job-1/confirm', {
@@ -193,7 +192,7 @@ describe('analysis compute confirm route', () => {
       childRunId: 'child-run-1',
       alreadyQueued: false,
     });
-    expect(mocks.mutateInternal).toHaveBeenCalledTimes(2);
+    expect(mocks.mutateInternal).toHaveBeenCalledTimes(1);
     expect(mocks.mutateInternal.mock.calls[0][1]).toMatchObject({
       parentRunId: 'run-1',
       analysisComputeJobId: 'job-1',
@@ -206,6 +205,7 @@ describe('analysis compute confirm route', () => {
       frozenBannerGroup,
       frozenValidatedGroup,
     });
+    expect(JSON.stringify(mocks.mutateInternal.mock.calls)).not.toContain('Confirmed. TabulateAI queued');
   });
 
   it('rejects terminal jobs even when a child run id is attached', async () => {

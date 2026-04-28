@@ -14,6 +14,7 @@ import {
   assertAnalysisSelectedTableCutSpecV1,
   type AnalysisSelectedTableCutSpec,
 } from "@/lib/analysis/computeLane/types";
+import { SESSION_SCOPED_DERIVED_TABLE_NOTE } from "@/lib/analysis/computeLane/sessionScope";
 import { runDerivedTableAnalysisContinuation } from "@/lib/analysis/continuation";
 import { FETCH_TABLE_TOOL_TYPE } from "@/lib/analysis/toolLabels";
 import { isAnalysisTableCard, type AnalysisTableCard } from "@/lib/analysis/types";
@@ -252,7 +253,7 @@ export async function runClaimedSelectedTableCutJob(job: ClaimedSelectedTableCut
       tableId: `${fetched.tableId}__cut_${job.jobId}`,
       title: `${fetched.title} — Derived cut`,
       tableSubtitle: "Computed derived table",
-      userNote: "Computed by TabulateAI from the confirmed selected-table cut. Significance markers are not shown for this derived table.",
+      userNote: `${SESSION_SCOPED_DERIVED_TABLE_NOTE} Significance markers are not shown for this derived table.`,
       focusedGroupKeys: groupKeys.length > 0 ? groupKeys : null,
       sourceRefs: [
         ...fetched.sourceRefs,
@@ -310,6 +311,7 @@ export async function runClaimedSelectedTableCutJob(job: ClaimedSelectedTableCut
         requestedBy: job.requestedBy as Id<"users">,
         derivedArtifactId: artifactId,
         derivedTableId: messageCard.tableId,
+        derivationType: "selected_table_cut",
         requestText: job.requestText,
         sourceTableTitle: job.frozenSelectedTableCutSpec.sourceTable.title,
       });

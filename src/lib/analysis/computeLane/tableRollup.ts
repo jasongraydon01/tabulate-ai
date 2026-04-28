@@ -21,6 +21,7 @@ import type {
 } from "@/lib/analysis/computeLane/types";
 import { assertAnalysisTableRollupSpecV2 } from "@/lib/analysis/computeLane/types";
 import { buildAnalysisTableRollupFingerprint } from "@/lib/analysis/computeLane/fingerprint";
+import { SESSION_SCOPED_DERIVED_TABLE_NOTE } from "@/lib/analysis/computeLane/sessionScope";
 
 const TABLE_ENRICHED_PATH = "tables/13e-table-enriched.json";
 const TABLE_CANONICAL_PATH = "tables/13d-table-canonical.json";
@@ -658,7 +659,7 @@ export async function computeTableRollupArtifact(params: {
     tableId: derivedTableId,
     title: `${source.title} — Derived roll-up`,
     tableSubtitle: "Computed derived table",
-    userNote: "Computed by TabulateAI from confirmed row roll-up components. Significance markers are not shown for derived roll-up rows.",
+    userNote: `${SESSION_SCOPED_DERIVED_TABLE_NOTE} Significance markers are not shown for derived roll-up rows.`,
     rows,
     totalRows: rows.length,
     truncatedRows: Math.max(rows.length - Math.min(rows.length, 8), 0),

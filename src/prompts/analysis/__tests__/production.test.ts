@@ -163,7 +163,8 @@ describe("analysis agent production prompt", () => {
     expect(prompt).toContain("proposeDerivedRun");
     expect(prompt).toContain("proposeRowRollup");
     expect(prompt).toContain("proposeSelectedTableCut");
-    expect(prompt).toContain("append one new banner cut or banner group across the\nfull crosstab");
+    expect(prompt).toContain("append one new banner cut or banner group");
+    expect(prompt).toContain("across the full crosstab table set");
     expect(prompt).toContain("collapse existing rows on one selected table");
     expect(prompt).toContain("The tool input is sparse: `requestText`, `sourceTableId`, and\n`outputRows`");
     expect(prompt).toContain("Unmentioned rows stay as they are");
@@ -177,6 +178,18 @@ describe("analysis agent production prompt", () => {
     expect(prompt).toContain("tableSpecificDerivationExcluded: true");
     expect(prompt).toContain("original tables in this\nrun's table set will stay as they are");
     expect(prompt).toContain("raw expressions, R2 keys, frozen artifacts, fingerprints");
+  });
+
+  it("documents session-scoped table derivations in the alternative prompt only", () => {
+    const prompt = ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE;
+    expect(prompt).toContain("Table-scoped derived tables are scoped to the current analysis session.");
+    expect(prompt).toContain("They are not added to the run's permanent table set");
+    expect(prompt).toContain("available from another analysis session unless recreated there");
+    expect(prompt).toContain("Use `proposeSelectedTableCut` only when the user");
+    expect(prompt).not.toContain("selected-table\ncut, explain briefly that table-scoped cuts are not available yet");
+
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).toContain("Do not imply single-table compute is available yet");
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_PRODUCTION).not.toContain("Table-scoped derived tables are scoped to the current analysis session.");
   });
 
   it("keeps proposal card handoff guidance in the alternative prompt only", () => {

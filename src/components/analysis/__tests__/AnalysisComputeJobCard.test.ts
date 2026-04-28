@@ -164,11 +164,42 @@ describe("AnalysisComputeJobCard", () => {
       updatedAt: 110,
     });
 
-    expect(markup).toContain("Derived table");
+    expect(markup).toContain("Session-only derived table");
+    expect(markup).toContain("TabulateAI will add this derived table to the current analysis session only.");
     expect(markup).toContain("Q1 Satisfaction");
     expect(markup).toContain("Top 2 Box");
     expect(markup).toContain("Somewhat satisfied, Very satisfied");
     expect(markup).toContain("Confirm");
     expect(markup).not.toContain("Continue in derived run");
+  });
+
+  it("renders table-scoped running status without fake determinate progress", () => {
+    const markup = renderCard({
+      id: "job-rollup-1",
+      jobType: "table_rollup_derivation",
+      status: "running",
+      effectiveStatus: "running",
+      requestText: "Create Top 2 Box on Q1",
+      proposedTableRollup: {
+        sourceTables: [{
+          tableId: "q1",
+          title: "Q1 Satisfaction",
+          questionText: "How satisfied are you?",
+          rollups: [{
+            label: "Top 2 Box",
+            components: [
+              { rowKey: "row_4", label: "Somewhat satisfied" },
+              { rowKey: "row_5", label: "Very satisfied" },
+            ],
+          }],
+        }],
+      },
+      createdAt: 100,
+      updatedAt: 110,
+    });
+
+    expect(markup).toContain("Creating derived table");
+    expect(markup).toContain("Computing the derived table.");
+    expect(markup).not.toContain("data-slot=\"progress\"");
   });
 });

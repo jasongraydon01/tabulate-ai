@@ -88,11 +88,10 @@ export function AnalysisComputeJobCard({
   const isSelectedTableCut = job.jobType === "selected_table_cut_derivation";
   const isDerivedTable = isTableRollup || isSelectedTableCut;
   const showProgress = (job.childRun || isDerivedTable) && (job.effectiveStatus === "queued" || job.effectiveStatus === "running");
-  const progress = typeof job.childRun?.progress === "number"
-    ? Math.max(0, Math.min(100, job.childRun.progress))
-    : job.effectiveStatus === "queued"
-      ? 8
-      : 45;
+  const childRunProgress = job.childRun?.progress;
+  const progress = typeof childRunProgress === "number"
+    ? Math.max(0, Math.min(100, childRunProgress))
+    : null;
 
   async function runAction(action: "confirm" | "cancel" | "continue", fn: () => Promise<void>) {
     if (pendingAction) return;
@@ -121,13 +120,19 @@ export function AnalysisComputeJobCard({
             </h3>
           </div>
           <div className="shrink-0 rounded-full border border-border/70 px-2 py-1 text-[11px] text-muted-foreground">
-            {isDerivedTable ? "Derived table" : "Derived run"}
+            {isDerivedTable ? "Session-only derived table" : "Derived run"}
           </div>
         </div>
 
         <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-foreground/85 [overflow-wrap:anywhere]">
           {job.requestText}
         </p>
+
+        {isDerivedTable ? (
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">
+            TabulateAI will add this derived table to the current analysis session only.
+          </p>
+        ) : null}
 
         {job.proposedGroup ? (
           <div className="mt-3 space-y-2">
@@ -252,7 +257,7 @@ export function AnalysisComputeJobCard({
 
         {showProgress ? (
           <div className="mt-3 space-y-2">
-            <Progress value={progress} className="h-1.5" />
+            {progress !== null ? <Progress value={progress} className="h-1.5" /> : null}
             <p className="text-xs leading-5 text-muted-foreground">
               {job.childRun?.message ?? (job.effectiveStatus === "queued"
                 ? "Queued for worker pickup."

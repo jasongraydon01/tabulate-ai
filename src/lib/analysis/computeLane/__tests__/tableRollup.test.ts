@@ -452,6 +452,8 @@ describe("createAnalysisTableRollupProposal", () => {
       "Dissatisfied",
     ]);
     expect(artifact.focusedRowKeys).toEqual(["derived_rollup_1"]);
+    expect(artifact.userNote).toContain("for this analysis session");
+    expect(artifact.userNote).toContain("not added to the run's permanent table set");
     expect(artifact.userNote).toContain("Significance markers are not shown");
     expect(artifact.rows[0]?.values.every((cell) => cell.sigHigherThan.length === 0 && cell.sigVsTotal === null)).toBe(true);
   });

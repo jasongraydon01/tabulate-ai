@@ -143,6 +143,7 @@ export async function runClaimedTableRollupJob(job: ClaimedTableRollupJob): Prom
         requestedBy: job.requestedBy as Id<"users">,
         derivedArtifactId: artifactId,
         derivedTableId: messageCard.tableId,
+        derivationType: "row_rollup",
         requestText: job.requestText,
         sourceTableTitle: job.frozenTableRollupSpec.sourceTable.title,
       });

@@ -246,11 +246,6 @@ export async function runAnalysisBannerExtensionRun(params: {
       jobId: params.extension.jobId as Id<'analysisComputeJobs'>,
       status: 'running',
     });
-    await appendAnalysisSessionMessage({
-      orgId: params.orgId,
-      sessionId: params.sessionId,
-      content: 'TabulateAI is creating a derived run with the confirmed banner extension. I will post back here when the run finishes.',
-    });
 
     await updateRunStatus(params.runId, {
       status: 'in_progress',
@@ -446,11 +441,6 @@ export async function runAnalysisBannerExtensionRun(params: {
       jobId: params.extension.jobId as Id<'analysisComputeJobs'>,
       status: finalStatus === 'success' || finalStatus === 'partial' ? 'success' : 'failed',
       r2Keys: r2Manifest.outputs,
-    });
-    await appendAnalysisSessionMessage({
-      orgId: params.orgId,
-      sessionId: params.sessionId,
-      content: `The derived run is ready. Continue analysis here: /projects/${encodeURIComponent(params.projectId)}/runs/${encodeURIComponent(params.runId)}/analysis`,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

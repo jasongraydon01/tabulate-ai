@@ -1,6 +1,6 @@
 # Phase 15 Sub-Plan — Analysis Compute Lane
 
-**Status:** Tier B one-group banner-extension recompute is implemented, including native agent initiation. Tier A Bucket 1 row roll-ups and Bucket 2 selected-table cuts are now foundationally implemented end to end. The next product pass is Bucket 1/2 hardening, scope expansion, prompt optimization, and analysis-UI smoothness before starting Bucket 3 non-roll-up derived tables.
+**Status:** Tier B one-group banner-extension recompute is implemented, including native agent initiation. Tier A Bucket 1 row roll-ups and Bucket 2 selected-table cuts are implemented end to end and have completed the V1 stabilization pass. The only remaining potential item in this plan is Bucket 3 non-roll-up derived tables; everything else here is either implemented or explicitly deferred.
 
 **Purpose:** give TabulateAI's analysis workspace a safe way to create computed follow-up outputs from a completed run without mutating the original run or reinterpreting settled pipeline decisions.
 
@@ -108,11 +108,11 @@ Verification run for Slice 2:
 
 ---
 
-## Active Remaining Slice
+## Last Potential Slice
 
 ### Slice 3 — Tier A Table-Scoped Derivations
 
-**Status:** Buckets 1 and 2 are implemented as the current table-scoped foundation. Bucket 1 supports artifact-safe row roll-ups. Bucket 2 supports selected-table cuts for one source table and one new cut group, with worker-queued compute, `computed_derivation` artifact creation, and same-session interpretation. Slice 3 remains open for Bucket 3 non-roll-up derived tables, but Bucket 3 should wait until the Bucket 1/2 contract and chat experience are smoother and less unnecessarily restrictive.
+**Status:** Buckets 1 and 2 are implemented and stabilized for V1. Bucket 1 supports artifact-safe row roll-ups. Bucket 2 supports selected-table cuts for one source table and one new cut group, with worker-queued compute, `computed_derivation` artifact creation, same-session interpretation, session-only labeling, and clearer queued/running/continuation behavior. Slice 3 remains open only for Bucket 3 non-roll-up derived tables.
 
 Add compute-backed derivations for one table or a small related set of tables. This is the required next slice for requests where the user or agent is not asking for a whole derived run, but for a table-level computed follow-up.
 
@@ -170,16 +170,16 @@ Expected flow:
 
 This post-compute continuation is part of the product contract, not a cosmetic convenience. A Tier A request should feel like "compute this table-level follow-up and tell me what it means," while still keeping the computation itself deterministic and grounded.
 
-Near-term hardening before Bucket 3:
+Completed hardening before Bucket 3:
 
-- Reduce unnecessary refusals in Buckets 1 and 2 by expanding the contracts only where the validation and worker-backed compute story stays explicit, deterministic, and easy to explain.
-- Improve prompt guidance so the agent distinguishes existing cuts, one-table cuts, small selected-table sets, full-tab derived runs, row roll-ups, and not-yet-supported Bucket 3 shapes with less friction.
-- Add small selected-table-set support for cuts once the same frozen-spec and lineage model can apply table-by-table without turning into a full-tab derived run.
-- Add multi-table row roll-ups for small related table sets once compatible row semantics can be validated across the selected tables.
-- Improve queued/running UI feedback, completion toasts, and same-session auto-continuation so table-scoped compute feels like a coherent chat workflow rather than a background system event.
-- Revisit current hard no-go cases, including overlapping multi-variable cuts, and promote only the cases that can be represented cleanly in the sparse model-facing contract and backend-resolved spec.
+- Prompt guidance now distinguishes existing cuts, one-table selected cuts, full-tab derived runs, row roll-ups, and not-yet-supported Bucket 3 shapes in the alternative prompt path.
+- Table-scoped compute cards and completed derived table artifacts now make session-only scope explicit.
+- Redundant assistant-visible queue/progress prose was removed so the compute card is the primary status surface.
+- Derived-run completion no longer posts raw analysis routes into assistant prose; handoff stays on the existing derived-run card/button.
+- Table-scoped queued/running states avoid fake determinate progress when no real progress exists.
+- Same-session continuation remains the product contract for completed `computed_derivation` artifacts.
 
-Remaining product/implementation decisions before calling all of Slice 3 complete:
+Remaining product/implementation decisions before calling Bucket 3 complete:
 
 - Implement safe compute for respondent-level any-of NETs for multi-select rows if usage warrants it.
 - Decide whether metric row aggregation belongs in roll-ups or in the non-roll-up derived-table/benchmark bucket.
@@ -190,22 +190,16 @@ Remaining product/implementation decisions before calling all of Slice 3 complet
 
 ## V1 Polish — Compute Reuse And Smoothness
 
-This comes after the core Tier A Bucket 1 and Bucket 2 product paths are working, but before Bucket 3. It is part of making the compute lane feel production-smooth and reducing avoidable refusal without weakening the safety model.
+**Status:** complete for the V1 launch scope. The pass stayed intentionally narrow: it prioritized prompt routing, status clarity, session-only labeling, continuation behavior, and avoiding misleading progress over broad execution optimization.
 
-Today, derived-run recompute is intentionally conservative: it reuses parent artifacts where the Slice 2 lane already freezes them, but it still re-enters more of the pipeline than the ideal steady-state path. In particular, follow-up compute can end up re-sending settled artifacts through agents such as loop semantics and recomputing work that should be cacheable once the parent run is known-good.
+Completed V1 polish:
 
-The first row-roll-up and selected-table-cut passes also exposed UX polish needs: while a table-level compute job is queued/running, the analysis workspace needs clearer progress feedback, and the automatic post-compute interpretation can feel delayed even when the worker eventually succeeds. Treat that as smoothness/reuse polish, not a blocker for the Bucket 1/2 compute contract.
-
-Optimization goals:
-
-- Reuse settled parent-run semantic decisions when the derived request does not change the underlying table/question structure.
-- Avoid re-running agents whose inputs are unchanged by the derived request.
-- Cache or fingerprint reusable compute inputs so identical or near-identical follow-up requests do not repeat expensive preparation work.
 - Keep the same safety contract: frozen confirmed inputs, worker-queued execution, parent-run immutability, and deterministic backend-computed results.
-- Treat reuse as an execution optimization only. It must not weaken validation for newly requested cuts, roll-ups, or derived table definitions.
-- Improve queued/running derived-table UI states so users can see that table-level compute is still progressing.
-- Smooth the auto-continuation path after `computed_derivation` artifact creation so the rendered table and interpretation appear promptly and predictably.
-- After the one-table path feels smooth, design multi-table row roll-ups and multi-table selected cuts for small related table sets without weakening the current one-table validation contract.
+- Keep broad reuse/caching as an execution optimization only, not a prerequisite for V1 readiness.
+- Improve prompt routing for current compute paths without changing the stable production prompt.
+- Improve queued/running derived-table feedback without implying fake progress.
+- Preserve auto-continuation for completed `computed_derivation` artifacts.
+- Make table-scoped derived outputs visibly session-only rather than permanent run artifacts.
 
 ## Deferred / Not Required for V1 Readiness
 
@@ -215,6 +209,8 @@ These are usage-driven improvements, not blockers for the current production-rea
 - broader compute history and discovery beyond the current chat timeline and derived-run handoff
 - multi-group banner extension, old-group editing, banner redesign, or promotion of derived outputs into delivery-grade artifacts
 - richer structured compute message parts if Convex timeline ordering becomes insufficient
+- deep parent-artifact caching/fingerprinting for repeated compute requests
+- multi-table row roll-ups and multi-table selected cuts for small related table sets
 
 ---
 
@@ -227,4 +223,4 @@ The compute lane now has a stable shape:
 - worker-backed compute produces final outputs
 - parent runs stay immutable
 
-Buckets 1 and 2 now provide the working table-scoped derivation foundation. The next real product work is a stabilization and expansion pass for those lanes: fewer unnecessary refusals, better prompt routing, better queued/running feedback, smoother auto-continuation, and carefully scoped multi-table support. Bucket 3 non-roll-up derived tables remains next after that foundation feels coherent enough to support another layer.
+Buckets 1 and 2 now provide the working table-scoped derivation foundation and have completed the V1 stabilization pass. The last potential item in this plan is Bucket 3 non-roll-up derived tables. Multi-table expansion, deeper reuse/caching, richer compute history, and promotion of derived outputs into permanent run artifacts are post-V1 follow-ons, not blockers for closing the rest of this plan.
