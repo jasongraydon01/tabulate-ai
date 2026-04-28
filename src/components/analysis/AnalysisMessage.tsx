@@ -1,37 +1,25 @@
 "use client";
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import { toast } from "sonner";
 import {
   isReasoningUIPart,
   isToolUIPart,
 } from "ai";
-import { Check, Copy, Pencil } from "lucide-react";
 
+import { AnalysisAnswerBody } from "@/components/analysis/AnalysisAnswerBody";
 import { AnalysisAnswerFooter } from "@/components/analysis/AnalysisAnswerFooter";
-import { GroundedTableCard } from "@/components/analysis/GroundedTableCard";
-import { AnalysisResponseMarkdown } from "@/components/analysis/AnalysisResponseMarkdown";
+import { AnalysisUserMessage } from "@/components/analysis/AnalysisUserMessage";
+import { useAnalysisAnswerReveal } from "@/components/analysis/useAnalysisAnswerReveal";
 import {
   AnalysisWorkDisclosure,
   type AnalysisWorkActivityEntry,
 } from "@/components/analysis/AnalysisWorkDisclosure";
-import { Textarea } from "@/components/ui/textarea";
 import {
   getAnalysisMessageMetadata,
   getAnalysisUIMessageText,
 } from "@/lib/analysis/messages";
 import {
-  getAnalysisCellAnchorId,
-  getAnalysisEvidenceAnchorId,
-} from "@/lib/analysis/anchors";
-import {
-  type AnalysisRenderableInlineSegment,
-  type AnalysisRenderableBlock,
-} from "@/lib/analysis/renderAnchors";
-import {
   buildSettledAnalysisAnswer,
-  getSettledAnalysisEvidenceItemCellId,
   getSettledAnalysisVisibleEvidenceItems,
 } from "@/lib/analysis/settledAnswer";
 import { getAnalysisToolActivityLabel } from "@/lib/analysis/toolLabels";
@@ -40,469 +28,11 @@ import {
   type AnalysisUIMessage,
 } from "@/lib/analysis/ui";
 import {
-  isAnalysisCellSummary,
-  isAnalysisTableCard,
-  parseAnalysisCellId,
   type AnalysisEvidenceItem,
   type AnalysisMessageFeedbackRecord,
   type AnalysisMessageFeedbackVote,
 } from "@/lib/analysis/types";
 import { cn } from "@/lib/utils";
-
-export type AnalysisAnswerRevealPhase = "thinking" | "handoff" | "composing" | "settled";
-
-interface AnalysisStableTextWindow {
-  stableText: string;
-  unstableTail: string;
-}
-
-type AnalysisRevealEntry =
-  | { kind: "text"; blockIndex: number; segmentsDelta: AnalysisRenderableInlineSegment[] }
-  | { kind: "table"; blockIndex: number }
-  | { kind: "missing"; blockIndex: number }
-  | { kind: "placeholder"; blockIndex: number };
-
-type AnalysisDisplayBlock =
-  | { kind: "text"; key: string; segments: AnalysisRenderableInlineSegment[] }
-  | (Extract<AnalysisRenderableBlock, { kind: "table" }> & { displayState: "ready" | "shell" })
-  | Extract<AnalysisRenderableBlock, { kind: "missing" | "placeholder" }>;
-
-const ANALYSIS_REVEAL_INITIAL_DELAY_MS = 260;
-const ANALYSIS_REVEAL_TEXT_DELAY_MS = 145;
-const ANALYSIS_REVEAL_PARAGRAPH_DELAY_MS = 220;
-const ANALYSIS_REVEAL_TABLE_HOLD_DELAY_MS = 240;
-const ANALYSIS_REVEAL_POST_TABLE_DELAY_MS = 160;
-
-export function splitAnalysisStableTextWindow(
-  text: string,
-  _isStreaming: boolean,
-): AnalysisStableTextWindow {
-  return {
-    stableText: text,
-    unstableTail: "",
-  };
-}
-
-function splitParagraphForReveal(paragraph: string): string[] {
-  if (!paragraph) return [];
-  const chunks: string[] = [];
-  let sentenceStart = 0;
-  let cursor = 0;
-
-  while (cursor < paragraph.length) {
-    const char = paragraph[cursor];
-    if (!char || !/[.!?]/.test(char)) {
-      cursor += 1;
-      continue;
-    }
-
-    let sentenceEnd = cursor + 1;
-
-    while (sentenceEnd < paragraph.length && /["')\]]/.test(paragraph[sentenceEnd] ?? "")) {
-      sentenceEnd += 1;
-    }
-
-    while (sentenceEnd < paragraph.length && /\s/.test(paragraph[sentenceEnd] ?? "")) {
-      sentenceEnd += 1;
-    }
-
-    if (sentenceEnd > sentenceStart) {
-      chunks.push(paragraph.slice(sentenceStart, sentenceEnd));
-    }
-    sentenceStart = sentenceEnd;
-    cursor = sentenceEnd;
-  }
-
-  if (sentenceStart < paragraph.length) {
-    chunks.push(paragraph.slice(sentenceStart));
-  }
-
-  return chunks.length > 0 ? chunks : [paragraph];
-}
-
-export function splitAnalysisTextForReveal(text: string): string[] {
-  if (text.length === 0) return [];
-
-  const chunks: string[] = [];
-  const segments = text.split(/(\n{2,})/);
-
-  for (const segment of segments) {
-    if (segment.length === 0) continue;
-
-    if (/^\n{2,}$/.test(segment)) {
-      if (chunks.length === 0) {
-        chunks.push(segment);
-      } else {
-        chunks[chunks.length - 1] = `${chunks[chunks.length - 1]}${segment}`;
-      }
-      continue;
-    }
-
-    for (const paragraphChunk of splitParagraphForReveal(segment)) {
-      chunks.push(paragraphChunk);
-    }
-  }
-
-  return chunks;
-}
-
-function splitAnalysisInlineSegmentsForReveal(
-  segments: AnalysisRenderableInlineSegment[],
-): AnalysisRenderableInlineSegment[][] {
-  const chunks: AnalysisRenderableInlineSegment[][] = [];
-
-  for (const segment of segments) {
-    if (segment.kind === "text") {
-      const textChunks = splitAnalysisTextForReveal(segment.text);
-      for (const textChunk of textChunks) {
-        if (textChunk.length === 0) continue;
-        chunks.push([{ kind: "text", text: textChunk }]);
-      }
-      continue;
-    }
-
-    if (chunks.length === 0) {
-      chunks.push([{ kind: "cite", cellIds: [...segment.cellIds] }]);
-      continue;
-    }
-
-    chunks[chunks.length - 1]!.push({
-      kind: "cite",
-      cellIds: [...segment.cellIds],
-    });
-  }
-
-  return chunks;
-}
-
-export function buildAnalysisRevealEntries(
-  blocks: AnalysisRenderableBlock[],
-): AnalysisRevealEntry[] {
-  return blocks.flatMap((block, blockIndex): AnalysisRevealEntry[] => {
-    if (block.kind === "text") {
-      const chunks = splitAnalysisInlineSegmentsForReveal(block.segments);
-      return chunks.map((segmentsDelta) => ({
-        kind: "text",
-        blockIndex,
-        segmentsDelta,
-      }));
-    }
-
-    return [{
-      kind: block.kind,
-      blockIndex,
-    }];
-  });
-}
-
-export function buildAnalysisDisplayBlocks(
-  blocks: AnalysisRenderableBlock[],
-  entries: AnalysisRevealEntry[],
-  releasedEntryCount: number,
-): AnalysisDisplayBlock[] {
-  const releasedTextByBlockIndex = new Map<number, AnalysisRenderableInlineSegment[]>();
-  const readyBlockIndexes = new Set<number>();
-  const nextEntry = entries[Math.min(releasedEntryCount, entries.length)];
-  const nextTableShellBlockIndex = nextEntry?.kind === "table" ? nextEntry.blockIndex : null;
-
-  for (const entry of entries.slice(0, Math.min(releasedEntryCount, entries.length))) {
-    if (entry.kind === "text") {
-      releasedTextByBlockIndex.set(
-        entry.blockIndex,
-        [
-          ...(releasedTextByBlockIndex.get(entry.blockIndex) ?? []),
-          ...entry.segmentsDelta.map<AnalysisRenderableInlineSegment>((segment) => (
-            segment.kind === "text"
-              ? { kind: "text", text: segment.text }
-              : { kind: "cite", cellIds: [...segment.cellIds] }
-          )),
-        ],
-      );
-      continue;
-    }
-
-    readyBlockIndexes.add(entry.blockIndex);
-  }
-
-  const displayBlocks: AnalysisDisplayBlock[] = [];
-
-  blocks.forEach((block, blockIndex) => {
-    if (block.kind === "text") {
-      const segments = releasedTextByBlockIndex.get(blockIndex);
-      if (segments && segments.length > 0) {
-        displayBlocks.push({
-          kind: "text",
-          key: block.key,
-          segments,
-        });
-      }
-      return;
-    }
-
-    if (block.kind === "table") {
-      if (readyBlockIndexes.has(blockIndex)) {
-        displayBlocks.push({
-          ...block,
-          displayState: "ready",
-        });
-        return;
-      }
-
-      if (nextTableShellBlockIndex === blockIndex) {
-        displayBlocks.push({
-          ...block,
-          displayState: "shell",
-        });
-      }
-      return;
-    }
-
-    if (readyBlockIndexes.has(blockIndex)) {
-      displayBlocks.push(block);
-    }
-  });
-
-  return displayBlocks;
-}
-
-export function getAnalysisAnswerRevealPhase(params: {
-  isStreaming: boolean;
-  hasEverStreamed: boolean;
-  releasedEntryCount: number;
-  totalEntryCount: number;
-  unstableTail: string;
-}): AnalysisAnswerRevealPhase {
-  if (!params.hasEverStreamed) {
-    return "settled";
-  }
-
-  if (params.totalEntryCount === 0 && params.releasedEntryCount === 0) {
-    return "thinking";
-  }
-
-  if (params.releasedEntryCount === 0) {
-    return "handoff";
-  }
-
-  if (
-    params.releasedEntryCount < params.totalEntryCount
-    || params.isStreaming
-    || params.unstableTail.length > 0
-  ) {
-    return "composing";
-  }
-
-  return "settled";
-}
-
-export function getNextAnalysisRevealDelayMs(params: {
-  releasedEntryCount: number;
-  entries: AnalysisRevealEntry[];
-}): number {
-  if (params.releasedEntryCount === 0) {
-    return ANALYSIS_REVEAL_INITIAL_DELAY_MS;
-  }
-
-  const previousEntry = params.entries[params.releasedEntryCount - 1];
-  const nextEntry = params.entries[params.releasedEntryCount];
-
-  if (previousEntry?.kind === "table") {
-    return ANALYSIS_REVEAL_POST_TABLE_DELAY_MS;
-  }
-
-  if (
-    previousEntry?.kind === "text"
-    && previousEntry.segmentsDelta.some((segment) => segment.kind === "text" && segment.text.includes("\n\n"))
-  ) {
-    return ANALYSIS_REVEAL_PARAGRAPH_DELAY_MS;
-  }
-
-  if (nextEntry?.kind === "table") {
-    return ANALYSIS_REVEAL_TABLE_HOLD_DELAY_MS;
-  }
-
-  return ANALYSIS_REVEAL_TEXT_DELAY_MS;
-}
-
-interface CitationChipMeta {
-  chipLabel: string;
-  title: string;
-}
-
-interface CitationChipLookup {
-  exactMetaByCellId: Map<string, CitationChipMeta>;
-  chipLabelByTableId: Map<string, string>;
-}
-
-function getEvidenceItemCellId(item: AnalysisEvidenceItem): string | null {
-  return getSettledAnalysisEvidenceItemCellId(item);
-}
-
-function buildCitationChipLookup(message: AnalysisUIMessage): CitationChipLookup {
-  const exactMetaByCellId = new Map<string, CitationChipMeta>();
-  const chipLabelByTableId = new Map<string, string>();
-  const evidenceItems = getAnalysisMessageEvidenceItems(message);
-
-  for (const item of evidenceItems) {
-    if (item.sourceTableId && item.sourceQuestionId?.trim()) {
-      chipLabelByTableId.set(item.sourceTableId, item.sourceQuestionId.trim());
-    }
-
-    const cellId = getEvidenceItemCellId(item);
-    if (!cellId) continue;
-
-    const chipLabel = item.sourceQuestionId?.trim() || item.sourceTableId;
-    if (!chipLabel) continue;
-
-    exactMetaByCellId.set(cellId, {
-      chipLabel,
-      title: item.label,
-    });
-  }
-
-  for (const part of message.parts) {
-    if (
-      !isToolUIPart(part)
-      || part.type !== "tool-confirmCitation"
-      || part.state !== "output-available"
-    ) {
-      continue;
-    }
-
-    const output = part.output;
-    if (!isAnalysisCellSummary(output)) {
-      continue;
-    }
-
-    const chipLabel = output.questionId?.trim() || output.tableId;
-    const title = `${output.tableTitle} — ${output.rowLabel} / ${output.cutName}`;
-    exactMetaByCellId.set(output.cellId, {
-      chipLabel,
-      title,
-    });
-    chipLabelByTableId.set(output.tableId, chipLabel);
-  }
-
-  for (const part of message.parts) {
-    if (
-      !isToolUIPart(part)
-      || part.type !== "tool-fetchTable"
-      || part.state !== "output-available"
-      || !isAnalysisTableCard(part.output)
-    ) {
-      continue;
-    }
-
-    const chipLabel = part.output.questionId?.trim();
-    if (!chipLabel) continue;
-
-    chipLabelByTableId.set(part.output.tableId, chipLabel);
-  }
-
-  return {
-    exactMetaByCellId,
-    chipLabelByTableId,
-  };
-}
-
-function resolveCitationChipMeta(
-  cellId: string,
-  citeLookup: CitationChipLookup,
-): CitationChipMeta | null {
-  const exactMeta = citeLookup.exactMetaByCellId.get(cellId);
-  if (exactMeta) {
-    return exactMeta;
-  }
-
-  const parsed = parseAnalysisCellId(cellId);
-  if (!parsed) return null;
-
-  const chipLabel = citeLookup.chipLabelByTableId.get(parsed.tableId);
-  if (!chipLabel) return null;
-
-  return {
-    chipLabel,
-    title: `${parsed.tableId} — ${parsed.rowKey} / ${parsed.cutKey}`,
-  };
-}
-
-function InlineCitationText({
-  segments,
-  citeLookup,
-}: {
-  segments: AnalysisRenderableInlineSegment[];
-  citeLookup: CitationChipLookup;
-}) {
-  return (
-    <p className="min-w-0 whitespace-pre-wrap break-words text-[0.9375rem] leading-[1.65] [overflow-wrap:anywhere]">
-      {segments.map((segment, segmentIndex) => {
-        if (segment.kind === "text") {
-          return (
-            <ReactMarkdown
-              key={`text-${segmentIndex}`}
-              components={{
-                p: ({ children }) => <>{children}</>,
-              }}
-            >
-              {segment.text}
-            </ReactMarkdown>
-          );
-        }
-
-        return (
-          <CiteChip
-            key={`cite-${segmentIndex}`}
-            cellIds={segment.cellIds}
-            citeLookup={citeLookup}
-          />
-        );
-      })}
-    </p>
-  );
-}
-
-function CopyMessageButton({ text, label }: { text: string; label: string }) {
-  const [copied, setCopied] = useState(false);
-  const resetTimerRef = useRef<number | null>(null);
-
-  useEffect(() => () => {
-    if (resetTimerRef.current !== null) {
-      window.clearTimeout(resetTimerRef.current);
-    }
-  }, []);
-
-  async function handleCopy() {
-    const payload = text.trim();
-    if (!payload) return;
-
-    try {
-      await navigator.clipboard.writeText(payload);
-      setCopied(true);
-      toast.success("Copied to clipboard");
-      if (resetTimerRef.current !== null) {
-        window.clearTimeout(resetTimerRef.current);
-      }
-      resetTimerRef.current = window.setTimeout(() => {
-        setCopied(false);
-        resetTimerRef.current = null;
-      }, 1500);
-    } catch {
-      toast.error("Copy failed");
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={() => { void handleCopy(); }}
-      aria-label={label}
-      title={label}
-      className="inline-flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground/80"
-    >
-      {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-    </button>
-  );
-}
 
 // Strip common markdown markers from reasoning summary text. OpenAI's
 // Responses API emits reasoning-summary chunks containing things like
@@ -689,67 +219,6 @@ export function resolveAnalysisFooterMessageId({
   return explicitPersistedMessageId ?? settledPersistedMessageId ?? messageId;
 }
 
-function highlightAnchor(target: HTMLElement) {
-  target.classList.add("ring-2", "ring-tab-teal/40", "ring-offset-2", "ring-offset-background");
-  window.setTimeout(() => {
-    target.classList.remove("ring-2", "ring-tab-teal/40", "ring-offset-2", "ring-offset-background");
-  }, 1200);
-}
-
-function scrollToCellAnchors(cellIds: string[]) {
-  const targets = cellIds
-    .map((cellId) => document.getElementById(getAnalysisCellAnchorId(cellId)))
-    .filter((target): target is HTMLElement => target instanceof HTMLElement);
-  if (targets.length === 0) return;
-
-  targets[0].scrollIntoView({ behavior: "smooth", block: "center" });
-  for (const target of targets) {
-    highlightAnchor(target);
-  }
-}
-
-function CiteChip({
-  cellIds,
-  citeLookup,
-}: {
-  cellIds: string[];
-  citeLookup: CitationChipLookup;
-}) {
-  if (cellIds.length === 0) return null;
-
-  const labels = [...new Set(cellIds.map((cellId) => {
-    const meta = resolveCitationChipMeta(cellId, citeLookup);
-    if (meta?.chipLabel) return meta.chipLabel;
-    const parsed = parseAnalysisCellId(cellId);
-    return parsed?.tableId ?? cellId;
-  }))];
-  const chipLabel = labels.join(",");
-  const title = cellIds
-    .map((cellId) => {
-      const meta = resolveCitationChipMeta(cellId, citeLookup);
-      if (meta?.title) return meta.title;
-      const parsed = parseAnalysisCellId(cellId);
-      if (!parsed) return cellId;
-      return `${parsed.tableId} — ${parsed.rowKey} / ${parsed.cutKey}`;
-    })
-    .join("\n");
-
-  return (
-    <button
-      type="button"
-      onClick={(event) => {
-        event.preventDefault();
-        scrollToCellAnchors(cellIds);
-      }}
-      title={title}
-      className="mx-0.5 inline-flex items-baseline align-super text-[0.65em] font-mono text-tab-teal/90 hover:text-tab-teal underline-offset-2 hover:underline"
-      aria-label={`Citation ${chipLabel}`}
-    >
-      <span>{chipLabel}</span>
-    </button>
-  );
-}
-
 export function AnalysisMessage({
   message,
   isStreaming = false,
@@ -785,33 +254,18 @@ export function AnalysisMessage({
   const hasGroundedTableCard = !isUser && message.parts.some(
     (part) => isToolUIPart(part) && part.type === "tool-fetchTable",
   );
-  const [isEditing, setIsEditing] = useState(false);
-  const [draftEditText, setDraftEditText] = useState("");
-  const [isSavingEdit, setIsSavingEdit] = useState(false);
-  const hasEverStreamedRef = useRef(isStreaming);
   const hasTouchedThinkingRef = useRef(false);
   const hasAutoCollapsedThinkingRef = useRef(false);
 
   const traceEntries = getAnalysisTraceEntries(message);
-  const citeLookup = buildCitationChipLookup(message);
   const validationStatusLabel = isUser ? null : getAnalysisValidationStatusLabel(message);
   const rawAssistantText = isUser ? "" : getAnalysisUIMessageText(message);
 
-  if (isStreaming) {
-    hasEverStreamedRef.current = true;
-  }
-
-  const shouldUseRevealController = !isUser && hasEverStreamedRef.current;
-  const { unstableTail } = useMemo(
-    () => splitAnalysisStableTextWindow(rawAssistantText, shouldUseRevealController && isStreaming),
-    [isStreaming, rawAssistantText, shouldUseRevealController],
-  );
-
   const settledAnswer = useMemo(
     () => buildSettledAnalysisAnswer(message, {
-      isStreaming: shouldUseRevealController && (isStreaming || unstableTail.length > 0),
+      isStreaming: !isUser && isStreaming,
     }),
-    [isStreaming, message, shouldUseRevealController, unstableTail.length],
+    [isStreaming, isUser, message],
   );
   const {
     renderableBlocks,
@@ -825,48 +279,15 @@ export function AnalysisMessage({
     settledPersistedMessageId,
     messageId: message.id,
   });
-  const revealEntries = useMemo(
-    () => buildAnalysisRevealEntries(renderableBlocks),
-    [renderableBlocks],
-  );
-  const [releasedEntryCount, setReleasedEntryCount] = useState(() => (
-    shouldUseRevealController ? 0 : revealEntries.length
-  ));
-
-  useEffect(() => {
-    if (!shouldUseRevealController) {
-      setReleasedEntryCount(revealEntries.length);
-      return;
-    }
-
-    setReleasedEntryCount((current) => Math.min(current, revealEntries.length));
-  }, [revealEntries.length, shouldUseRevealController]);
-
-  const revealPhase = getAnalysisAnswerRevealPhase({
+  const {
+    answerRevealBegins,
+    displayBlocks,
+    isFooterReady,
+    isRevealing,
+  } = useAnalysisAnswerReveal({
+    renderableBlocks,
     isStreaming,
-    hasEverStreamed: shouldUseRevealController,
-    releasedEntryCount,
-    totalEntryCount: revealEntries.length,
-    unstableTail,
   });
-  const displayBlocks = shouldUseRevealController
-    ? buildAnalysisDisplayBlocks(renderableBlocks, revealEntries, releasedEntryCount)
-    : renderableBlocks.map((block): AnalysisDisplayBlock => {
-      if (block.kind === "text") {
-        return block;
-      }
-
-      if (block.kind === "table") {
-        return {
-          ...block,
-          displayState: "ready",
-        };
-      }
-
-      return block;
-    });
-  const answerRevealBegins = displayBlocks.length > 0;
-  const isFooterReady = revealPhase === "settled";
   const hasFooterContent = rawAssistantText.trim().length > 0
     || sourceItems.length > 0
     || Boolean(onSubmitFeedback)
@@ -882,23 +303,6 @@ export function AnalysisMessage({
   const shouldShowWorkDisclosure = !isUser && Boolean(workStatusLabel);
 
   useEffect(() => {
-    if (!shouldUseRevealController) return;
-    if (revealEntries.length === 0) return;
-    if (releasedEntryCount >= revealEntries.length) return;
-
-    const delayMs = getNextAnalysisRevealDelayMs({
-      releasedEntryCount,
-      entries: revealEntries,
-    });
-
-    const timer = window.setTimeout(() => {
-      setReleasedEntryCount((current) => Math.min(current + 1, revealEntries.length));
-    }, delayMs);
-
-    return () => window.clearTimeout(timer);
-  }, [releasedEntryCount, revealEntries, shouldUseRevealController]);
-
-  useEffect(() => {
     if (!shouldShowWorkDisclosure || hasTouchedThinkingRef.current || hasAutoCollapsedThinkingRef.current) {
       return;
     }
@@ -909,38 +313,6 @@ export function AnalysisMessage({
     }
   }, [answerRevealBegins, shouldShowWorkDisclosure]);
 
-  function openEditor() {
-    if (!onEditUserMessage) return;
-    setDraftEditText(getAnalysisUIMessageText(message));
-    setIsEditing(true);
-  }
-
-  function cancelEdit() {
-    setIsEditing(false);
-    setDraftEditText("");
-  }
-
-  async function saveEdit() {
-    if (!onEditUserMessage) return;
-    const nextText = draftEditText.trim();
-    const currentText = getAnalysisUIMessageText(message);
-    if (!nextText || nextText === currentText) {
-      cancelEdit();
-      return;
-    }
-
-    setIsSavingEdit(true);
-    try {
-      await onEditUserMessage({ messageId: message.id, text: nextText });
-      setIsEditing(false);
-      setDraftEditText("");
-    } catch (_error) {
-      // Parent surfaces the error toast; keep the editor open so the user can retry.
-    } finally {
-      setIsSavingEdit(false);
-    }
-  }
-
   return (
     <div className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}>
       <div
@@ -950,70 +322,10 @@ export function AnalysisMessage({
         )}
       >
         {isUser ? (
-          isEditing ? (
-            <div className="flex w-full flex-col items-stretch gap-2">
-              <Textarea
-                value={draftEditText}
-                onChange={(event) => setDraftEditText(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    cancelEdit();
-                    return;
-                  }
-                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-                    event.preventDefault();
-                    void saveEdit();
-                  }
-                }}
-                autoFocus
-                disabled={isSavingEdit}
-                className="min-h-24 resize-y rounded-2xl bg-primary/10 px-4 py-2 text-sm leading-6"
-                placeholder="Edit your message"
-              />
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={cancelEdit}
-                  disabled={isSavingEdit}
-                  className="rounded-full border border-border/70 px-3 py-1 text-[11px] text-muted-foreground transition-colors hover:border-foreground/20 hover:bg-muted/25 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { void saveEdit(); }}
-                  disabled={isSavingEdit || draftEditText.trim().length === 0}
-                  className="rounded-full bg-primary px-3 py-1 text-[11px] text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isSavingEdit ? "Saving..." : "Save & resend"}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col items-end gap-0.5">
-              <p className="min-w-0 whitespace-pre-wrap break-words rounded-2xl bg-primary/10 px-4 py-2 text-sm leading-6 [overflow-wrap:anywhere]">
-                {getAnalysisUIMessageText(message)}
-              </p>
-              <div className="flex items-center gap-0.5">
-                {onEditUserMessage ? (
-                  <button
-                    type="button"
-                    onClick={openEditor}
-                    aria-label="Edit message"
-                    title="Edit message"
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground/80"
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </button>
-                ) : null}
-                <CopyMessageButton
-                  text={getAnalysisUIMessageText(message)}
-                  label="Copy message"
-                />
-              </div>
-            </div>
-          )
+          <AnalysisUserMessage
+            message={message}
+            onEditUserMessage={onEditUserMessage}
+          />
         ) : (
           <div className="min-w-0 space-y-3">
             {shouldShowWorkDisclosure && workStatusLabel ? (
@@ -1029,87 +341,11 @@ export function AnalysisMessage({
               />
             ) : null}
 
-            {displayBlocks.map((block) => {
-              if (block.kind === "text") {
-                const hasCiteMarkers = block.segments.some((segment) => segment.kind === "cite");
-
-                if (!hasCiteMarkers) {
-                  return (
-                    <div key={block.key}>
-                      <AnalysisResponseMarkdown
-                        text={block.segments
-                          .filter((segment): segment is Extract<AnalysisRenderableInlineSegment, { kind: "text" }> => segment.kind === "text")
-                          .map((segment) => segment.text)
-                          .join("")}
-                        isStreaming={shouldUseRevealController && revealPhase !== "settled"}
-                      />
-                    </div>
-                  );
-                }
-
-                // Render each segment — markdown for text, inline chip for cite.
-                // Streamdown handles one prose block at a time; chips render as
-                // inline siblings via a shared wrapper that preserves flow.
-                return (
-                  <div
-                    key={block.key}
-                    className="prose-analysis min-w-0 max-w-none break-words [overflow-wrap:anywhere]"
-                  >
-                    <InlineCitationText
-                      segments={block.segments}
-                      citeLookup={citeLookup}
-                    />
-                  </div>
-                );
-              }
-
-              if (block.kind === "placeholder") {
-                return (
-                  <div
-                    key={block.key}
-                    className="rounded-xl border border-dashed border-border/80 bg-muted/20 px-3 py-2 text-xs text-muted-foreground"
-                  >
-                    Loading table...
-                  </div>
-                );
-              }
-
-              if (block.kind === "missing") {
-                return (
-                  <div
-                    key={block.key}
-                    className="rounded-xl border border-dashed border-border/80 bg-muted/20 px-3 py-2 text-xs text-muted-foreground"
-                  >
-                    Referenced table not available.
-                  </div>
-                );
-              }
-
-              if (block.kind === "table" && block.part.state === "output-available" && isAnalysisTableCard(block.part.output)) {
-                return (
-                  <div
-                    key={block.key}
-                    id={getAnalysisEvidenceAnchorId(block.part.toolCallId)}
-                    className="scroll-mt-24 rounded-xl transition-shadow duration-300"
-                  >
-                    <GroundedTableCard
-                      card={block.part.output}
-                      focus={block.focus}
-                      displayState={block.displayState}
-                    />
-                  </div>
-                );
-              }
-
-              return (
-                <div
-                  key={block.key}
-                  className="rounded-xl border border-dashed border-border/80 bg-muted/20 px-3 py-2 text-xs text-muted-foreground"
-                >
-                  Loading table...
-                </div>
-              );
-            })}
+            <AnalysisAnswerBody
+              message={message}
+              displayBlocks={displayBlocks}
+              isRevealing={isRevealing}
+            />
 
             {persistenceWarning ? (
               <div className="rounded-xl border border-ct-amber/30 bg-ct-amber-dim px-3 py-2 text-xs leading-5 text-foreground/85">

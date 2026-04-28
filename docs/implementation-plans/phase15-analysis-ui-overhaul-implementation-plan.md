@@ -1,6 +1,6 @@
 # Phase 15 Sub-Plan - Analysis UI Overhaul
 
-**Status:** active. Slices 0-2 are complete; Slices 3-7 remain. This is a product-shape plan, not a per-ticket implementation spec. Each implementation slice should get its own focused plan before code work begins.
+**Status:** implemented through Slice 7. This is a product-shape plan, not a per-ticket implementation spec. Future Bucket 3 artifact work should use this as the current UI baseline rather than reopening the earlier overhaul slices.
 
 **Purpose:** clean up the Phase 15 analysis chat foundation before Tier A Bucket 3 work. The goal is a calmer, more predictable, more premium chat experience: grounded answers reveal smoothly after validation, thinking/tool activity carries the wait honestly, and live turns render the same way as reloaded sessions.
 
@@ -28,9 +28,9 @@ Slice 2 moved the conversation shell onto a narrower primitive-backed foundation
 
 The remaining roughness is now primarily in the presentation and ownership layers:
 
-- **Answer reveal still uses custom streaming-era choreography.** Slice 1 normalized the answer input, but `AnalysisMessage` still owns reveal timing and footer readiness. That cleanup waits for Slice 5 and Slice 7.
+- **Answer reveal is now isolated from message chrome.** Slice 7 moved reveal timing into a small settled-answer reveal hook. Live validated answers still reveal progressively, while refreshed persisted answers render immediately.
 - **Viewport behavior is improved but still needs visual QA in real sessions.** The shell now owns stick-to-bottom behavior, but mobile, long-table, and active-streaming states should continue to be verified as future primitives land.
-- **AnalysisMessage is doing too much.** It owns markdown rendering, reveal timing, table rendering, citations, sources, reasoning, tool activity, copy actions, feedback, edit/resend behavior, and several derived lookups.
+- **AnalysisMessage is now an orchestrator.** User-message editing/copy, settled answer body rendering, answer reveal timing, work disclosure, and the answer footer each have clearer ownership boundaries.
 - **Compute progress is partly real and partly fallback.** Child run progress is used when present, but queued/running states still fall back to hardcoded values when the worker has not emitted meaningful progress. The UX reads as less trustworthy than the rest of the analysis surface.
 
 The backend contract is not the main problem. The primary work is to normalize the UI model and adopt polished primitives where they fit.
@@ -129,7 +129,7 @@ Remaining after Slice 1:
 - Thinking/tool display polish remains Slice 4.
 - Fine-grained answer choreography, citation hover polish, sources, suggestions, and actions primitives remain Slice 5.
 - Compute-lane confirmation/progress polish remains Slice 6.
-- Old reveal/scroll machinery cleanup and component ownership splits remain Slice 7.
+- Old reveal/scroll machinery cleanup and component ownership splits were completed in Slice 7.
 
 ### Slice 2 - Conversation Shell And Auto-Scroll - Complete
 
@@ -151,15 +151,14 @@ Implemented shape:
 - Added a subtle scroll-to-latest affordance from the Conversation primitive when the user is away from the bottom.
 - Temporarily collapsed the global product sidebar on the analysis route through the existing sidebar context while preserving the header trigger and restoring the previous sidebar state on route exit.
 - Added a narrow shell contract test and kept the Slice 1 ordering/action tests passing.
-- Left the legacy `analysisThreadScroll` helper file in place as deprecated dead code rather than deleting it immediately. It is no longer in the live analysis thread render path.
+- Initially left the legacy `analysisThreadScroll` helper file in place as deprecated dead code. Slice 7 later deleted it after confirming no live code depended on it.
 
 Exit criteria met: the normal thread no longer needs bespoke reveal-event scrolling, user-initiated sends request the latest turn through the shell, persisted sessions initialize at the latest turn, and Slice 1 ordering/action contracts remain intact.
 
 Remaining after Slice 2:
 
 - Browser visual QA should continue to exercise active streaming, long tables, and narrow/mobile layouts as Slices 3-7 land.
-- The old reveal controller and `hasEverStreamed` path still live in `AnalysisMessage`; Slice 5 should replace the choreography, and Slice 7 should remove obsolete machinery once it is truly dead.
-- The deprecated `analysisThreadScroll` helpers can be deleted in Slice 7 after any remaining references and tests are removed.
+- The old reveal controller and deprecated scroll helpers were removed in Slice 7 after the replacement choreography landed.
 - Composer autofocus remains intentionally undecided.
 - Compute card content/progress polish remains Slice 6.
 
@@ -191,7 +190,7 @@ Deferred explicitly from Slice 3:
 - Citations, sources, follow-ups, copy/action layout, feedback controls, and citation hover/click polish remain Slice 5.
 - Compute proposal cards, confirmation, progress honesty, and continuation remain Slice 6.
 - Table-card redesign ideas, including details-as-toggle and multi-table carousel behavior, remain outside this slice.
-- Removing old reveal-controller machinery, `hasEverStreamed`, `unstableTail`, and large `AnalysisMessage` ownership cleanup remains Slice 7.
+- Removing old reveal-controller machinery and large `AnalysisMessage` ownership cleanup was completed in Slice 7.
 
 Exit criteria: citation-free assistant markdown is polished and stable in live and refreshed sessions; the pending state before visible assistant activity feels calm and product-specific; citation/table rendering remains untouched; turn-scoped ordering remains unchanged; and no new message-level scroll ownership is introduced.
 
@@ -220,7 +219,7 @@ Deferred explicitly from Slice 4:
 - Post-`submitAnswer` repair/retry remains a backend trust-layer follow-up. Today a finalization failure fails the turn; a future bounded retry loop should give the agent detailed validation errors and a chance to fetch/confirm/submit again.
 - Answer reveal choreography, citations/sources/actions/footer layout, feedback controls, and follow-up chips remain Slice 5.
 - Compute proposal/result card lifecycle, lineage, and traceability remain Slice 6 unless a Slice 4 container change directly affects the thinking/tool handoff.
-- Large `AnalysisMessage` ownership cleanup remains Slice 7.
+- Large `AnalysisMessage` ownership cleanup was completed in Slice 7.
 
 Exit criteria: the wait between prompt and answer feels substantive but calm. Users see TabulateAI working against verified run artifacts, can expand for transparency, then the reasoning/work disclosure gets out of the way when the validated answer is ready.
 
@@ -275,9 +274,11 @@ Shipped behavior:
 - Successful table-scoped jobs identify that the derived table was added to the current analysis session and show an `Artifact saved` indicator when a persisted `computed_derivation` artifact is attached.
 - Table-scoped running jobs use an indeterminate activity state instead of fake numeric progress; derived runs still use real child-run progress when available.
 - Banner definitions, row roll-ups, selected-table cut definitions, validation details, confidence/review flags, and lineage semantics remain TabulateAI-specific custom slots.
-- Backend compute reuse, Bucket 3 table derivations, and broad AnalysisMessage ownership cleanup remain deferred.
+- Backend compute reuse and Bucket 3 table derivations remain deferred.
 
 ### Slice 7 - Cleanup, Performance, And Ownership Boundaries
+
+**Status:** implemented.
 
 Remove obsolete machinery as each replacement lands. This slice should finish the simplification rather than defer all deletion to the end.
 
@@ -298,6 +299,20 @@ Remove obsolete machinery as each replacement lands. This slice should finish th
 - Keep `GroundedTableCard` as its own product surface; do not fold table rendering into generic message rendering.
 
 Exit criteria: `AnalysisMessage` is materially smaller, the old dual-rendering path is gone, and ownership boundaries are clear enough that Bucket 3 work can add new artifacts without threading through a 1400-line component.
+
+Shipped behavior:
+
+- `AnalysisMessage` now stays focused on turn orchestration: it resolves the settled answer model, work disclosure state, footer readiness, and top-level layout.
+- User message copy/edit/resend moved into `AnalysisUserMessage`.
+- Settled assistant answer rendering moved into `AnalysisAnswerBody`, including markdown, inline citation chips, placeholder/missing table states, and `GroundedTableCard` placement.
+- Live/reload answer choreography moved into `useAnalysisAnswerReveal`. The streaming-era `hasEverStreamed` / `unstableTail` path was removed; live turns still animate from the settled answer model, and refreshed turns render settled immediately.
+- The deprecated `analysisThreadScroll` helper and its tests were deleted. Bottom-follow behavior remains owned by `AnalysisConversationShell` / `use-stick-to-bottom`; citation and source anchor navigation remain independent `scrollIntoView` behavior.
+- Reveal helper tests moved out of `AnalysisMessage.test.ts` and now target the reveal module directly.
+
+Remaining deferred work:
+
+- Bucket 3 artifact additions should build on the extracted answer-body and footer boundaries.
+- Broader artifact architecture, AI-generated follow-up hydration, compute reuse/caching, and table promotion remain outside the UI overhaul.
 
 ---
 
