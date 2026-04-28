@@ -71,6 +71,12 @@ Review analysis-surface product copy so it accurately describes the current trus
 - Rendered table cards come from verified run artifacts or computed derivation artifacts.
 - Do not imply sentence-level numeric proof or fully validated comparison language until the trust-hardening items below exist.
 
+Closeout result:
+
+- Tightened in-app analysis copy around run-scoped questions, evidence, and session-scoped derived outputs.
+- Qualified marketing/privacy language so it says AI helps structure and interpret, while R computes the numbers.
+- Clarified that Chat with your data may send selected table evidence and question context from completed run artifacts, but not raw `.sav` files, case-level respondent records, or full response tables as part of normal model calls.
+
 ### 3. Trust Hardening
 
 This is valuable, but it is not blocking the current MVP unless TabulateAI wants to market stronger "validated every sentence" claims.
@@ -100,7 +106,7 @@ These should not block the Phase 15 MVP:
 
 ## Active Next Checklist
 
-1. Review analysis-surface product copy so it describes the current trust contract accurately.
+1. Done: review analysis-surface product copy so it describes the current trust contract accurately.
 2. Run the durable state ownership closeout check.
 3. Decide whether any trust-hardening item is required before closeout; otherwise keep it deferred.
 4. Close out Phase 15 V1 with Bucket 3 explicitly deferred and the archived UI/compute sub-plans left as historical references.

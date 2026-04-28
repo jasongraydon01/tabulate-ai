@@ -17,7 +17,7 @@ const features = [
     number: "02",
     title: "Deterministic compute",
     description:
-      "Every percentage, statistical test, and base size is computed by validated R code against your real data. The pipeline cannot hallucinate a number.",
+      "Every percentage, statistical test, and base size is computed by validated R code against your real data. AI helps structure the work; R computes the numbers.",
     align: "right" as const,
   },
   {

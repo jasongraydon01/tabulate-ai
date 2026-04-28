@@ -39,7 +39,7 @@ export function PromptComposer({
         {isComputeBusy ? (
           <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
             <Loader2 className="h-3 w-3 animate-spin" />
-            <span>TabulateAI is checking the run for a derived banner group...</span>
+            <span>TabulateAI is checking whether this can become a derived output...</span>
           </div>
         ) : null}
         <div className="flex items-center gap-2">
@@ -76,7 +76,7 @@ export function PromptComposer({
           <Textarea
             value={value}
             onChange={(event) => onChange(event.target.value)}
-            placeholder="Ask anything"
+            placeholder="Ask about this run"
             rows={1}
             className="min-h-[36px] max-h-[140px] resize-none border-0 bg-transparent p-0 text-sm shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
             disabled={isComputeBusy}

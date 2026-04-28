@@ -143,8 +143,8 @@ export function HowItWorksSection() {
                   AI reads your survey to understand the intent behind each
                   question — whether it needs NETs, T2B summaries, means, or a
                   specific base. Then deterministic R code computes every
-                  percentage, stat test, and base size from your actual data. No
-                  AI touches the numbers.
+                  percentage, stat test, and base size from your actual data. AI
+                  does not compute those numbers.
                 </p>
               </div>
 

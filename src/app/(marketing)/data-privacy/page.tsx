@@ -258,6 +258,10 @@ export default function DataPrivacyPage() {
                     question-level structural context needed for planning
                     or review
                   </li>
+                  <li>
+                    In Chat with your data, selected table evidence and
+                    question context retrieved from completed run artifacts
+                  </li>
                 </ul>
               </div>
               <div>
@@ -278,6 +282,13 @@ export default function DataPrivacyPage() {
               entirely in <strong>R on our server</strong>, not in the AI.
               The AI generates planning and review instructions; R executes
               them against the real data.
+            </p>
+            <p>
+              In the analysis workspace, TabulateAI answers from completed
+              run artifacts and selected table evidence. That chat flow still
+              does not send raw `.sav` files, case-level respondent records,
+              or the full response table to the model as part of normal model
+              calls.
             </p>
           </Card>
 

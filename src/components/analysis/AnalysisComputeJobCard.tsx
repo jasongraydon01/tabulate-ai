@@ -366,7 +366,7 @@ export function AnalysisComputeJobCard({
               </span>
               {showArtifactSaved ? (
                 <span className="rounded-full border border-ct-emerald/30 px-2 py-0.5 text-[11px] font-medium text-ct-emerald">
-                  Artifact saved
+                  Saved to this chat
                 </span>
               ) : null}
             </div>

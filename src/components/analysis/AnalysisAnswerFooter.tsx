@@ -234,7 +234,7 @@ export function AnalysisAnswerFooter({
                 <ChevronDown
                   className={cn("h-3 w-3 transition-transform", isSourcesOpen && "rotate-180")}
                 />
-                <span>Additional sources ({sourceItems.length})</span>
+                <span>Evidence ({sourceItems.length})</span>
               </button>
             </CollapsibleTrigger>
           ) : null}

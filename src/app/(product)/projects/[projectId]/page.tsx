@@ -866,7 +866,7 @@ export default function ProjectDetailPage({
                 </CardTitle>
                 <p className="max-w-2xl text-sm text-muted-foreground">
                   Open a Chat with your data conversation in TabulateAI tied to this output so you can
-                  explore findings, summarize results, and surface grounded insights from the run.
+                  ask questions, summarize results, and cite the tables behind each answer.
                 </p>
               </div>
 
