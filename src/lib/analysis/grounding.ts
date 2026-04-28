@@ -1577,8 +1577,6 @@ export function fetchTable(
     hiddenRowCount,
     hiddenGroupCount: columnGroups.filter((group) => group.groupKey !== TOTAL_GROUP_KEY).length,
     focusedCutIds: null,
-    requestedRowFilter: null,
-    requestedCutFilter: null,
     requestedCutGroups,
     focusedRowKeys: null,
     focusedGroupKeys: null,

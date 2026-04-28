@@ -5,7 +5,6 @@ import {
   isToolUIPart,
 } from "ai";
 
-import { buildAnalysisStructuredAssistantPartsFromText } from "@/lib/analysis/structuredParts";
 import { buildFetchTableModelMarkdown } from "@/lib/analysis/grounding";
 import {
   CONFIRM_CITATION_TOOL_TYPE,
@@ -521,31 +520,10 @@ export function persistedAnalysisMessagesToUIMessages(
         }
       }
 
-      function appendLegacyMarkerFallback(text: string) {
-        const structuredAssistantParts = buildAnalysisStructuredAssistantPartsFromText(text);
-        const hasStructuredNonTextParts = structuredAssistantParts.some((part) => part.type !== "text");
-        if (!hasStructuredNonTextParts) {
-          parts.push({
-            type: "text",
-            text,
-          });
-          return;
-        }
-
-        for (const structuredAssistantPart of structuredAssistantParts) {
-          appendStructuredAssistantPart(structuredAssistantPart);
-        }
-      }
-
       for (const part of message.parts ?? []) {
         const structuredAssistantPart = extractStructuredAssistantPart(part);
         if (structuredAssistantPart) {
           appendStructuredAssistantPart(structuredAssistantPart);
-          continue;
-        }
-
-        if (part.type === "text" && message.role === "assistant" && typeof part.text === "string") {
-          appendLegacyMarkerFallback(part.text);
           continue;
         }
 
@@ -595,14 +573,10 @@ export function persistedAnalysisMessagesToUIMessages(
       }
 
       if (parts.length === 0 && message.content) {
-        if (message.role === "assistant") {
-          appendLegacyMarkerFallback(message.content);
-        } else {
-          parts.push({
-            type: "text",
-            text: message.content,
-          });
-        }
+        parts.push({
+          type: "text",
+          text: message.content,
+        });
       }
 
       return parts;

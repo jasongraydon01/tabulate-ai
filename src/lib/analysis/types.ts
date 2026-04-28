@@ -251,12 +251,8 @@ export interface AnalysisTableCard {
   hiddenRowCount?: number;
   hiddenGroupCount?: number;
   // Back-compat for older persisted cards. New render focus travels through
-  // render markers, not the artifact payload.
+  // structured render parts, not the artifact payload.
   focusedCutIds?: string[] | null;
-  /** @deprecated legacy persisted field retained for replay compatibility */
-  requestedRowFilter?: string | null;
-  /** @deprecated legacy persisted field retained for replay compatibility */
-  requestedCutFilter?: string | null;
   requestedCutGroups?: AnalysisFetchTableCutGroups | null;
   focusedRowKeys?: string[] | null;
   focusedGroupKeys?: string[] | null;

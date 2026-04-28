@@ -49,13 +49,17 @@ Product language should stay precise: TabulateAI withholds final answers until t
 
 ### 1. Cleanup Pass
 
-This is the main remaining implementation work before Phase 15 closeout.
+**Status:** legacy replay/compatibility cleanup completed. One ownership audit remains as a closeout check.
 
-- Remove the remaining content-only marker replay fallback after old assistant history no longer needs rehydration.
-- Remove dead marker repair code and tests if no live import remains.
-- Remove `rowFilter` / `cutFilter` compatibility fields from replay and persisted table-card types after the migration window closes.
-- Simplify back-compat fields on table-card artifacts once old history is no longer relevant.
-- Keep prompt text and prompt tests aligned to the native structured-answer contract.
+Completed:
+
+- Removed the remaining content-only marker replay fallback; content-only historical assistant messages now replay as plain text instead of being rehydrated into structured render/cite parts.
+- Removed dead marker repair code and tests after confirming no live production import remained.
+- Removed deprecated `requestedRowFilter` / `requestedCutFilter` compatibility fields from table-card types and grounding output.
+- Removed legacy marker parse/serialize helpers from the structured-answer path.
+
+Closeout check:
+
 - Audit durable state ownership: structured assistant parts, rendered artifacts, citation/context evidence, traces, feedback/corrections, compute-job lineage, child-run outputs, and derived artifacts should each be intentionally Convex-only or intentionally written/exported to R2.
 
 ### 2. Product Copy And Trust Language
@@ -96,7 +100,7 @@ These should not block the Phase 15 MVP:
 
 ## Active Next Checklist
 
-1. Run the cleanup pass, starting with legacy marker repair/replay code and persisted table-card compatibility fields.
-2. Review analysis-surface product copy so it describes the current trust contract accurately.
+1. Review analysis-surface product copy so it describes the current trust contract accurately.
+2. Run the durable state ownership closeout check.
 3. Decide whether any trust-hardening item is required before closeout; otherwise keep it deferred.
 4. Close out Phase 15 V1 with Bucket 3 explicitly deferred and the archived UI/compute sub-plans left as historical references.

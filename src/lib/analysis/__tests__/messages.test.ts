@@ -254,7 +254,7 @@ describe("analysis message helpers", () => {
     ]);
   });
 
-  it("rehydrates content-only legacy assistant messages with markers into structured UI parts", () => {
+  it("replays content-only assistant messages as plain text without legacy marker rehydration", () => {
     const messages = persistedAnalysisMessagesToUIMessages([
       {
         _id: "msg-legacy",
@@ -264,15 +264,7 @@ describe("analysis message helpers", () => {
     ]);
 
     expect(messages[0].parts).toEqual([
-      { type: "text", text: "Intro." },
-      {
-        type: "data-analysis-render",
-        data: {
-          tableId: "q1",
-        },
-      },
-      { type: "text", text: "Value." },
-      { type: "data-analysis-cite", data: { cellIds: ["q1|row|cut"] } },
+      { type: "text", text: "Intro.\n\n[[render tableId=q1]]\n\nValue.[[cite cellIds=q1|row|cut]]" },
     ]);
   });
 
