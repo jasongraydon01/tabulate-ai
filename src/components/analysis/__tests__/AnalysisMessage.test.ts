@@ -18,6 +18,7 @@ import {
   splitAnalysisStableTextWindow,
   splitAnalysisTextForReveal,
   getVisibleEvidenceItems,
+  resolveAnalysisFooterMessageId,
 } from "@/components/analysis/AnalysisMessage";
 import { AnalysisWorkDisclosure } from "@/components/analysis/AnalysisWorkDisclosure";
 import { buildAnalysisRenderableBlocks } from "@/lib/analysis/renderAnchors";
@@ -494,6 +495,14 @@ describe("AnalysisMessage trace presentation", () => {
     );
 
     expect(markup).toContain("aria-label=\"Copy response\"");
+  });
+
+  it("prefers the thread-resolved persisted id for answer footer actions", () => {
+    expect(resolveAnalysisFooterMessageId({
+      explicitPersistedMessageId: "persisted-from-thread",
+      settledPersistedMessageId: null,
+      messageId: "transient-client-id",
+    })).toBe("persisted-from-thread");
   });
 
   it("renders citation-free markdown as compact analysis response prose", () => {

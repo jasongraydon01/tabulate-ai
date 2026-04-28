@@ -1,25 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 import {
   isReasoningUIPart,
   isToolUIPart,
 } from "ai";
-import { Check, ChevronDown, Copy, Link2, Pencil, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Check, Copy, Pencil } from "lucide-react";
 
+import { AnalysisAnswerFooter } from "@/components/analysis/AnalysisAnswerFooter";
 import { GroundedTableCard } from "@/components/analysis/GroundedTableCard";
 import { AnalysisResponseMarkdown } from "@/components/analysis/AnalysisResponseMarkdown";
 import {
   AnalysisWorkDisclosure,
   type AnalysisWorkActivityEntry,
 } from "@/components/analysis/AnalysisWorkDisclosure";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
 import {
   getAnalysisMessageMetadata,
@@ -681,15 +677,16 @@ export function getVisibleEvidenceItems(
   return getSettledAnalysisVisibleEvidenceItems(message, evidenceItems);
 }
 
-function scrollToEvidenceAnchor(anchorId: string) {
-  const target = document.getElementById(getAnalysisEvidenceAnchorId(anchorId));
-  if (!target) return;
-
-  target.scrollIntoView({ behavior: "smooth", block: "center" });
-  target.classList.add("ring-2", "ring-tab-teal/40", "ring-offset-2", "ring-offset-background");
-  window.setTimeout(() => {
-    target.classList.remove("ring-2", "ring-tab-teal/40", "ring-offset-2", "ring-offset-background");
-  }, 1200);
+export function resolveAnalysisFooterMessageId({
+  explicitPersistedMessageId,
+  settledPersistedMessageId,
+  messageId,
+}: {
+  explicitPersistedMessageId?: string | null;
+  settledPersistedMessageId?: string | null;
+  messageId: string;
+}): string {
+  return explicitPersistedMessageId ?? settledPersistedMessageId ?? messageId;
 }
 
 function highlightAnchor(target: HTMLElement) {
@@ -757,15 +754,19 @@ export function AnalysisMessage({
   message,
   isStreaming = false,
   onSelectFollowUpSuggestion,
+  composerHasDraft = false,
   feedback = null,
   onSubmitFeedback,
   onEditUserMessage,
+  turnArtifacts = null,
+  persistedMessageId: explicitPersistedMessageId = null,
 }: {
   message: AnalysisUIMessage;
   isStreaming?: boolean;
   // Only passed when the thread is idle AND this is the tail assistant
   // message — so this prop doubles as the "show chips" signal.
   onSelectFollowUpSuggestion?: (suggestion: string) => void | Promise<void>;
+  composerHasDraft?: boolean;
   feedback?: AnalysisMessageFeedbackRecord | null;
   onSubmitFeedback?: (input: {
     messageId: string;
@@ -776,16 +777,14 @@ export function AnalysisMessage({
   // the new text — the thread owns the stop / truncate / resend choreography
   // so this can be invoked at any time, including during streaming.
   onEditUserMessage?: (input: { messageId: string; text: string }) => Promise<void>;
+  turnArtifacts?: ReactNode;
+  persistedMessageId?: string | null;
 }) {
   const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
   const isUser = message.role === "user";
   const hasGroundedTableCard = !isUser && message.parts.some(
     (part) => isToolUIPart(part) && part.type === "tool-fetchTable",
   );
-  const [isSourcesOpen, setIsSourcesOpen] = useState(false);
-  const [draftCorrectionText, setDraftCorrectionText] = useState(feedback?.correctionText ?? "");
-  const [optimisticFeedback, setOptimisticFeedback] = useState<AnalysisMessageFeedbackRecord | null>(feedback ?? null);
-  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [draftEditText, setDraftEditText] = useState("");
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -794,8 +793,6 @@ export function AnalysisMessage({
   const hasAutoCollapsedThinkingRef = useRef(false);
 
   const traceEntries = getAnalysisTraceEntries(message);
-  const effectiveFeedback = optimisticFeedback ?? feedback ?? null;
-  const isDownvoteOpen = effectiveFeedback?.vote === "down";
   const citeLookup = buildCitationChipLookup(message);
   const validationStatusLabel = isUser ? null : getAnalysisValidationStatusLabel(message);
   const rawAssistantText = isUser ? "" : getAnalysisUIMessageText(message);
@@ -821,9 +818,13 @@ export function AnalysisMessage({
     sourceItems,
     followUpSuggestions,
     persistenceWarning,
-    persistedMessageId,
+    persistedMessageId: settledPersistedMessageId,
   } = settledAnswer;
-  const shouldShowSources = sourceItems.length > 0;
+  const footerMessageId = resolveAnalysisFooterMessageId({
+    explicitPersistedMessageId,
+    settledPersistedMessageId,
+    messageId: message.id,
+  });
   const revealEntries = useMemo(
     () => buildAnalysisRevealEntries(renderableBlocks),
     [renderableBlocks],
@@ -866,6 +867,11 @@ export function AnalysisMessage({
     });
   const answerRevealBegins = displayBlocks.length > 0;
   const isFooterReady = revealPhase === "settled";
+  const hasFooterContent = rawAssistantText.trim().length > 0
+    || sourceItems.length > 0
+    || Boolean(onSubmitFeedback)
+    || Boolean(onSelectFollowUpSuggestion && followUpSuggestions.length > 0);
+  const shouldReserveFooter = answerRevealBegins && hasFooterContent;
   const showWorkLoader = isStreaming && !answerRevealBegins;
   const workStatusLabel = getAnalysisWorkStatusLabel({
     traceEntries,
@@ -891,11 +897,6 @@ export function AnalysisMessage({
 
     return () => window.clearTimeout(timer);
   }, [releasedEntryCount, revealEntries, shouldUseRevealController]);
-
-  useEffect(() => {
-    setOptimisticFeedback(feedback ?? null);
-    setDraftCorrectionText(feedback?.correctionText ?? "");
-  }, [feedback]);
 
   useEffect(() => {
     if (!shouldShowWorkDisclosure || hasTouchedThinkingRef.current || hasAutoCollapsedThinkingRef.current) {
@@ -937,34 +938,6 @@ export function AnalysisMessage({
       // Parent surfaces the error toast; keep the editor open so the user can retry.
     } finally {
       setIsSavingEdit(false);
-    }
-  }
-
-  async function submitFeedback(vote: AnalysisMessageFeedbackVote, correctionText?: string | null) {
-    if (!onSubmitFeedback || isSubmittingFeedback) return;
-
-    const trimmedCorrectionText = correctionText?.trim() || null;
-    const nextFeedback: AnalysisMessageFeedbackRecord = {
-      messageId: persistedMessageId ?? message.id,
-      vote,
-      correctionText: vote === "down" ? trimmedCorrectionText : null,
-      updatedAt: Date.now(),
-    };
-
-    const previousFeedback = effectiveFeedback;
-    setOptimisticFeedback(nextFeedback);
-    setIsSubmittingFeedback(true);
-
-    try {
-      await onSubmitFeedback({
-        messageId: persistedMessageId ?? message.id,
-        vote,
-        correctionText: vote === "down" ? trimmedCorrectionText : null,
-      });
-    } catch (_error) {
-      setOptimisticFeedback(previousFeedback ?? null);
-    } finally {
-      setIsSubmittingFeedback(false);
     }
   }
 
@@ -1144,160 +1117,24 @@ export function AnalysisMessage({
               </div>
             ) : null}
 
-            {isFooterReady && rawAssistantText.length > 0 ? (
-              <div className="-mt-2 flex justify-start">
-                <CopyMessageButton
-                  text={getAnalysisUIMessageText(message)}
-                  label="Copy response"
-                />
-              </div>
-            ) : null}
-
-            {shouldShowSources && isFooterReady ? (
-              <Collapsible open={isSourcesOpen} onOpenChange={setIsSourcesOpen}>
-                <div className="pt-1">
-                  <CollapsibleTrigger asChild>
-                    <button
-                      type="button"
-                      className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground/70"
-                    >
-                      <ChevronDown
-                        className={cn("h-3 w-3 transition-transform", isSourcesOpen && "rotate-180")}
-                      />
-                      <span>Additional sources ({sourceItems.length})</span>
-                    </button>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="pt-2">
-                    <div className="rounded-xl border border-border/60 bg-muted/15 px-3 py-2">
-                      <div className="space-y-1.5">
-                        {sourceItems.map((item) => {
-                          const cellAnchorCellId = getEvidenceItemCellId(item);
-                          const canScrollToRenderedCell = Boolean(
-                            item.renderedInCurrentMessage && cellAnchorCellId,
-                          );
-
-                          const handleClick = () => {
-                            if (canScrollToRenderedCell && cellAnchorCellId) {
-                              scrollToCellAnchors([cellAnchorCellId]);
-                              return;
-                            }
-                            if (item.anchorId) {
-                              scrollToEvidenceAnchor(item.anchorId);
-                            }
-                          };
-
-                          const clickable = Boolean(canScrollToRenderedCell || item.anchorId);
-
-                          return (
-                            <button
-                              key={item.key}
-                              type="button"
-                              onClick={clickable ? handleClick : undefined}
-                              className={cn(
-                                "flex w-full items-center gap-2 text-left text-[11px] leading-5 text-muted-foreground",
-                                clickable ? "hover:text-foreground/80" : "cursor-default",
-                              )}
-                            >
-                              <Link2 className="h-3 w-3 shrink-0" />
-                              <span className="truncate">{item.label}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </CollapsibleContent>
-                </div>
-              </Collapsible>
-            ) : null}
-
-            {message.role === "assistant" && isFooterReady && onSubmitFeedback ? (
+            {turnArtifacts ? (
               <div className="space-y-3 pt-1">
-                <div className="flex justify-center">
-                  <div className="flex items-center gap-2 rounded-full border border-border/70 bg-background/90 px-2 py-1 shadow-[0_8px_24px_rgba(15,23,42,0.14)]">
-                    <button
-                      type="button"
-                      disabled={isSubmittingFeedback}
-                      onClick={() => {
-                        void submitFeedback("up");
-                      }}
-                      className={cn(
-                        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] transition-colors",
-                        effectiveFeedback?.vote === "up"
-                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
-                          : "text-muted-foreground hover:bg-muted/40 hover:text-foreground/80",
-                      )}
-                    >
-                      <ThumbsUp className="h-3 w-3" />
-                      <span>Helpful</span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isSubmittingFeedback}
-                      onClick={() => {
-                        void submitFeedback("down", draftCorrectionText);
-                      }}
-                      className={cn(
-                        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] transition-colors",
-                        effectiveFeedback?.vote === "down"
-                          ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                          : "text-muted-foreground hover:bg-muted/40 hover:text-foreground/80",
-                      )}
-                    >
-                      <ThumbsDown className="h-3 w-3" />
-                      <span>Needs work</span>
-                    </button>
-                  </div>
-                </div>
-
-                {isDownvoteOpen ? (
-                  <div className="mx-auto max-w-xl space-y-2 rounded-2xl border border-border/60 bg-background/90 p-3 shadow-[0_14px_36px_rgba(15,23,42,0.12)]">
-                    <p className="text-[11px] leading-5 text-muted-foreground">
-                      Optional: what should TabulateAI have said instead?
-                    </p>
-                    <Textarea
-                      value={draftCorrectionText}
-                      onChange={(event) => setDraftCorrectionText(event.target.value)}
-                      disabled={isSubmittingFeedback}
-                      className="min-h-20 resize-y text-sm"
-                      placeholder="Add a correction or a better framing."
-                      maxLength={1000}
-                    />
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-[11px] text-muted-foreground">
-                        {draftCorrectionText.trim().length}/1000
-                      </span>
-                      <button
-                        type="button"
-                        disabled={isSubmittingFeedback}
-                        onClick={() => {
-                          void submitFeedback("down", draftCorrectionText);
-                        }}
-                        className="rounded-full border border-border/70 px-3 py-1 text-[11px] text-foreground/85 transition-colors hover:border-foreground/20 hover:bg-muted/25 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Save feedback
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
+                {turnArtifacts}
               </div>
             ) : null}
 
-            {isFooterReady && followUpSuggestions.length > 0 && onSelectFollowUpSuggestion ? (
-              <div className="flex flex-wrap justify-center gap-2 pt-1">
-                {followUpSuggestions.map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    type="button"
-                    onClick={() => {
-                      void onSelectFollowUpSuggestion(suggestion);
-                    }}
-                    className="rounded-full border border-border/70 bg-background/90 px-3 py-1.5 text-xs text-foreground/85 shadow-[0_8px_24px_rgba(15,23,42,0.12)] transition-colors hover:border-foreground/20 hover:bg-muted/20"
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-            ) : null}
+            <AnalysisAnswerFooter
+              isReady={isFooterReady}
+              reserveSpace={shouldReserveFooter}
+              messageText={getAnalysisUIMessageText(message)}
+              messageId={footerMessageId}
+              sourceItems={sourceItems}
+              feedback={feedback}
+              onSubmitFeedback={onSubmitFeedback}
+              followUpSuggestions={followUpSuggestions}
+              onSelectFollowUpSuggestion={onSelectFollowUpSuggestion}
+              composerHasDraft={composerHasDraft}
+            />
           </div>
         )}
       </div>

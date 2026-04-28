@@ -117,6 +117,7 @@ export function buildAnalysisTimelineEntries(params: {
   }));
 
   const jobsByTurnId = new Map<string, AnalysisComputeJobTimelineEntry[]>();
+  const jobsByMessageKey = new Map<string, AnalysisComputeJobTimelineEntry[]>();
   const legacyJobs: AnalysisComputeJobTimelineEntry[] = [];
 
   function pushJob(turnId: string, jobEntry: AnalysisComputeJobTimelineEntry) {
@@ -125,25 +126,26 @@ export function buildAnalysisTimelineEntries(params: {
     jobsByTurnId.set(turnId, jobs);
   }
 
+  function pushMessageJob(messageKey: string, jobEntry: AnalysisComputeJobTimelineEntry) {
+    const jobs = jobsByMessageKey.get(messageKey) ?? [];
+    jobs.push(jobEntry);
+    jobsByMessageKey.set(messageKey, jobs);
+  }
+
   for (const jobEntry of computeEntries) {
     const job = jobEntry.job;
     if (job.originAssistantMessageId) {
       const assistantEntry = messageByPersistedId.get(job.originAssistantMessageId);
-      const turnId = assistantEntry ? turnIdByMessageKey.get(assistantEntry.key) : null;
-      if (turnId) {
-        pushJob(turnId, jobEntry);
-        continue;
+      if (assistantEntry) {
+        pushMessageJob(assistantEntry.key, jobEntry);
       }
+      continue;
     }
     if (job.originUserMessageId) {
       const userEntry = messageByPersistedId.get(job.originUserMessageId);
-      const turnId = userEntry ? turnIdByMessageKey.get(userEntry.key) : null;
-      if (turnId) {
-        pushJob(turnId, jobEntry);
-        continue;
+      if (userEntry) {
+        pushMessageJob(userEntry.key, jobEntry);
       }
-    }
-    if (job.originAssistantMessageId || job.originUserMessageId) {
       continue;
     }
     if (job.originClientTurnId) {
@@ -180,6 +182,10 @@ export function buildAnalysisTimelineEntries(params: {
 
   for (const entry of messageEntries) {
     output.push(entry);
+    const messageJobs = (jobsByMessageKey.get(entry.key) ?? [])
+      .sort((left, right) => left.createdAt - right.createdAt || left.key.localeCompare(right.key));
+    output.push(...messageJobs);
+
     const turnId = turnIdByMessageKey.get(entry.key);
     if (!turnId || emittedTurnJobs.has(turnId)) continue;
 
@@ -216,6 +222,45 @@ export function shouldShowAnalysisMessageActions(
   }
 
   return !messages.slice(messageIndex + 1).some((entry) => entry.role === "user");
+}
+
+export function shouldRenderAnalysisComputeJobInAssistantTurnFooter(
+  entries: AnalysisTimelineEntry[],
+  entryIndex: number,
+): boolean {
+  const entry = entries[entryIndex];
+  if (entry?.kind !== "compute-job") {
+    return false;
+  }
+
+  for (let index = entryIndex - 1; index >= 0; index -= 1) {
+    const previousEntry = entries[index];
+    if (!previousEntry) return false;
+    if (previousEntry.kind === "compute-job") continue;
+    return previousEntry.message.role === "assistant";
+  }
+
+  return false;
+}
+
+export function getAnalysisAssistantTurnFooterJobs(
+  entries: AnalysisTimelineEntry[],
+  entryIndex: number,
+): AnalysisComputeJobTimelineEntry[] {
+  const entry = entries[entryIndex];
+  if (entry?.kind !== "message" || entry.message.role !== "assistant") {
+    return [];
+  }
+
+  const jobs: AnalysisComputeJobTimelineEntry[] = [];
+  for (let index = entryIndex + 1; index < entries.length; index += 1) {
+    const nextEntry = entries[index];
+    if (nextEntry?.kind !== "compute-job") break;
+    if (!shouldRenderAnalysisComputeJobInAssistantTurnFooter(entries, index)) break;
+    jobs.push(nextEntry);
+  }
+
+  return jobs;
 }
 
 export function hasVisibleAnalysisMessageParts(message: AnalysisUIMessage): boolean {
@@ -485,8 +530,12 @@ export function AnalysisThread({
               </div>
             </div>
           ) : (
-            timelineEntries.map((entry) => {
+            timelineEntries.map((entry, entryIndex) => {
               if (entry.kind === "compute-job") {
+                if (shouldRenderAnalysisComputeJobInAssistantTurnFooter(timelineEntries, entryIndex)) {
+                  return null;
+                }
+
                 return (
                   <div key={entry.key}>
                     <AnalysisComputeJobCard
@@ -515,12 +564,14 @@ export function AnalysisThread({
               const persistedMessageId = resolvePersistedMessageId(message, index);
               const isPersistedAssistantMessage = message.role === "assistant" && Boolean(persistedMessageId);
               const isPersistedUserMessage = message.role === "user" && Boolean(persistedMessageId);
+              const footerJobs = getAnalysisAssistantTurnFooterJobs(timelineEntries, entryIndex);
               return (
                 <div key={entry.key}>
                   <AnalysisMessage
                     message={message}
                     isStreaming={isLastMessage && isBusy}
                     onSelectFollowUpSuggestion={showFollowUps ? handleFollowUpSuggestion : undefined}
+                    composerHasDraft={input.trim().length > 0}
                     feedback={shouldShowMessageActions && isPersistedAssistantMessage && persistedMessageId
                       ? (messageFeedbackById[persistedMessageId] ?? null)
                       : null}
@@ -530,6 +581,17 @@ export function AnalysisThread({
                     onEditUserMessage={isPersistedUserMessage && persistedMessageId
                       ? (input) => handleEditUserMessage({ ...input, messageId: persistedMessageId })
                       : undefined}
+                    persistedMessageId={persistedMessageId}
+                    turnArtifacts={footerJobs.length > 0 ? footerJobs.map((jobEntry) => (
+                      <AnalysisComputeJobCard
+                        key={jobEntry.key}
+                        job={jobEntry.job}
+                        onConfirm={onConfirmComputeJob}
+                        onCancel={onCancelComputeJob}
+                        onContinue={onContinueInDerivedRun}
+                        onRevise={setInput}
+                      />
+                    )) : null}
                   />
                 </div>
               );

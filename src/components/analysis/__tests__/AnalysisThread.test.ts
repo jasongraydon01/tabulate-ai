@@ -6,8 +6,10 @@ import {
   buildAnalysisTimelineEntries,
   hasVisibleAnalysisMessageParts,
   PendingAnalysisMessage,
+  getAnalysisAssistantTurnFooterJobs,
   shouldShowAnalysisMessageActions,
   shouldShowAnalysisPendingState,
+  shouldRenderAnalysisComputeJobInAssistantTurnFooter,
 } from "@/components/analysis/AnalysisThread";
 import type { AnalysisComputeJobView } from "@/lib/analysis/computeLane/jobView";
 import type { AnalysisUIMessage as UIMessage } from "@/lib/analysis/ui";
@@ -258,6 +260,7 @@ describe("AnalysisThread timeline entries", () => {
       confirmToken: "opaque-token",
       originClientTurnId: "turn-agent",
       originUserMessageId: "user-1",
+      originAssistantMessageId: "assistant-1",
       createdAt: 150,
       updatedAt: 150,
     }];
@@ -283,6 +286,10 @@ describe("AnalysisThread timeline entries", () => {
         proposedGroup: { groupName: "Region" },
       },
     });
+    expect(shouldRenderAnalysisComputeJobInAssistantTurnFooter(entries, 2)).toBe(true);
+    expect(getAnalysisAssistantTurnFooterJobs(entries, 1).map((entry) => entry.key)).toEqual([
+      "compute-job-job-agent-1",
+    ]);
   });
 
   it("falls legacy timestamp-only jobs into the nearest preceding turn without placing them above reasoning", () => {
@@ -331,6 +338,12 @@ describe("AnalysisThread timeline entries", () => {
         metadata: { clientTurnId: "turn-direct", persistedMessageId: "user-direct", persistence: { status: "persisted" } },
         parts: [{ type: "text", text: "Create this as a derived run" }],
       },
+      {
+        id: "assistant-direct",
+        role: "assistant",
+        metadata: { clientTurnId: "turn-direct", persistedMessageId: "assistant-direct", persistence: { status: "persisted" } },
+        parts: [{ type: "text", text: "I prepared a derived-run proposal. Review the card before confirming." }],
+      },
     ];
     const computeJobs: AnalysisComputeJobView[] = [{
       id: "job-direct",
@@ -349,13 +362,17 @@ describe("AnalysisThread timeline entries", () => {
       computeJobs,
       messageCreatedAtById: {
         "user-direct": 100,
+        "assistant-direct": 200,
       },
     });
 
     expect(entries.map((entry) => entry.key)).toEqual([
       "message-user-direct",
       "compute-job-job-direct",
+      "message-assistant-direct",
     ]);
+    expect(shouldRenderAnalysisComputeJobInAssistantTurnFooter(entries, 1)).toBe(false);
+    expect(getAnalysisAssistantTurnFooterJobs(entries, 0)).toEqual([]);
   });
 
   it("holds direct compute-preflight cards until their initiating turn is visible", () => {
