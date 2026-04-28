@@ -9,7 +9,7 @@
 
 ## Current State
 
-TabulateAI's analysis workspace is live against completed runs. The agent reads verified run artifacts and session-scoped computed derivation artifacts; it does not query raw `.sav` data during ordinary chat turns.
+TabulateAI's analysis workspace is demo-ready against completed runs. The agent reads verified run artifacts and session-scoped computed derivation artifacts; it does not query raw `.sav` data during ordinary chat turns.
 
 Implemented foundation:
 
@@ -47,9 +47,11 @@ Product language should stay precise: TabulateAI withholds final answers until t
 
 ## Remaining Work Of Substance
 
+Phase 15 V1 has no remaining implementation blockers for a demo. Remaining items are rollout and monetization work: staging validation, pricing/guardrails, and broader product marketing for the new Chat with your data capability.
+
 ### 1. Cleanup Pass
 
-**Status:** legacy replay/compatibility cleanup completed. One ownership audit remains as a closeout check.
+**Status:** complete.
 
 Completed:
 
@@ -58,9 +60,12 @@ Completed:
 - Removed deprecated `requestedRowFilter` / `requestedCutFilter` compatibility fields from table-card types and grounding output.
 - Removed legacy marker parse/serialize helpers from the structured-answer path.
 
-Closeout check:
+Closeout result:
 
-- Audit durable state ownership: structured assistant parts, rendered artifacts, citation/context evidence, traces, feedback/corrections, compute-job lineage, child-run outputs, and derived artifacts should each be intentionally Convex-only or intentionally written/exported to R2.
+- Durable analysis state ownership is intentional for V1:
+  - Convex owns sessions, messages, structured assistant parts, grounding refs, feedback/corrections, analysis artifacts, compute-job lineage, and session-scoped computed derivation payloads.
+  - R2 owns run outputs, child-run outputs, selected Phase 15 grounding artifacts, and per-turn analysis traces.
+  - Parent run artifacts remain immutable; table-scoped derived outputs are `analysisArtifacts` with `sourceClass: computed_derivation`.
 
 ### 2. Product Copy And Trust Language
 
@@ -104,9 +109,34 @@ These should not block the Phase 15 MVP:
 - AI-generated follow-up hydration
 - broader artifact architecture beyond `analysisArtifacts` and `analysisComputeJobs`
 
-## Active Next Checklist
+## R2 Artifact Contract
 
-1. Done: review analysis-surface product copy so it describes the current trust contract accurately.
-2. Run the durable state ownership closeout check.
-3. Decide whether any trust-hardening item is required before closeout; otherwise keep it deferred.
-4. Close out Phase 15 V1 with Bucket 3 explicitly deferred and the archived UI/compute sub-plans left as historical references.
+The R2 upload contract needed by Phase 15 is present in the production and staging branches for pipeline outputs:
+
+- `results/tables.json`
+- `enrichment/*.json`, including `enrichment/12-questionid-final.json`
+- `planning/*.json`, including `planning/20-banner-plan.json` and `planning/21-crosstab-plan.json`
+- `tables/*.json`, including `tables/13e-table-enriched.json` and `tables/13d-table-canonical.json`
+- `dataFile.sav` for confirmed worker/server compute lanes
+- `survey/survey-markdown.md`, `compute/*.json`, `compute/*.R`, and `compute/*.log`
+
+Deployment nuance:
+
+- The artifact upload list is not only local or `dev`; it exists on `main` and `staging`.
+- The Phase 15 analysis surface itself is currently on `dev` and must be merged/deployed to `staging` before staging validation.
+- Because pipeline uploads happen in worker execution, the live Railway worker services must be manually redeployed after merging if they are behind the branch code.
+- Runs created before the current artifact-upload contract may still be missing some required recompute artifacts; new staging validation should use a fresh completed run.
+
+## Post-V1 Rollout Checklist
+
+1. Merge `dev` to `staging` and deploy the staging web service.
+2. Manually redeploy staging workers so pipeline artifact uploads and compute-lane worker paths match the staging web code.
+3. Run a fresh staging pipeline and confirm the analysis workspace can:
+   - create/load a session,
+   - answer grounded questions from `results/tables.json`,
+   - render table cards and citation chips,
+   - create a Tier B derived child run,
+   - create Tier A Bucket 1 and Bucket 2 session-scoped derived tables.
+4. Fix staging-only issues, if any.
+5. Add pricing and guardrails for Chat with your data using the existing Stripe foundation.
+6. After pricing/guardrails are stable, prepare the broader product/marketing pass for Chat with your data.
