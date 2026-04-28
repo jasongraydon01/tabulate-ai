@@ -47,42 +47,9 @@ Product language should stay precise: TabulateAI withholds final answers until t
 
 ## Remaining Work Of Substance
 
-### 1. Tier A Bucket 3 - Non-Roll-Up Derived Tables
+### 1. Cleanup Pass
 
-This is the main remaining product capability if V1 needs to support flexible table-building from chat.
-
-Bucket 3 covers table-scoped outputs that are not simple row roll-ups and not one-table new cuts:
-
-- KPI side-by-side tables
-- tables assembled from rows across multiple questions
-- composites and intersections
-- table-type transformations
-- benchmark-style or metric-derived views that need a new table shape
-
-Current implementation status:
-
-- No dedicated Bucket 3 proposal tool exists.
-- Existing tools intentionally reject or route away from KPI/composite/intersection/new-table-shape requests.
-- `analysisComputeJobs` and `analysisArtifacts` can likely be extended, but a new frozen spec and worker path are needed.
-- The current `computed_derivation` artifact model is the right delivery target unless the shape becomes large enough to justify a separate table.
-
-Design requirements before implementation:
-
-- Define the first supported Bucket 3 shape. Do not implement every "new table" request at once.
-- Decide whether the first shape can be built from existing table artifacts, needs parent canonical artifacts, or needs worker-only access to the parent `.sav`.
-- Add a backend-owned frozen spec. The model may align intent and candidate fields; it must not author formulas or final numbers.
-- Keep the existing confirmation contract: proposal card first, button confirmation, worker/server compute, parent run unchanged.
-- Store the result as a session-scoped `computed_derivation` artifact with lineage.
-- Make the completed artifact fetchable through grounding tools so the same conversation can interpret it.
-
-MVP decision:
-
-- If flexible table-building is part of the MVP promise, Bucket 3 is the remaining build slice.
-- If MVP can launch with row roll-ups, selected-table cuts, and full-set derived runs only, Bucket 3 can be explicitly deferred and current refusals/clarifications are acceptable.
-
-### 2. Cleanup Pass
-
-This is the only near-term cleanup work that still looks material.
+This is the main remaining implementation work before Phase 15 closeout.
 
 - Remove the remaining content-only marker replay fallback after old assistant history no longer needs rehydration.
 - Remove dead marker repair code and tests if no live import remains.
@@ -90,6 +57,15 @@ This is the only near-term cleanup work that still looks material.
 - Simplify back-compat fields on table-card artifacts once old history is no longer relevant.
 - Keep prompt text and prompt tests aligned to the native structured-answer contract.
 - Audit durable state ownership: structured assistant parts, rendered artifacts, citation/context evidence, traces, feedback/corrections, compute-job lineage, child-run outputs, and derived artifacts should each be intentionally Convex-only or intentionally written/exported to R2.
+
+### 2. Product Copy And Trust Language
+
+Review analysis-surface product copy so it accurately describes the current trust contract:
+
+- TabulateAI answers from verified run artifacts and session-scoped computed derivation artifacts.
+- Dataset-specific numbers require fetched table evidence and same-turn citation confirmation.
+- Rendered table cards come from verified run artifacts or computed derivation artifacts.
+- Do not imply sentence-level numeric proof or fully validated comparison language until the trust-hardening items below exist.
 
 ### 3. Trust Hardening
 
@@ -104,10 +80,11 @@ This is valuable, but it is not blocking the current MVP unless TabulateAI wants
 
 These should not block the Phase 15 MVP:
 
+- Tier A Bucket 3 non-roll-up derived tables, including KPI side-by-side tables, tables assembled from rows across multiple questions, composites/intersections, table-type transformations, and benchmark-style or metric-derived views that need a new table shape
 - multi-table row roll-ups
 - multi-table selected cuts
 - respondent-level any-of NETs for multi-select rows
-- metric row aggregation unless it becomes the chosen Bucket 3 starting point
+- metric row aggregation
 - multi-group banner extension
 - editing existing banner groups
 - banner redesign
@@ -119,8 +96,7 @@ These should not block the Phase 15 MVP:
 
 ## Active Next Checklist
 
-1. Decide whether Tier A Bucket 3 is in or out for the Phase 15 MVP.
-2. If Bucket 3 is in, choose the first supported table shape and write the frozen-spec/worker plan before coding.
-3. Run the cleanup pass, starting with legacy marker repair/replay code and persisted table-card compatibility fields.
-4. Review analysis-surface product copy so it describes the current trust contract accurately.
-5. Leave the archived UI and compute sub-plans as historical references, not active trackers.
+1. Run the cleanup pass, starting with legacy marker repair/replay code and persisted table-card compatibility fields.
+2. Review analysis-surface product copy so it describes the current trust contract accurately.
+3. Decide whether any trust-hardening item is required before closeout; otherwise keep it deferred.
+4. Close out Phase 15 V1 with Bucket 3 explicitly deferred and the archived UI/compute sub-plans left as historical references.
