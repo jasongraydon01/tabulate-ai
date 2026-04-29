@@ -61,7 +61,7 @@ export function AnalysisConversationShell({
         initial={ANALYSIS_CONVERSATION_INITIAL_SCROLL}
         resize={ANALYSIS_CONVERSATION_RESIZE_SCROLL}
       >
-        <ConversationContent className={cn("gap-4 px-5 py-3 pb-24", contentClassName)}>
+        <ConversationContent className={cn("gap-4 px-5 py-3 pb-6", contentClassName)}>
           {children}
         </ConversationContent>
         <ConversationScrollButton
@@ -70,9 +70,9 @@ export function AnalysisConversationShell({
         />
       </Conversation>
 
-      <div className="relative z-10 -mt-10 shrink-0 px-5 pb-4 pt-8">
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 top-0 bg-gradient-to-t from-white via-white/88 to-transparent dark:from-card dark:via-card/84" />
-        <div className="relative">{composer}</div>
+      <div className="pointer-events-none relative z-10 -mt-10 shrink-0 px-5 pb-4 pt-8">
+        <div className="absolute inset-x-0 bottom-0 top-0 bg-gradient-to-t from-white via-white/88 to-transparent dark:from-card dark:via-card/84" />
+        <div className="pointer-events-auto relative">{composer}</div>
       </div>
     </div>
   );

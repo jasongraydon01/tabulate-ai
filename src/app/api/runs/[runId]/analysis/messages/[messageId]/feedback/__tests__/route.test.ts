@@ -156,6 +156,37 @@ describe("analysis message feedback route", () => {
     );
   });
 
+  it("clears feedback when vote is null", async () => {
+    mocks.query
+      .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1" })
+      .mockResolvedValueOnce({ _id: "session-1", orgId: "org-1", runId: "run-1", projectId: "project-1" })
+      .mockResolvedValueOnce([{ _id: "msg-1", orgId: "org-1", sessionId: "session-1", role: "assistant" }]);
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/runs/run-1/analysis/messages/msg-1/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          vote: null,
+        }),
+      }),
+      { params: Promise.resolve({ runId: "run-1", messageId: "msg-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, feedback: null });
+    expect(mocks.mutateInternal).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        orgId: "org-1",
+        sessionId: "session-1",
+        messageId: "msg-1",
+        userId: "user-1",
+      },
+    );
+  });
+
   it("returns 404 instead of throwing when the url message id is not a persisted session message", async () => {
     mocks.query
       .mockResolvedValueOnce({ _id: "run-1", orgId: "org-1", projectId: "project-1" })

@@ -197,7 +197,7 @@ export function AnalysisWorkspace({
 
   async function handleSubmitMessageFeedback(input: {
     messageId: string;
-    vote: AnalysisMessageFeedbackVote;
+    vote: AnalysisMessageFeedbackVote | null;
     correctionText?: string | null;
   }) {
     if (!selectedSession) {

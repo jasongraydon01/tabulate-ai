@@ -239,7 +239,7 @@ export function AnalysisMessage({
   feedback?: AnalysisMessageFeedbackRecord | null;
   onSubmitFeedback?: (input: {
     messageId: string;
-    vote: AnalysisMessageFeedbackVote;
+    vote: AnalysisMessageFeedbackVote | null;
     correctionText?: string | null;
   }) => Promise<void>;
   // Passed on persisted user messages when editing is available. Called with

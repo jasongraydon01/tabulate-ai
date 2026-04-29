@@ -41,7 +41,7 @@ interface AnalysisThreadProps {
   messageFeedbackById: Record<string, AnalysisMessageFeedbackRecord | null>;
   onSubmitMessageFeedback: (input: {
     messageId: string;
-    vote: AnalysisMessageFeedbackVote;
+    vote: AnalysisMessageFeedbackVote | null;
     correctionText?: string | null;
   }) => Promise<void>;
   // Called with just the messageId to truncate. The thread owns the client

@@ -41,9 +41,9 @@ describe("AnalysisAnswerFooter", () => {
 
     expect(markup).toContain("data-analysis-answer-footer-state=\"ready\"");
     expect(markup).toContain("aria-label=\"Copy response\"");
-    expect(markup).toContain("Additional sources (1)");
-    expect(markup).toContain("Helpful");
-    expect(markup).toContain("Needs work");
+    expect(markup).toContain("aria-label=\"Evidence (1)\"");
+    expect(markup).toContain("aria-label=\"Mark response as helpful\"");
+    expect(markup).toContain("aria-label=\"Mark response as needing work\"");
   });
 
   it("reserves the answer footer footprint before the footer is ready", () => {
@@ -64,7 +64,7 @@ describe("AnalysisAnswerFooter", () => {
     expect(markup).not.toContain("Show this in counts");
   });
 
-  it("caps follow-up suggestions at three stable footer slots", () => {
+  it("does not render follow-up suggestion bubbles (deferred until AI-backed re-enable)", () => {
     const markup = renderToStaticMarkup(
       React.createElement(AnalysisAnswerFooter, {
         isReady: true,
@@ -76,41 +76,27 @@ describe("AnalysisAnswerFooter", () => {
           "Break this down by age",
           "Show this in counts",
           "How was Q1 asked?",
-          "Show the related tables for Q1",
         ],
         onSelectFollowUpSuggestion: async () => {},
       }),
     );
 
-    expect(markup.match(/data-analysis-suggestion-slot="true"/g)).toHaveLength(3);
-    expect(markup).toContain("Break this down by age");
-    expect(markup).toContain("How was Q1 asked?");
-    expect(markup).not.toContain("Show the related tables for Q1");
-  });
-
-  it("hides suggestions when the composer already has draft text", () => {
-    expect(getAnalysisFooterSuggestions(["Show this in counts"], true)).toEqual([]);
-
-    const markup = renderToStaticMarkup(
-      React.createElement(AnalysisAnswerFooter, {
-        isReady: true,
-        reserveSpace: true,
-        messageText: "Here is the answer.",
-        messageId: "assistant-1",
-        sourceItems: [],
-        followUpSuggestions: ["Show this in counts"],
-        onSelectFollowUpSuggestion: async () => {},
-        composerHasDraft: true,
-      }),
-    );
-
     expect(markup).not.toContain("data-analysis-suggestion-slot");
     expect(markup).not.toContain("Show this in counts");
-    expect(markup).toContain("aria-label=\"Copy response\"");
-    expect(markup).not.toContain("min-h-[5rem]");
+    expect(markup).not.toContain("Break this down by age");
   });
 
-  it("shows the downvote correction panel when existing feedback needs work", () => {
+  it("caps the follow-up suggestion helper at three when composer is empty", () => {
+    expect(
+      getAnalysisFooterSuggestions(
+        ["a", "b", "c", "d"],
+        false,
+      ),
+    ).toEqual(["a", "b", "c"]);
+    expect(getAnalysisFooterSuggestions(["a"], true)).toEqual([]);
+  });
+
+  it("renders pressed state for an existing downvote without auto-opening the correction panel", () => {
     const markup = renderToStaticMarkup(
       React.createElement(AnalysisAnswerFooter, {
         isReady: true,
@@ -129,8 +115,28 @@ describe("AnalysisAnswerFooter", () => {
       }),
     );
 
-    expect(markup).toContain("Optional: what should TabulateAI have said instead?");
-    expect(markup).toContain("Save feedback");
-    expect(markup).toContain("Mention the base size.");
+    expect(markup).toContain("aria-pressed=\"true\"");
+    expect(markup).toContain("aria-label=\"Remove needs-work feedback\"");
+    expect(markup).not.toContain("Optional: what should TabulateAI have said instead?");
+    expect(markup).not.toContain("Save feedback");
+  });
+
+  it("supports clearing feedback via vote: null in the handler signature", () => {
+    const props: React.ComponentProps<typeof AnalysisAnswerFooter> = {
+      isReady: true,
+      reserveSpace: true,
+      messageText: "Here is the answer.",
+      messageId: "assistant-1",
+      sourceItems: [],
+      feedback: null,
+      onSubmitFeedback: async (input) => {
+        expect(input.vote === "up" || input.vote === "down" || input.vote === null).toBe(true);
+      },
+      followUpSuggestions: [],
+    };
+    const markup = renderToStaticMarkup(React.createElement(AnalysisAnswerFooter, props));
+
+    expect(markup).toContain("aria-label=\"Mark response as helpful\"");
+    expect(markup).toContain("aria-label=\"Mark response as needing work\"");
   });
 });

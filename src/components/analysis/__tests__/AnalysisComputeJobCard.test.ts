@@ -321,7 +321,7 @@ describe("AnalysisComputeJobCard", () => {
     });
 
     expect(markup).toContain("Derived table added to this analysis session.");
-    expect(markup).toContain("Artifact saved");
+    expect(markup).toContain("Saved to this chat");
     expect(markup).not.toContain("artifact-1");
     expect(markup).not.toContain("Continue in derived run");
   });

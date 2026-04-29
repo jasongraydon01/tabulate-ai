@@ -37,7 +37,11 @@ export async function POST(
       correctionText?: unknown;
     };
     const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
-    const vote = body.vote === "up" || body.vote === "down" ? body.vote : null;
+    const isClear = body.vote === null;
+    const vote: "up" | "down" | null = body.vote === "up" || body.vote === "down"
+      ? body.vote
+      : isClear ? null : null;
+    const isValidVotePayload = body.vote === "up" || body.vote === "down" || isClear;
     const correctionText = typeof body.correctionText === "string"
       ? body.correctionText.trim()
       : "";
@@ -45,7 +49,7 @@ export async function POST(
     if (!sessionId || !CONVEX_ID_RE.test(sessionId)) {
       return NextResponse.json({ error: "Invalid session ID" }, { status: 400 });
     }
-    if (!vote) {
+    if (!isValidVotePayload) {
       return NextResponse.json({ error: "Invalid feedback vote" }, { status: 400 });
     }
     if (correctionText.length > MAX_CORRECTION_TEXT_CHARS) {
@@ -84,6 +88,20 @@ export async function POST(
       || message.role !== "assistant"
     ) {
       return NextResponse.json({ error: "Analysis message not found" }, { status: 404 });
+    }
+
+    if (vote === null) {
+      await mutateInternal(internal.analysisMessageFeedback.clearByMessage, {
+        orgId: auth.convexOrgId,
+        sessionId: session._id,
+        messageId: message._id,
+        userId: auth.convexUserId,
+      });
+
+      return NextResponse.json({
+        ok: true,
+        feedback: null,
+      });
     }
 
     await mutateInternal(internal.analysisMessageFeedback.upsert, {

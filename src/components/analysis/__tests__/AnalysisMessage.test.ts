@@ -368,7 +368,7 @@ describe("AnalysisMessage trace presentation", () => {
       React.createElement(AnalysisMessage, { message, isStreaming: false }),
     );
 
-    expect(markup).not.toContain("Additional sources (");
+    expect(markup).not.toContain("aria-label=\"Evidence (");
   });
 
   it("shows context support in the merged additional sources block", () => {
@@ -396,7 +396,7 @@ describe("AnalysisMessage trace presentation", () => {
       React.createElement(AnalysisMessage, { message, isStreaming: false }),
     );
 
-    expect(markup).toContain("Additional sources (1)");
+    expect(markup).toContain("aria-label=\"Evidence (1)\"");
   });
 
   it("reads follow-up suggestions from message metadata", () => {
@@ -940,7 +940,7 @@ describe("AnalysisMessage trace presentation", () => {
       React.createElement(AnalysisMessage, { message, isStreaming: false }),
     );
 
-    expect(markup).toContain("Additional sources (2)");
+    expect(markup).toContain("aria-label=\"Evidence (2)\"");
     expect(markup).toContain("aria-label=\"Citation Q1\"");
   });
 

@@ -86,3 +86,40 @@ export const upsert = internalMutation({
     });
   },
 });
+
+export const clearByMessage = internalMutation({
+  args: {
+    orgId: v.id("organizations"),
+    sessionId: v.id("analysisSessions"),
+    messageId: v.id("analysisMessages"),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const [session, message] = await Promise.all([
+      ctx.db.get(args.sessionId),
+      ctx.db.get(args.messageId),
+    ]);
+
+    if (!session || session.orgId !== args.orgId) {
+      throw new Error("Analysis session not found");
+    }
+
+    if (
+      !message
+      || message.orgId !== args.orgId
+      || message.sessionId !== args.sessionId
+      || message.role !== "assistant"
+    ) {
+      throw new Error("Analysis message not found");
+    }
+
+    const existing = await ctx.db
+      .query("analysisMessageFeedback")
+      .withIndex("by_message_user", (q) => q.eq("messageId", args.messageId).eq("userId", args.userId))
+      .unique();
+
+    if (existing) {
+      await ctx.db.delete(existing._id);
+    }
+  },
+});
