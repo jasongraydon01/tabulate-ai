@@ -18,10 +18,34 @@ function normalizeRenderFocus(
   const normalized: AnalysisRenderDirectiveFocus = {};
   if (focus.rowLabels && focus.rowLabels.length > 0) normalized.rowLabels = [...focus.rowLabels];
   if (focus.rowRefs && focus.rowRefs.length > 0) normalized.rowRefs = [...focus.rowRefs];
-  if (focus.groupNames && focus.groupNames.length > 0) normalized.groupNames = [...focus.groupNames];
-  if (focus.groupRefs && focus.groupRefs.length > 0) normalized.groupRefs = [...focus.groupRefs];
+  if (focus.groupNames && focus.groupNames.length > 0) {
+    const groupNames = focus.groupNames.filter((groupName) => !isTotalGroupNameFocus(groupName));
+    if (groupNames.length > 0) normalized.groupNames = groupNames;
+  }
+  if (focus.groupRefs && focus.groupRefs.length > 0) {
+    const groupRefs = focus.groupRefs.filter((groupRef) => !isTotalGroupRefFocus(groupRef));
+    if (groupRefs.length > 0) normalized.groupRefs = groupRefs;
+  }
 
   return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function normalizeFocusToken(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isTotalGroupNameFocus(value: string): boolean {
+  const normalized = normalizeFocusToken(value);
+  return normalized === "total" || /^total [a-z]$/u.test(normalized);
+}
+
+function isTotalGroupRefFocus(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "__total__" || normalized.startsWith("__total__::");
 }
 
 function normalizeStructuredTextPart(

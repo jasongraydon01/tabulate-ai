@@ -8,6 +8,7 @@ import {
   extractAnalysisRenderMarkers,
   stripAnalysisRenderAnchors,
   stripInvalidAnalysisRenderMarkers,
+  validateAnalysisStructuredRenderParts,
   validateAnalysisRenderMarkers,
 } from "@/lib/analysis/renderAnchors";
 
@@ -67,7 +68,9 @@ function makeRenderPart(
   tableId: string,
   focus?: {
     rowLabels?: string[];
+    rowRefs?: string[];
     groupNames?: string[];
+    groupRefs?: string[];
   },
 ): UIMessage["parts"][number] {
   return {
@@ -254,6 +257,39 @@ describe("analysis render markers", () => {
         },
       }),
     ]);
+  });
+
+  it("does not reject no-op Total group focus during structured render validation", () => {
+    const basePart = makeTablePart("tool-1", "A3");
+    const issues = validateAnalysisStructuredRenderParts({
+      assistantParts: [
+        {
+          type: "render",
+          tableId: "A3",
+          focus: {
+            rowLabels: ["Aware"],
+            groupNames: ["Total", "Total (T)"],
+            groupRefs: ["__total__", "__total__::total"],
+          },
+        },
+      ],
+      responseParts: [
+        {
+          ...basePart,
+          output: {
+            ...basePart.output,
+            columnGroups: [
+              { groupKey: "__total__", groupName: "Total", columns: [] },
+            ],
+            rows: [
+              { rowKey: "row_aware", label: "Aware", indent: 0, isNet: false, values: [] },
+            ],
+          },
+        } as UIMessage["parts"][number],
+      ],
+    });
+
+    expect(issues).toEqual([]);
   });
 
   it("validates markers against fetched and catalog id sets", () => {

@@ -1,4 +1,4 @@
-import { convertToModelMessages, stepCountIs, streamText, tool } from "ai";
+import { convertToModelMessages, hasToolCall, stepCountIs, streamText, tool } from "ai";
 import { z } from "zod";
 
 import {
@@ -58,6 +58,9 @@ const confirmCitationInputSchema = z.object({
   rowRef: z.string().min(1).max(200).optional(),
   columnRef: z.string().min(1).max(400).optional(),
 }).strict();
+
+const ANALYSIS_AGENT_MAX_STEPS = 12;
+const ANALYSIS_AGENT_FORCE_SUBMIT_STEP = ANALYSIS_AGENT_MAX_STEPS - 1;
 
 export async function streamAnalysisResponse({
   messages,
@@ -167,7 +170,19 @@ export async function streamAnalysisResponse({
         model: getAnalysisModel(),
         system: buildAnalysisSystemMessage(groundingContext),
         messages: await convertToModelMessages(sanitizedMessages),
-        stopWhen: stepCountIs(12),
+        toolChoice: "required",
+        stopWhen: [
+          hasToolCall("submitAnswer"),
+          stepCountIs(ANALYSIS_AGENT_MAX_STEPS),
+        ],
+        prepareStep: ({ stepNumber }) => {
+          if (stepNumber < ANALYSIS_AGENT_FORCE_SUBMIT_STEP) return undefined;
+
+          return {
+            activeTools: ["submitAnswer"],
+            toolChoice: { type: "tool", toolName: "submitAnswer" },
+          };
+        },
         abortSignal,
         ...(getAnalysisProviderOptions() ? { providerOptions: getAnalysisProviderOptions() } : {}),
         tools: {

@@ -85,6 +85,16 @@ function normalizeText(value: string | null | undefined): string {
     .trim();
 }
 
+function isTotalGroupNameFocus(value: string): boolean {
+  const normalized = normalizeText(value);
+  return normalized === "total" || /^total [a-z]$/u.test(normalized);
+}
+
+function isTotalGroupRefFocus(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === TOTAL_GROUP_KEY || normalized.startsWith(`${TOTAL_GROUP_KEY}::`);
+}
+
 function parseMarkerListValue(rawValue: string): string[] {
   const value = rawValue.trim();
   if (!value) return [];
@@ -295,6 +305,7 @@ function validateRenderFocusForFetchedTable(
   }
 
   for (const groupName of focus.groupNames ?? []) {
+    if (isTotalGroupNameFocus(groupName)) continue;
     const match = matchesUniqueGroupName(part.output.columnGroups, groupName);
     if (!match || !fetchedGroupKeys.has(match.groupKey)) {
       issues.push({
@@ -306,6 +317,7 @@ function validateRenderFocusForFetchedTable(
   }
 
   for (const groupRef of focus.groupRefs ?? []) {
+    if (isTotalGroupRefFocus(groupRef)) continue;
     if (!groups.some((group) => group.groupKey === groupRef) || !fetchedGroupKeys.has(groupRef)) {
       issues.push({
         tableId: part.output.tableId,

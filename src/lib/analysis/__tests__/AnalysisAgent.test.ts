@@ -16,6 +16,7 @@ vi.mock("ai", async (importOriginal) => {
   return {
     ...actual,
     convertToModelMessages: mocks.convertToModelMessages,
+    hasToolCall: vi.fn((toolName: string) => `has-tool-call:${toolName}`),
     stepCountIs: vi.fn((count: number) => count),
     streamText: mocks.streamText,
     tool: vi.fn((config) => config),
@@ -228,9 +229,23 @@ describe("streamAnalysisResponse", () => {
     expect(groundingCapture).toEqual([]);
   });
 
-  it("uses a structured system message and keeps cache control on the terminal tool only", async () => {
-    mocks.streamText.mockImplementationOnce(({ onFinish, system, tools }) => {
+  it("uses a structured system message, required tool loop, and keeps cache control on the terminal tool only", async () => {
+    mocks.streamText.mockImplementationOnce(({
+      onFinish,
+      system,
+      tools,
+      toolChoice,
+      stopWhen,
+      prepareStep,
+    }) => {
       expect(system).toEqual({ role: "system", content: "system prompt" });
+      expect(toolChoice).toBe("required");
+      expect(stopWhen).toEqual(["has-tool-call:submitAnswer", 12]);
+      expect(prepareStep?.({ stepNumber: 10, steps: [] } as never)).toBeUndefined();
+      expect(prepareStep?.({ stepNumber: 11, steps: [] } as never)).toEqual({
+        activeTools: ["submitAnswer"],
+        toolChoice: { type: "tool", toolName: "submitAnswer" },
+      });
       expect(Object.keys(tools ?? {})).toEqual([
         "searchRunCatalog",
         "fetchTable",

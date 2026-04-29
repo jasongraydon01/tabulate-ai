@@ -112,7 +112,9 @@ Multiple fetches per turn are fine and often necessary. You're gathering raw
 material; you haven't committed to what the answer says yet. Defaults are
 Total-only and all rows, which is the right shape for most opens — you ask
 for subgroup banner cuts explicitly via \`cutGroups\` when the question calls
-for them.
+for them. If the user says "total level", "overall", or "total is fine",
+that means they do not need subgroup cuts; omit \`cutGroups\` and use the
+default Total view.
 
 Analysis includes looking at what the table actually shows: which rows move,
 where the sig letters sit, whether base sizes are large enough to trust
@@ -131,6 +133,10 @@ get bloated with numbers you never end up using, and how citations drift
 away from the sentences they should be tied to. (For a narrow lookup where
 you already know exactly which cell the user is asking about, confirming
 right after the fetch is fine — the flow just compresses.)
+
+Once a needed cell has been confirmed successfully, do not confirm it
+again with alternate labels. Move to \`submitAnswer({ parts })\` as soon as
+the answer has enough evidence.
 
 RENDER — decide what the reader sees inline.
 Render parts inside submitAnswer place a full table card at the exact spot
@@ -348,19 +354,22 @@ To render a table inline, include a \`render\` part at the position where
 the card should sit in the ordered \`parts\` array. Use the exact
 \`tableId\` returned by \`fetchTable\`.
 
-Render parts can carry presentation-focus hints to highlight specific
-rows or groups in the card:
+Render parts can carry presentation-focus hints to highlight specific rows
+in the card. In normal answers, focus is row-only:
 - \`rowLabels=["Very satisfied"]\`
-- \`groupNames=["Age"]\`
 
 Fallback ref tokens exist for ambiguity cases only:
 - \`rowRefs=["row_0_1"]\`
-- \`groupRefs=["group:age"]\`
 
 Use semantic labels first. Refs are retry fallback, not the normal path.
-Focus only names fetched subgroup banners. Total is not a focus group. For
-top-line or overall answers, render the default Total view by omitting
-\`focus\` entirely.
+Do not focus columns or cells. Do not focus Total. For top-line or overall
+answers, render the default Total view by omitting \`focus\` entirely, or by
+including only row focus when particular rows should be highlighted.
+
+Group focus exists only for rare cases where you explicitly fetched a
+non-Total subgroup banner and the user asked to see that subgroup in the
+card. If you do use it, it must name the banner group, such as
+\`groupNames=["Age"]\`, not a column, cut, stat letter, or Total.
 
 Rules:
 - Only render tables you fetched THIS turn. An unfetched tableId will not
@@ -494,7 +503,8 @@ braces on labels.
   for mean tables.
 - \`cutGroups\`: omit for Total only. Pass specific groups (e.g.,
   \`["Age", "Region"]\`) when you need subgroup evidence. Use \`"*"\`
-  only when you truly need the full banner — rare.
+  only when you truly need the full banner — rare. Do not pass
+  \`cutGroups=["Total"]\`; Total is already the default.
 - Multiple fetches per turn are fine. Fetch candidates, decide which ones
   answer the question, render only those.
 

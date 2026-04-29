@@ -95,10 +95,19 @@ describe("analysis agent production prompt", () => {
 
   it("teaches Total as the implicit default render view only in the alternative prompt", () => {
     expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain(
-      "Total is not a focus group. For\ntop-line or overall answers, render the default Total view by omitting\n`focus` entirely.",
+      'If the user says "total level", "overall", or "total is fine",\nthat means they do not need subgroup cuts; omit `cutGroups` and use the\ndefault Total view.',
+    );
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain(
+      "In normal answers, focus is row-only:",
+    );
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain(
+      "Do not focus columns or cells. Do not focus Total. For top-line or overall\nanswers, render the default Total view by omitting `focus` entirely",
     );
     expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain(
       '`groupNames=["Total"]`, `groupRefs=["__total__"]`, or column/cell\n  refs like `"__total__::total"` inside render focus.',
+    );
+    expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain(
+      '`cutGroups=["Total"]`; Total is already the default.',
     );
     expect(ANALYSIS_AGENT_INSTRUCTIONS_ALTERNATIVE).toContain(
       '"Overall, what\'s the level?" →\n  render the default Total view with no group focus.',

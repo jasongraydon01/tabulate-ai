@@ -44,6 +44,52 @@ describe("analysis structured assistant parts", () => {
     ]);
   });
 
+  it("drops no-op Total group focus from structured render parts", () => {
+    expect(extractAnalysisStructuredAssistantPartsFromSubmitAnswer([
+      {
+        type: "tool-submitAnswer",
+        toolCallId: "submit-1",
+        state: "output-available",
+        input: {
+          parts: [
+            {
+              type: "render",
+              tableId: "q1",
+              focus: {
+                rowLabels: ["Aware"],
+                groupNames: ["Total", "Age", "Total (T)"],
+                groupRefs: ["__total__", "group:age", "__total__::total"],
+              },
+            },
+          ],
+        },
+        output: {
+          parts: [
+            {
+              type: "render",
+              tableId: "q1",
+              focus: {
+                rowLabels: ["Aware"],
+                groupNames: ["Total", "Age", "Total (T)"],
+                groupRefs: ["__total__", "group:age", "__total__::total"],
+              },
+            },
+          ],
+        },
+      } as never,
+    ])).toEqual([
+      {
+        type: "render",
+        tableId: "q1",
+        focus: {
+          rowLabels: ["Aware"],
+          groupNames: ["Age"],
+          groupRefs: ["group:age"],
+        },
+      },
+    ]);
+  });
+
   it("strictly extracts structured assistant parts when submitAnswer is the only final answer contract", () => {
     expect(extractStrictAnalysisStructuredAssistantPartsFromSubmitAnswer([
       {
